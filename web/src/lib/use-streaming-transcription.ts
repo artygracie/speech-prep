@@ -113,25 +113,43 @@ export function useStreamingTranscription(opts: Opts): Hook {
   }, []);
 
   // ----- Websocket setup -----
+  // Deepgram websocket auth: pass the token as a URL query param. The
+  // alternative — Sec-WebSocket-Protocol via `["token", jwt]` — appears
+  // in some Deepgram examples but rejects on real connections; the
+  // documented stable path is `?access_token=...`.
   const openSocket = useCallback(async (): Promise<WebSocket> => {
     const token = await fetchToken();
+    const urlWithAuth = `${DG_URL}&access_token=${encodeURIComponent(token)}`;
+
     return new Promise((resolve, reject) => {
-      // Deepgram supports the token via the second protocol slot.
-      const ws = new WebSocket(DG_URL, ["token", token]);
+      const ws = new WebSocket(urlWithAuth);
       ws.binaryType = "arraybuffer";
 
       const openTimeout = setTimeout(() => {
         try { ws.close(); } catch {}
-        reject(new Error("websocket open timeout"));
+        reject(new Error("websocket open timeout (no response in 8s)"));
       }, 8000);
 
+      // Capture close-frame reason if the server closes during handshake.
+      // Browser WebSocket spec hides the body of HTTP failures, but the
+      // close event sometimes carries a reason string Deepgram sets.
+      let lastError: string | null = null;
+      ws.addEventListener("error", () => {
+        // The "error" event itself carries no useful detail in browsers
+        // — rely on the close event below for the actual reason.
+        lastError ??= "websocket error";
+      });
+      ws.addEventListener("close", (ev) => {
+        clearTimeout(openTimeout);
+        if (ws.readyState !== WebSocket.OPEN) {
+          // Closed before opening = handshake or auth failure.
+          const reason = ev.reason || lastError || `closed with code ${ev.code}`;
+          reject(new Error(`websocket failed: ${reason} (code ${ev.code})`));
+        }
+      });
       ws.addEventListener("open", () => {
         clearTimeout(openTimeout);
         resolve(ws);
-      });
-      ws.addEventListener("error", (ev) => {
-        clearTimeout(openTimeout);
-        reject(new Error(`websocket error: ${ev.type}`));
       });
     });
   }, [fetchToken]);
