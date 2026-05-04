@@ -488,7 +488,13 @@ export function Recorder({
         }
         @media (max-width: 1100px) { .rec-grid { grid-template-columns: 1fr; gap: 20px; } }
 
-        /* ===== Left column — script ===== */
+        /* ===== Left column — toggle + script pane ===== */
+        .rec-script-col {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+
         .rec-script {
           background: var(--color-canvas-white);
           border: 1px solid rgba(17,17,17,0.06);
@@ -693,7 +699,9 @@ export function Recorder({
           padding: 18px;
         }
 
-        /* Mode toggle — two equal options at the very top */
+        /* Mode toggle — two equal options, sits above the script pane.
+           Capped width so it reads as a control over the pane below
+           rather than a full-width banner. */
         .rec-mode {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -701,7 +709,10 @@ export function Recorder({
           background: var(--color-whisper-gray);
           border-radius: 10px;
           padding: 4px;
+          width: 320px;
+          max-width: 100%;
         }
+        @media (max-width: 1100px) { .rec-mode { width: 100%; } }
         .rec-mode button {
           background: transparent;
           border: 0;
@@ -952,6 +963,24 @@ export function Recorder({
 
       <div className={`rec-grid ${isLive ? "is-live" : ""}`}>
         {/* ============ LEFT: SCRIPT (or freestyle placeholder) ============ */}
+        <div className="rec-script-col">
+          {/* Mode toggle — sits above the script so it reads as a control
+              over what's in the pane below, not a sidebar setting. */}
+          <div className="rec-mode" role="tablist" aria-label="Practice mode">
+            {(["with-script", "freestyle"] as const).map((m) => (
+              <button
+                key={m}
+                role="tab"
+                aria-selected={mode === m}
+                onClick={() => state === "idle" && setMode(m)}
+                disabled={state !== "idle"}
+                className={mode === m ? "is-on" : ""}
+              >
+                {m === "with-script" ? "Script visible" : "From memory"}
+              </button>
+            ))}
+          </div>
+
         {mode === "with-script" ? (
           <div className="rec-script">
             {sectionsInScope.map((s, i) => (
@@ -1032,25 +1061,10 @@ export function Recorder({
             </div>
           </div>
         )}
+        </div>
 
         {/* ============ RIGHT: STICKY SIDEBAR ============ */}
         <aside className="rec-side">
-          {/* Mode toggle — top of sidebar, always visible, always equal weight */}
-          <div className="rec-mode" role="tablist" aria-label="Practice mode">
-            {(["with-script", "freestyle"] as const).map((m) => (
-              <button
-                key={m}
-                role="tab"
-                aria-selected={mode === m}
-                onClick={() => state === "idle" && setMode(m)}
-                disabled={state !== "idle"}
-                className={mode === m ? "is-on" : ""}
-              >
-                {m === "with-script" ? "Teleprompter" : "Freestyle"}
-              </button>
-            ))}
-          </div>
-
           {/* Timer + status */}
           <div className="rec-timer-card">
             <div
