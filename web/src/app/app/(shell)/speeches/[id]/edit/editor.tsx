@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveScript } from "@/app/app/actions";
+import { saveScript, suggestSectionNames } from "@/app/app/actions";
 
 type SectionInput = { id: string; name: string; targetSec: number; body: string };
 type Block =
@@ -56,6 +56,7 @@ export function ScriptEditor({
   const [dirty, setDirty] = useState(false);
   const [pending, startTransition] = useTransition();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
   const docRef = useRef<HTMLDivElement>(null);
 
   const totalTarget = useMemo(
@@ -168,12 +169,96 @@ export function ScriptEditor({
     });
   }
 
+  // Deleting a section heading merges its paragraphs into a neighbour:
+  //   - Heading #2+ → drop the heading; paragraphs flow into the previous
+  //     section automatically because saveScript groups paragraphs under
+  //     the preceding heading.
+  //   - Heading #1  → drop the heading; the *next* heading takes over the
+  //     paragraphs (merge downward). Without this, the orphan paragraphs
+  //     would land in an "Untitled" section at save time.
+  // Either way we briefly flash the surviving heading so the user sees
+  // where the content went.
   function removeHeading(id: string) {
-    if (headings.length <= 1) {
-      // Need at least one heading.
+    if (headings.length <= 1) return; // need at least one heading
+    const i = blocks.findIndex((b) => b.id === id);
+    if (i < 0) return;
+
+    const isFirst = headings[0].id === id;
+    let survivorId: string | null = null;
+
+    if (isFirst) {
+      // Find the next heading; we keep it (it inherits the orphan paragraphs).
+      const nextHeading = blocks.slice(i + 1).find((b) => b.kind === "heading");
+      survivorId = nextHeading?.id ?? null;
+      removeBlock(id);
+    } else {
+      // The previous heading is the survivor. Just drop this heading.
+      const prevHeading = [...blocks.slice(0, i)]
+        .reverse()
+        .find((b) => b.kind === "heading");
+      survivorId = prevHeading?.id ?? null;
+      removeBlock(id);
+    }
+
+    if (survivorId) {
+      requestAnimationFrame(() => {
+        const el = document.querySelector<HTMLElement>(
+          `[data-block-id="${survivorId}"]`,
+        );
+        if (!el) return;
+        el.classList.add("is-flash");
+        setTimeout(() => el.classList.remove("is-flash"), 800);
+      });
+    }
+  }
+
+  // Group paragraphs by their preceding heading and ask the server to
+  // suggest 1-2 word names for each. We patch the headings in place so
+  // the user can review/undo before saving — the next save persists.
+  async function suggestNames() {
+    if (suggesting) return;
+    // Build the same heading→paragraphs grouping that saveScript uses, so
+    // the names map 1:1 to the headings the user sees.
+    type Group = { headingId: string | null; bodyParts: string[] };
+    const groups: Group[] = [];
+    let cur: Group | null = null;
+    for (const b of blocks) {
+      if (b.kind === "heading") {
+        cur = { headingId: b.id, bodyParts: [] };
+        groups.push(cur);
+      } else if (cur) {
+        if (b.text) cur.bodyParts.push(b.text);
+      }
+    }
+    const named = groups.filter((g) => g.headingId && g.bodyParts.join("").trim());
+    if (named.length === 0) {
+      setErrorMsg("Add some content first — there's nothing to name yet.");
       return;
     }
-    removeBlock(id);
+
+    setErrorMsg(null);
+    setSuggesting(true);
+    try {
+      const { names } = await suggestSectionNames(
+        named.map((g) => g.bodyParts.join("\n\n")),
+      );
+      if (!names) {
+        setErrorMsg("Couldn't generate names. Try again, or rename them yourself.");
+        return;
+      }
+      setBlocks((prev) =>
+        prev.map((b) => {
+          if (b.kind !== "heading") return b;
+          const idx = named.findIndex((g) => g.headingId === b.id);
+          if (idx < 0) return b;
+          const next = names[idx];
+          return next ? { ...b, name: next } : b;
+        }),
+      );
+      markDirty();
+    } finally {
+      setSuggesting(false);
+    }
   }
 
   function editTime(id: string) {
@@ -421,6 +506,17 @@ export function ScriptEditor({
                   <line x1="4" y1="12" x2="9" y2="15" />
                 </svg>
                 Section break
+              </button>
+              <button
+                onClick={suggestNames}
+                className="btn-ghost"
+                disabled={suggesting}
+                title="Generate names for all sections from their content"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
+                </svg>
+                {suggesting ? "Naming…" : "Suggest names"}
               </button>
             </div>
 
