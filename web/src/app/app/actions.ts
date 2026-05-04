@@ -6,6 +6,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { aiSplitSections, aiNameSections } from "@/lib/ai-sections";
 
 // ---------- Auth ----------
 export async function signOut() {
@@ -16,9 +17,12 @@ export async function signOut() {
 
 // ---------- Speeches ----------
 
-// Naive paragraph splitter — same heuristic as the static demo. Splits on
-// blank lines; if there's only one block, splits sentences in half so the
-// user has at least two sections to start playing with.
+// Fallback paragraph splitter for when the AI call is unavailable or
+// fails. Splits on blank lines; if there's only one block, splits
+// sentences in half so the user has at least two sections to start
+// playing with. Naming is positional and caps at 6 — past that we fall
+// back to "Section N", which is ugly but rare since the AI path handles
+// the long ones.
 function autoSection(text: string): {
   name: string;
   target_seconds: number;
@@ -62,6 +66,26 @@ function estimateSeconds(text: string): number {
   return Math.max(15, Math.round((words / 145) * 60 / 5) * 5);
 }
 
+// AI-first auto-section: ask Claude to find logical beats and name them,
+// fall back to the paragraph heuristic if the model is unavailable or
+// returns something we can't parse. Either way, we compute target_seconds
+// from word count locally so timing isn't model-dependent.
+async function aiOrHeuristicSection(text: string): Promise<{
+  name: string;
+  target_seconds: number;
+  body: string;
+}[]> {
+  const ai = await aiSplitSections(text);
+  if (ai && ai.length > 0) {
+    return ai.map((s) => ({
+      name: s.name,
+      body: s.body,
+      target_seconds: estimateSeconds(s.body),
+    }));
+  }
+  return autoSection(text);
+}
+
 export async function createSpeech(formData: FormData) {
   const supabase = await createClient();
   const {
@@ -101,7 +125,11 @@ export async function createSpeech(formData: FormData) {
   if (versionErr || !version) throw versionErr ?? new Error("Failed to create version");
 
   // 3) Auto-section the body and insert sections in position order.
-  const proposed = body ? autoSection(body) : [{ name: "Open", target_seconds: 60, body: "" }];
+  //    AI-first; falls back to the paragraph heuristic if the model is
+  //    unavailable so the create flow never blocks on Anthropic.
+  const proposed = body
+    ? await aiOrHeuristicSection(body)
+    : [{ name: "Open", target_seconds: 60, body: "" }];
   const { error: secErr } = await supabase.from("sections").insert(
     proposed.map((s, i) => ({
       script_version_id: version.id,
@@ -148,7 +176,9 @@ export async function createFirstSpeech(formData: FormData) {
     .single();
   if (versionErr || !version) throw versionErr ?? new Error("Failed to create version");
 
-  const proposed = body ? autoSection(body) : [{ name: "Open", target_seconds: 60, body: "" }];
+  const proposed = body
+    ? await aiOrHeuristicSection(body)
+    : [{ name: "Open", target_seconds: 60, body: "" }];
   const { error: secErr } = await supabase.from("sections").insert(
     proposed.map((s, i) => ({
       script_version_id: version.id,
@@ -242,4 +272,24 @@ export async function saveScript(
   revalidatePath(`/app/speeches/${speechId}`);
   revalidatePath(`/app/speeches/${speechId}/edit`);
   return { newVersion: newV };
+}
+
+// Editor "Suggest names" button. Takes the current section bodies (as the
+// user has them in-editor, before save) and returns one new name per
+// section. We don't persist anything — the editor patches its local
+// state and the names land in the next save.
+export async function suggestSectionNames(
+  bodies: string[],
+): Promise<{ names: string[] | null }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { names: null };
+  if (!Array.isArray(bodies) || bodies.length === 0) return { names: null };
+  // Cap input — runaway pastes shouldn't blow our token budget.
+  if (bodies.length > 20) return { names: null };
+
+  const names = await aiNameSections(bodies.map((b) => ({ body: String(b) })));
+  return { names };
 }
