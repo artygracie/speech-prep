@@ -105,9 +105,9 @@ export default function LandingPage() {
               className="mt-8 text-body md:text-subheading max-w-xl"
               style={{ color: "var(--color-muted-ash)" }}
             >
-              Upload the speech. Record yourself giving it. SpeechPrep tells you, to the second,
-              which sections ran long &mdash; which lines you skipped &mdash; and which off-script
-              moments were better than what you wrote down.
+              Upload your speech. Record yourself giving it. SpeechPrep tells you, to the second,
+              which sections ran long, which lines you skipped, and which off-script moments
+              were better than what you wrote down.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-5 max-w-lg">
