@@ -117,6 +117,53 @@ export async function createSpeech(formData: FormData) {
   redirect(`/app/speeches/${speech.id}/edit`);
 }
 
+// First-run onboarding submission. Same logic as createSpeech, but
+// redirects straight to the recorder with a query flag so the recorder
+// can show its first-time coach-mark. New users came here to *practice*,
+// so we skip the editor — section auto-detection is good enough to
+// record against, and they can refine in the editor later if they want.
+export async function createFirstSpeech(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const title = String(formData.get("title") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+
+  if (!title) return;
+
+  const { data: speech, error: speechErr } = await supabase
+    .from("speeches")
+    .insert({ user_id: user.id, title, current_version: 1 })
+    .select("id")
+    .single();
+  if (speechErr || !speech) throw speechErr ?? new Error("Failed to create speech");
+
+  const { data: version, error: versionErr } = await supabase
+    .from("script_versions")
+    .insert({ speech_id: speech.id, v: 1, summary: "First draft" })
+    .select("id")
+    .single();
+  if (versionErr || !version) throw versionErr ?? new Error("Failed to create version");
+
+  const proposed = body ? autoSection(body) : [{ name: "Open", target_seconds: 60, body: "" }];
+  const { error: secErr } = await supabase.from("sections").insert(
+    proposed.map((s, i) => ({
+      script_version_id: version.id,
+      position: i,
+      name: s.name,
+      target_seconds: s.target_seconds,
+      body: s.body,
+    })),
+  );
+  if (secErr) throw secErr;
+
+  revalidatePath("/app");
+  redirect(`/app/speeches/${speech.id}/record?firstRun=1`);
+}
+
 // Save the script editor's document state as a new version. Receives the
 // blocks JSON from the client (heading | paragraph) and rebuilds sections.
 export async function saveScript(

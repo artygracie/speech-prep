@@ -224,13 +224,29 @@ export function Recorder({
       });
     } catch (err) {
       console.error(err);
+      // The createSession server action throws "[paywall]code:message"
+      // when the user is out of free sessions or scoped to a different
+      // speech. We strip the prefix so the message is clean, and the
+      // error UI shows a "Go to billing" CTA if the prefix is present.
+      const raw = err instanceof Error ? err.message : "Couldn't start recording.";
+      const isPaywall = raw.startsWith("[paywall]");
       setErrorMsg(
         err instanceof DOMException && err.name === "NotAllowedError"
           ? "Microphone permission denied. Allow it in your browser, then try again."
-          : err instanceof Error
-          ? err.message
-          : "Couldn't start recording.",
+          : isPaywall
+          ? raw.replace(/^\[paywall\][^:]*:/, "")
+          : raw,
       );
+      // The bottom-bar error pill includes a "Try again" button by
+      // default; for paywalls we want the user to go to billing
+      // instead. We hint at this via window.location so we don't have
+      // to thread a "kind" through the bottom bar.
+      if (isPaywall) {
+        // Small delay so the error message renders before the redirect.
+        setTimeout(() => {
+          window.location.href = `/app/billing?from=record&speech_id=${speechId}`;
+        }, 1200);
+      }
       setState("error");
       cleanupStream();
     }

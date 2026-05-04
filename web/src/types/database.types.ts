@@ -70,29 +70,44 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          current_period_end: string | null
           display_name: string | null
           email: string
           id: string
+          one_shot_speech_id: string | null
           plan: string
           sessions_used: number
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_status: string | null
           updated_at: string
         }
         Insert: {
           created_at?: string
+          current_period_end?: string | null
           display_name?: string | null
           email: string
           id: string
+          one_shot_speech_id?: string | null
           plan?: string
           sessions_used?: number
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string | null
           updated_at?: string
         }
         Update: {
           created_at?: string
+          current_period_end?: string | null
           display_name?: string | null
           email?: string
           id?: string
+          one_shot_speech_id?: string | null
           plan?: string
           sessions_used?: number
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_status?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -342,6 +357,19 @@ export type Database = {
           speech_id: string | null
           target_seconds: number | null
           title: string | null
+          user_id: string | null
+        }
+        Relationships: []
+      }
+      entitlements: {
+        Row: {
+          current_period_end: string | null
+          free_sessions_remaining: number | null
+          is_entitled: boolean | null
+          one_shot_speech_id: string | null
+          plan: string | null
+          sessions_used: number | null
+          subscription_status: string | null
           user_id: string | null
         }
         Relationships: []

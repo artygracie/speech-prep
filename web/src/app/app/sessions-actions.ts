@@ -5,6 +5,8 @@
 //   1. createSession      — call when user hits Record. Inserts a session
 //                           row in 'recording' status, returns its id +
 //                           a signed upload URL into the recordings bucket.
+//                           Throws PaywallError if the user is out of
+//                           free sessions and has no paid entitlement.
 //   2. finalizeSession    — call when MediaRecorder yields its final blob.
 //                           Updates the session row with audio metadata,
 //                           bumps profiles.sessions_used, kicks off the
@@ -18,6 +20,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 const BUCKET = "recordings";
+
+// Paywall prefix lives in lib/paywall.ts because "use server" modules
+// can only export async functions. Import it where we need to throw.
+import { PAYWALL_PREFIX } from "@/lib/paywall";
 
 function extFor(mime: string): string {
   if (mime.includes("webm")) return "webm";
@@ -37,6 +43,27 @@ export async function createSession(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  // ---------- Entitlement check ----------
+  // Read the entitlements view (computed in SQL — see migration
+  // `phase_5_billing_columns`). If the user isn't entitled at all,
+  // throw the paywall error. If they're entitled via single_speech but
+  // for a different speech, also paywall.
+  const { data: ent } = await supabase
+    .from("entitlements")
+    .select("plan, is_entitled, free_sessions_remaining, one_shot_speech_id")
+    .eq("user_id", user.id)
+    .single();
+  if (!ent || ent.is_entitled === false) {
+    throw new Error(
+      `${PAYWALL_PREFIX}out_of_free_sessions:You're out of free sessions. Subscribe to keep practicing, or buy a $19 pass for this speech.`,
+    );
+  }
+  if (ent.plan === "single_speech" && ent.one_shot_speech_id && ent.one_shot_speech_id !== speechId) {
+    throw new Error(
+      `${PAYWALL_PREFIX}wrong_one_shot_speech:Your $19 pass is for a different speech. Subscribe to record any speech.`,
+    );
+  }
 
   // Find the speech and its current version.
   const { data: speech, error } = await supabase

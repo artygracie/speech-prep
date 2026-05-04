@@ -1,7 +1,11 @@
 // Speeches dashboard. Reads the user's speeches via Supabase. RLS keeps it
-// scoped to the requesting user automatically.
+// scoped to the requesting user automatically. First-run users (zero
+// speeches) bounce to /app/onboarding so we never show them an empty
+// dashboard — the empty state on this page is for veterans who happen to
+// have deleted all their speeches and is much shorter / more functional.
 
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 function fmtRel(iso: string) {
@@ -23,6 +27,15 @@ export default async function SpeechesDashboard() {
 
   const list = speeches ?? [];
 
+  // First-run: a user with zero speeches has never onboarded. Send them
+  // to the welcome page rather than showing an empty dashboard. Returning
+  // users who deleted all their speeches will also pass through here, but
+  // the onboarding page is intentionally non-stateful — it just creates
+  // a speech and gets out of the way.
+  if (list.length === 0) {
+    redirect("/app/onboarding");
+  }
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
@@ -32,36 +45,23 @@ export default async function SpeechesDashboard() {
             The room before the room. Pick up where you left off, or start something new.
           </p>
         </div>
-        {/* Show the 'New speech' affordance only on the dashboard,
-            and only when speeches exist (the empty state has its own
-            CTA). Users typically focus on one speech at a time, so we
-            don't want this nagging in the global topbar. */}
-        {list.length > 0 && (
-          <Link href="/app/speeches/new" className="btn-primary">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            New speech
-          </Link>
-        )}
+        {/* 'New speech' is the only affordance on the dashboard. We don't
+            duplicate it in the topbar — users typically focus on one
+            speech at a time. The first-time empty state lives at
+            /app/onboarding, which the redirect above sends new users to. */}
+        <Link href="/app/speeches/new" className="btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          New speech
+        </Link>
       </div>
 
-      {list.length === 0 ? (
-        <div className="empty-state mt-10">
-          <p className="text-heading-sm">Nothing yet.</p>
-          <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-            Drop in a speech to get started.
-          </p>
-          <Link href="/app/speeches/new" className="btn-primary mt-6" style={{ marginTop: 24 }}>
-            Begin
-          </Link>
-        </div>
-      ) : (
-        <div
-          className="card-bordered mt-10"
-          style={{ overflow: "hidden" }}
-        >
+      <div
+        className="card-bordered mt-10"
+        style={{ overflow: "hidden" }}
+      >
           <div
             style={{
               display: "grid",
@@ -109,8 +109,7 @@ export default async function SpeechesDashboard() {
               </div>
             </Link>
           ))}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

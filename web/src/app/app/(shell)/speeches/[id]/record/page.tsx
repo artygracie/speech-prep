@@ -2,10 +2,12 @@
 // is delegated to the Recorder client component, which owns the layout
 // (two-column: script on the left, recording sidebar on the right).
 
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Recorder } from "./recorder";
+import { FirstRunCoach } from "./first-run-coach";
 
 export default async function RecordPage({
   params,
@@ -79,6 +81,13 @@ export default async function RecordPage({
         speechId={speech.id}
         sections={sections}
       />
+
+      {/* First-run coach-mark. Renders only when the user arrived from
+          /app/onboarding (?firstRun=1) and hasn't dismissed it before.
+          Wrapped in Suspense because it reads useSearchParams. */}
+      <Suspense fallback={null}>
+        <FirstRunCoach />
+      </Suspense>
     </div>
   );
 }

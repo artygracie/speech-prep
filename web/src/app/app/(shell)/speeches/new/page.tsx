@@ -2,7 +2,7 @@
 // creates the speech + v1 + sections, then redirects into the editor.
 
 import Link from "next/link";
-import { createSpeech } from "../../actions";
+import { createSpeech } from "../../../actions";
 
 export const metadata = { title: "New speech — SpeechPrep" };
 
