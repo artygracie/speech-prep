@@ -1,6 +1,6 @@
 // Recording page. RSC fetches the speech + sections; the actual capture
-// is delegated to the Recorder client component, which talks to the
-// session-related server actions.
+// is delegated to the Recorder client component, which owns the layout
+// (two-column: script on the left, recording sidebar on the right).
 
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -38,19 +38,47 @@ export default async function RecordPage({
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 16, alignItems: "end", justifyContent: "space-between", flexWrap: "wrap" }}>
-        <div>
-          <Link href={`/app/speeches/${speech.id}`} className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
-            ← Back to {speech.title}
+      {/* Tight header — back link + title + version, all on one line.
+          We give as much vertical space as possible to the recorder. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+          marginBottom: 24,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "baseline", gap: 16, flexWrap: "wrap" }}>
+          <Link
+            href={`/app/speeches/${speech.id}`}
+            className="text-body-sm"
+            style={{ color: "var(--color-muted-ash)" }}
+          >
+            ←
           </Link>
-          <h1 className="text-heading-lg mt-3">{speech.title}</h1>
-          <div className="text-caption mt-3" style={{ color: "var(--color-muted-ash)" }}>
-            Recording v{speech.current_version}
-          </div>
+          <h1
+            style={{
+              fontFamily: "var(--font-script)",
+              fontSize: 22,
+              lineHeight: 1.2,
+              fontWeight: 500,
+              letterSpacing: "-0.012em",
+            }}
+          >
+            {speech.title}
+          </h1>
+          <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+            v{speech.current_version}
+          </span>
         </div>
       </div>
 
-      <Recorder speechId={speech.id} sections={sections} />
+      <Recorder
+        speechId={speech.id}
+        sections={sections}
+      />
     </div>
   );
 }

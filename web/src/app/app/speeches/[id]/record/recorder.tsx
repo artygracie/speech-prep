@@ -1,23 +1,22 @@
 "use client";
 
-// Recorder. Wraps MediaRecorder, drives the UI, and on stop:
-//   1. uploads the resulting Blob to Supabase Storage
-//   2. calls finalizeSession() to persist the metadata + kick off
-//      transcription
-//   3. routes the user to the session report
+// Recorder. Two-column layout: the script is the headline of the screen,
+// the recording sidebar is supporting chrome.
 //
-// We pick the best mimeType the browser actually supports. Safari is the
-// awkward one — its MediaRecorder support has gaps; we fall back to
-// audio/mp4 there.
+// Left  — the script the user is reading. Big serif type, generous line
+//         height. Section headings inline; the active section is softly
+//         highlighted while recording.
+// Right — sticky sidebar. Mode toggle (top), timer, current-section
+//         pacing bar, sections rail, big record/stop button (bottom),
+//         live tag chips beneath.
+//
+// Same MediaRecorder + Storage upload + finalizeSession flow as before.
+// The data flow didn't change — only the layout.
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
-import {
-  createSession,
-  finalizeSession,
-} from "@/app/app/sessions-actions";
+import { createSession, finalizeSession } from "@/app/app/sessions-actions";
 
 type Section = { id: string; position: number; name: string; targetSec: number; body: string };
 type Tag = { kind: "landed" | "flat" | "lost" | "callback"; atMs: number; label: string };
@@ -48,9 +47,6 @@ function fmtTime(ms: number) {
   const s = Math.floor(ms / 1000);
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
-function signTime(ms: number) {
-  return (ms >= 0 ? "+" : "−") + fmtTime(Math.abs(ms));
-}
 
 export function Recorder({
   speechId,
@@ -78,7 +74,6 @@ export function Recorder({
   // ---------- Lifecycle ----------
   useEffect(() => {
     return () => {
-      // Tear down on unmount.
       stopTicker();
       cleanupStream();
     };
@@ -142,11 +137,10 @@ export function Recorder({
         if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
       };
 
-      // Ask the server for a fresh session row before we start ticking.
       const { sessionId } = await createSession(speechId, mode);
       sessionIdRef.current = sessionId;
 
-      rec.start(1000); // emit a chunk every second so memory stays bounded
+      rec.start(1000);
       startedAtRef.current = Date.now();
       setElapsedMs(0);
       setTags([]);
@@ -192,7 +186,9 @@ export function Recorder({
       const rec = recorderRef.current!;
       rec.onstop = () => {
         try {
-          const blob = new Blob(chunksRef.current, { type: rec.mimeType || mimeRef.current.mime || "audio/webm" });
+          const blob = new Blob(chunksRef.current, {
+            type: rec.mimeType || mimeRef.current.mime || "audio/webm",
+          });
           resolve(blob);
         } catch (err) {
           reject(err);
@@ -214,7 +210,9 @@ export function Recorder({
 
     setState("uploading");
     const ext = mimeRef.current.ext || "webm";
-    const file = new File([blob], `${sessionId}.${ext}`, { type: blob.type || "audio/webm" });
+    const file = new File([blob], `${sessionId}.${ext}`, {
+      type: blob.type || "audio/webm",
+    });
 
     try {
       const supabase = createBrowserClient();
@@ -231,7 +229,6 @@ export function Recorder({
       });
       if (upErr) throw upErr;
 
-      // Persist metadata + kick off transcription.
       await finalizeSession({
         sessionId,
         audioPath: path,
@@ -251,312 +248,581 @@ export function Recorder({
     }
   }
 
-  // ---------- UI ----------
-  const totalTargetMs = sections.reduce((a, s) => a + s.targetSec * 1000, 0);
-  const overTotal = elapsedMs - totalTargetMs;
+  // ---------- Derived values ----------
 
-  // Heuristic "current section" by elapsed time, only used for visual hint.
-  let runningMs = 0;
-  let currentSectionId = sections[0]?.id ?? null;
-  for (const s of sections) {
-    if (elapsedMs <= runningMs + s.targetSec * 1000) {
-      currentSectionId = s.id;
-      break;
+  // Heuristic: which section are we "in" right now? Walk the elapsed time
+  // through each section's target. Used purely for visual hinting, not
+  // for the alignment that runs server-side post-stop.
+  const currentSectionIdx = useMemo(() => {
+    if (sections.length === 0) return 0;
+    let runningMs = 0;
+    for (let i = 0; i < sections.length; i++) {
+      runningMs += sections[i].targetSec * 1000;
+      if (elapsedMs <= runningMs) return i;
     }
-    runningMs += s.targetSec * 1000;
-    currentSectionId = s.id;
-  }
+    return sections.length - 1;
+  }, [elapsedMs, sections]);
+
+  const currentSection = sections[currentSectionIdx];
+  const sectionElapsedMs = useMemo(() => {
+    let running = 0;
+    for (let i = 0; i < currentSectionIdx; i++) running += sections[i].targetSec * 1000;
+    return Math.max(0, elapsedMs - running);
+  }, [elapsedMs, sections, currentSectionIdx]);
+
+  const isLive = state === "recording" || state === "paused";
+  const isWorking = state === "stopping" || state === "uploading";
 
   return (
     <>
       <style>{`
-        .rec-card-elevated {
-          background: var(--color-canvas-white);
-          border-radius: 16px;
-          box-shadow: var(--shadow-xl);
+        /* ===== Layout shell ===== */
+        .rec-grid {
+          display: grid;
+          grid-template-columns: 1fr 340px;
+          gap: 32px;
+          align-items: start;
         }
-        .rec-dot-real {
-          width: 10px; height: 10px; border-radius: 999px;
-          background: var(--color-leadgen-red); display: inline-block;
+        @media (max-width: 1100px) { .rec-grid { grid-template-columns: 1fr; gap: 20px; } }
+
+        /* ===== Left column — script ===== */
+        .rec-script {
+          background: var(--color-canvas-white);
+          border: 1px solid rgba(17,17,17,0.06);
+          border-radius: 14px;
+          padding: 40px 48px 56px;
+          min-height: 520px;
+        }
+        @media (max-width: 1100px) { .rec-script { padding: 28px 24px 36px; min-height: 0; } }
+
+        .rec-script-section { padding: 18px 0; }
+        .rec-script-section:first-child { padding-top: 0; }
+        .rec-script-section:not(:first-child) {
+          border-top: 1px solid rgba(17,17,17,0.06);
+        }
+        .rec-script-head {
+          display: flex; align-items: baseline; gap: 12px;
+          margin-bottom: 14px;
+        }
+        .rec-script-head h3 {
+          font-size: 11px;
+          font-weight: 500;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--color-muted-ash);
+          transition: color 240ms ease;
+        }
+        .rec-script-section.is-active .rec-script-head h3 { color: var(--color-midnight-ink); }
+        .rec-script-section.is-active .rec-script-head .rec-current-marker {
+          opacity: 1; transform: scale(1);
+        }
+        .rec-current-marker {
+          width: 6px; height: 6px; border-radius: 999px;
+          background: var(--color-leadgen-red);
+          opacity: 0; transform: scale(0.3);
+          transition: opacity 240ms ease, transform 240ms ease;
+          display: inline-block;
+        }
+        .rec-script-body {
+          font-family: var(--font-script);
+          font-size: 19px;
+          line-height: 1.75;
+          color: var(--color-midnight-ink);
+          white-space: pre-wrap;
+          transition: color 320ms ease, opacity 320ms ease;
+        }
+        /* When recording, fade non-active sections down so the eye lands
+           on the current one. Subtle — we don't want to lock anything. */
+        .rec-grid.is-live .rec-script-section:not(.is-active) .rec-script-body {
+          color: rgba(17,17,17,0.45);
+        }
+        .rec-grid.is-live .rec-script-section:not(.is-active) .rec-script-head h3 {
+          color: rgba(17,17,17,0.32);
+        }
+
+        /* Freestyle pane */
+        .rec-freestyle {
+          background: var(--color-whisper-gray);
+          border: 1px dashed rgba(17,17,17,0.14);
+          border-radius: 14px;
+          padding: 64px 48px;
+          text-align: center;
+        }
+
+        /* ===== Right column — sidebar ===== */
+        .rec-side {
+          position: sticky;
+          top: 80px;            /* below the topbar */
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        @media (max-width: 1100px) { .rec-side { position: static; } }
+
+        .rec-side-card {
+          background: var(--color-canvas-white);
+          border: 1px solid rgba(17,17,17,0.08);
+          border-radius: 14px;
+          padding: 18px;
+        }
+
+        /* Mode toggle — two equal options at the very top */
+        .rec-mode {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 4px;
+          background: var(--color-whisper-gray);
+          border-radius: 10px;
+          padding: 4px;
+        }
+        .rec-mode button {
+          background: transparent;
+          border: 0;
+          padding: 8px 10px;
+          border-radius: 7px;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--color-muted-ash);
+          cursor: pointer;
+          transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
+        }
+        .rec-mode button.is-on {
+          background: var(--color-canvas-white);
+          color: var(--color-midnight-ink);
+          box-shadow: var(--shadow-subtle), 0 1px 2px rgba(17,17,17,0.04);
+        }
+        .rec-mode button:disabled { cursor: not-allowed; opacity: 0.55; }
+
+        /* Timer block */
+        .rec-timer-card {
+          padding: 22px 18px;
+          background: var(--color-canvas-white);
+          border-radius: 14px;
+          border: 1px solid rgba(17,17,17,0.08);
+        }
+        .rec-status {
+          display: flex; align-items: center; gap: 8px;
+          font-size: 11px; font-weight: 500;
+          letter-spacing: 0.08em; text-transform: uppercase;
+          color: var(--color-muted-ash);
+        }
+        .rec-status.is-live { color: var(--color-leadgen-red); }
+        .rec-status.is-working { color: var(--color-intelligence-blue); }
+        .rec-status .rec-dot {
+          width: 8px; height: 8px; border-radius: 999px;
+          background: var(--color-leadgen-red);
           box-shadow: 0 0 0 0 rgba(225, 101, 64, 0.55);
           animation: rec-pulse 1.4s ease-out infinite;
+        }
+        .rec-status.idle .rec-dot, .rec-status.is-working .rec-dot {
+          background: rgba(17,17,17,0.18); animation: none;
+        }
+        .rec-status.is-paused .rec-dot {
+          background: var(--color-engagement-gold); animation: none;
         }
         @keyframes rec-pulse {
           0%   { box-shadow: 0 0 0 0 rgba(225, 101, 64, 0.5); }
           70%  { box-shadow: 0 0 0 9px rgba(225, 101, 64, 0); }
           100% { box-shadow: 0 0 0 0 rgba(225, 101, 64, 0); }
         }
-        .rec-wave { display: flex; align-items: center; gap: 3px; height: 64px; padding: 0 2px; }
-        .rec-wave > i {
-          flex: 1; display: block;
-          background: var(--color-midnight-ink);
-          border-radius: 3px; opacity: 0.85; height: 14%;
-          animation: wave-bar 1.1s ease-in-out infinite;
-          will-change: transform; transform-origin: center;
+        .rec-time {
+          font-family: var(--font-serif);
+          font-style: italic;
+          font-size: 56px;
+          line-height: 1;
+          letter-spacing: -0.02em;
+          margin-top: 14px;
+          font-variant-numeric: tabular-nums;
+          color: var(--color-midnight-ink);
         }
-        .rec-wave.is-paused > i { animation-play-state: paused; opacity: 0.25; }
-        @keyframes wave-bar { 0%, 100% { transform: scaleY(0.18); } 50% { transform: scaleY(1); } }
-        .section-pill {
+
+        /* Per-current-section pacing bar */
+        .rec-pace {
+          margin-top: 18px;
+          padding-top: 18px;
+          border-top: 1px solid rgba(17,17,17,0.06);
+        }
+        .rec-pace-label {
+          display: flex; align-items: baseline; justify-content: space-between;
+          font-size: 11px; font-weight: 500;
+          letter-spacing: 0.08em; text-transform: uppercase;
+          color: var(--color-muted-ash);
+          margin-bottom: 6px;
+        }
+        .rec-pace-bar {
+          height: 4px; border-radius: 999px;
+          background: rgba(17,17,17,0.06);
+          overflow: hidden; position: relative;
+        }
+        .rec-pace-bar > span {
+          position: absolute; inset: 0 auto 0 0;
+          border-radius: 999px;
+          transition: width 200ms linear, background-color 240ms ease;
+        }
+
+        /* Sections rail */
+        .rec-rail {
+          padding: 14px 16px;
+        }
+        .rec-rail-title {
+          font-size: 11px; font-weight: 500;
+          letter-spacing: 0.08em; text-transform: uppercase;
+          color: var(--color-muted-ash);
+          margin-bottom: 10px;
+        }
+        .rec-rail-list { display: grid; gap: 4px; }
+        .rec-rail-item {
           display: flex; align-items: center; justify-content: space-between;
-          padding: 10px 14px; border-radius: 10px;
+          padding: 7px 10px;
+          border-radius: 7px;
+          font-size: 13px;
+          color: var(--color-muted-ash);
+          transition: background 160ms ease, color 160ms ease;
+        }
+        .rec-rail-item.is-current {
+          background: var(--color-whisper-gray);
+          color: var(--color-midnight-ink);
+          font-weight: 500;
+        }
+        .rec-rail-item .num {
+          font-size: 11px; opacity: 0.7;
+          font-variant-numeric: tabular-nums;
+        }
+
+        /* Action area at the bottom of the sidebar */
+        .rec-actions { padding: 14px 16px; }
+        .rec-cta {
+          width: 100%;
+          padding: 14px 18px;
+          border-radius: 10px;
+          font-weight: 500;
+          font-size: 15px;
+          border: 0;
+          cursor: pointer;
+          display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+          transition: opacity 120ms ease, transform 120ms ease;
+        }
+        .rec-cta:disabled { opacity: 0.5; cursor: not-allowed; }
+        .rec-cta-start {
+          background: var(--color-midnight-ink); color: var(--color-canvas-white);
+        }
+        .rec-cta-start:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
+        .rec-cta-stop {
+          background: var(--color-leadgen-red); color: var(--color-canvas-white);
+        }
+        .rec-cta-stop:hover:not(:disabled) { opacity: 0.92; }
+        .rec-secondary {
+          margin-top: 8px; text-align: center;
+          font-size: 13px;
+          color: var(--color-muted-ash);
+          background: transparent; border: 0; cursor: pointer;
+          width: 100%; padding: 8px;
+        }
+        .rec-secondary:hover { color: var(--color-midnight-ink); }
+
+        /* Tag legend / live tag chips */
+        .rec-tags-legend {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+          margin-top: 10px;
+        }
+        .rec-tags-legend > div {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 6px 10px; border-radius: 7px;
+          background: var(--color-whisper-gray);
+          font-size: 12px;
+          color: var(--color-muted-ash);
+        }
+        .rec-tags-legend kbd {
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 10px;
+          padding: 1px 5px;
+          border-radius: 3px;
           background: var(--color-canvas-white);
           border: 1px solid rgba(17,17,17,0.08);
-          font-size: 14px;
+          color: var(--color-midnight-ink);
         }
-        .section-pill.is-current { box-shadow: 0 0 0 2px var(--color-midnight-ink); border-color: var(--color-midnight-ink); }
-        .marker-bar { height: 6px; border-radius: 999px; background: rgba(17,17,17,0.06); overflow: hidden; position: relative; }
-        .marker-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 999px; }
-        .script-panel {
-          background: var(--color-whisper-gray);
-          border-radius: 12px;
-          padding: 24px 28px;
-          max-height: 320px;
-          overflow-y: auto;
-          font-family: var(--font-script);
-          font-size: 17px; line-height: 1.7;
+        .rec-tag-flash {
+          margin-top: 10px;
+          display: flex; flex-wrap: wrap; gap: 6px;
         }
-        .script-panel mark.current-section {
-          background: rgba(251,199,104,0.45);
-          padding: 2px 0;
-          border-radius: 2px;
+        .rec-tag-flash .badge { font-size: 10px; padding: 4px 8px; }
+
+        /* Status footer message */
+        .rec-status-msg {
+          font-size: 12px;
+          color: var(--color-muted-ash);
+          padding: 0 4px;
         }
+        .rec-status-msg.is-error { color: var(--color-leadgen-red); }
       `}</style>
 
-      <div className="rec-card-elevated mt-8" style={{ padding: 28, maxWidth: 920 }}>
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            {state === "recording" ? (
-              <>
-                <span className="rec-dot-real" />
-                <span className="text-caption" style={{ color: "var(--color-leadgen-red)" }}>Recording</span>
-              </>
-            ) : state === "paused" ? (
-              <span className="text-caption" style={{ color: "var(--color-engagement-gold)" }}>Paused</span>
-            ) : state === "uploading" ? (
-              <span className="text-caption" style={{ color: "var(--color-intelligence-blue)" }}>Uploading…</span>
-            ) : state === "error" ? (
-              <span className="text-caption" style={{ color: "var(--color-leadgen-red)" }}>Error</span>
-            ) : (
-              <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>Ready</span>
-            )}
+      <div className={`rec-grid ${isLive ? "is-live" : ""}`}>
+        {/* ============ LEFT: SCRIPT (or freestyle placeholder) ============ */}
+        {mode === "with-script" ? (
+          <div className="rec-script">
+            {sections.map((s, i) => (
+              <section
+                key={s.id}
+                className={`rec-script-section ${
+                  isLive && i === currentSectionIdx ? "is-active" : ""
+                }`}
+              >
+                <header className="rec-script-head">
+                  <span className="rec-current-marker" aria-hidden="true" />
+                  <h3>{s.name}</h3>
+                  <span
+                    className="text-caption"
+                    style={{ color: "var(--color-muted-ash)", marginLeft: "auto" }}
+                  >
+                    Target {fmtTime(s.targetSec * 1000)}
+                  </span>
+                </header>
+                <p className="rec-script-body">{s.body || "—"}</p>
+              </section>
+            ))}
           </div>
-          <span className="text-body-sm num" style={{ color: "var(--color-muted-ash)" }}>
-            {fmtTime(elapsedMs)}
-          </span>
-        </div>
-
-        <div className={`rec-wave ${state === "recording" ? "" : "is-paused"}`} aria-hidden="true">
-          {Array.from({ length: 56 }).map((_, i) => (
-            <i
-              key={i}
-              style={{
-                animationDelay: `-${(i * 0.07) % 1.1}s`,
-                animationDuration: `${0.85 + ((i * 13) % 50) / 100}s`,
-              }}
-            />
-          ))}
-        </div>
-
-        {totalTargetMs > 0 && (
-          <div className="mt-6">
-            <div className="flex items-baseline justify-between">
-              <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>Pacing vs. target</span>
-              <span
-                className="text-caption num"
+        ) : (
+          <div className="rec-freestyle">
+            <p className="text-subheading" style={{ color: "var(--color-midnight-ink)" }}>
+              Freestyle mode
+            </p>
+            <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)", maxWidth: 460, marginInline: "auto" }}>
+              Script hidden. Speak the speech from memory. We&rsquo;ll diff what you said against
+              what you wrote when you stop.
+            </p>
+            <div className="mt-6">
+              <button
+                onClick={() => state === "idle" && setMode("with-script")}
+                disabled={state !== "idle"}
+                className="text-body-sm"
                 style={{
-                  color: overTotal > 0 ? "var(--color-leadgen-red)" : "var(--color-muted-ash)",
+                  background: "transparent",
+                  border: 0,
+                  color: "var(--color-midnight-ink)",
+                  textDecoration: "underline",
+                  textUnderlineOffset: 4,
+                  textDecorationColor: "rgba(17,17,17,0.18)",
+                  cursor: state === "idle" ? "pointer" : "not-allowed",
+                  opacity: state === "idle" ? 1 : 0.4,
                 }}
               >
-                {fmtTime(elapsedMs)} / {fmtTime(totalTargetMs)}
-                {overTotal > 0 ? ` · ${signTime(overTotal)}` : ""}
-              </span>
-            </div>
-            <div className="marker-bar mt-2">
-              <span
-                style={{
-                  width: `${Math.min(100, (elapsedMs / totalTargetMs) * 100)}%`,
-                  background: overTotal > 0 ? "var(--color-leadgen-red)" : "var(--color-midnight-ink)",
-                }}
-              />
+                Switch to teleprompter
+              </button>
             </div>
           </div>
         )}
 
-        <div
-          className="flex items-center justify-between mt-6 pt-6"
-          style={{ borderTop: "1px solid rgba(17,17,17,0.06)" }}
-        >
-          <div className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-            {state === "recording" ? (
-              <>
-                Press <kbd style={{ fontFamily: "ui-monospace", fontSize: 11, padding: "2px 6px", border: "1px solid rgba(17,17,17,0.08)", borderRadius: 4, background: "var(--color-whisper-gray)" }}>L</kbd>{" "}
-                Landed ·{" "}
-                <kbd style={{ fontFamily: "ui-monospace", fontSize: 11, padding: "2px 6px", border: "1px solid rgba(17,17,17,0.08)", borderRadius: 4, background: "var(--color-whisper-gray)" }}>F</kbd>{" "}
-                Flat ·{" "}
-                <kbd style={{ fontFamily: "ui-monospace", fontSize: 11, padding: "2px 6px", border: "1px solid rgba(17,17,17,0.08)", borderRadius: 4, background: "var(--color-whisper-gray)" }}>X</kbd>{" "}
-                Lost ·{" "}
-                <kbd style={{ fontFamily: "ui-monospace", fontSize: 11, padding: "2px 6px", border: "1px solid rgba(17,17,17,0.08)", borderRadius: 4, background: "var(--color-whisper-gray)" }}>C</kbd>{" "}
-                Callback
-              </>
-            ) : (
-              " "
+        {/* ============ RIGHT: STICKY SIDEBAR ============ */}
+        <aside className="rec-side">
+          {/* Mode toggle — top of sidebar, always visible, always equal weight */}
+          <div className="rec-mode" role="tablist" aria-label="Practice mode">
+            {(["with-script", "freestyle"] as const).map((m) => (
+              <button
+                key={m}
+                role="tab"
+                aria-selected={mode === m}
+                onClick={() => state === "idle" && setMode(m)}
+                disabled={state !== "idle"}
+                className={mode === m ? "is-on" : ""}
+              >
+                {m === "with-script" ? "Teleprompter" : "Freestyle"}
+              </button>
+            ))}
+          </div>
+
+          {/* Timer + status */}
+          <div className="rec-timer-card">
+            <div
+              className={`rec-status ${
+                state === "recording"
+                  ? "is-live"
+                  : state === "paused"
+                  ? "is-paused"
+                  : isWorking
+                  ? "is-working"
+                  : "idle"
+              }`}
+            >
+              <span className="rec-dot" aria-hidden="true" />
+              {state === "recording"
+                ? "Recording"
+                : state === "paused"
+                ? "Paused"
+                : state === "stopping"
+                ? "Stopping"
+                : state === "uploading"
+                ? "Uploading"
+                : state === "starting"
+                ? "Starting"
+                : state === "error"
+                ? "Error"
+                : "Ready"}
+            </div>
+            <div className="rec-time">{fmtTime(elapsedMs)}</div>
+
+            {/* Per-current-section pacing bar — only when recording or paused */}
+            {isLive && currentSection && (
+              <div className="rec-pace">
+                <div className="rec-pace-label">
+                  <span>{currentSection.name}</span>
+                  <span
+                    className="num"
+                    style={{
+                      color:
+                        sectionElapsedMs > currentSection.targetSec * 1000
+                          ? "var(--color-leadgen-red)"
+                          : "var(--color-muted-ash)",
+                    }}
+                  >
+                    {fmtTime(sectionElapsedMs)} / {fmtTime(currentSection.targetSec * 1000)}
+                  </span>
+                </div>
+                <div className="rec-pace-bar">
+                  <span
+                    style={{
+                      width: `${Math.min(100, (sectionElapsedMs / (currentSection.targetSec * 1000)) * 100)}%`,
+                      background:
+                        sectionElapsedMs > currentSection.targetSec * 1000
+                          ? "var(--color-leadgen-red)"
+                          : "var(--color-midnight-ink)",
+                    }}
+                  />
+                </div>
+              </div>
             )}
           </div>
-          <div className="flex gap-2">
+
+          {/* Sections rail */}
+          {sections.length > 0 && (
+            <div className="rec-side-card rec-rail">
+              <div className="rec-rail-title">Sections</div>
+              <div className="rec-rail-list">
+                {sections.map((s, i) => (
+                  <div
+                    key={s.id}
+                    className={`rec-rail-item ${
+                      isLive && i === currentSectionIdx ? "is-current" : ""
+                    }`}
+                  >
+                    <span>{s.name}</span>
+                    <span className="num">{fmtTime(s.targetSec * 1000)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Live notes — legend when idle, tag chips while recording */}
+          <div className="rec-side-card">
+            <div className="rec-rail-title">Live notes</div>
+            {isLive ? (
+              <>
+                <div className="rec-tags-legend">
+                  {TAG_DEFS.map((t) => (
+                    <div key={t.code}>
+                      <span>{t.label}</span>
+                      <kbd>{t.key}</kbd>
+                    </div>
+                  ))}
+                </div>
+                {tags.length > 0 && (
+                  <div className="rec-tag-flash">
+                    {tags.map((t, i) => (
+                      <span
+                        key={i}
+                        className={`badge ${
+                          t.kind === "landed"
+                            ? "pill-mint"
+                            : t.kind === "flat"
+                            ? "pill-gold"
+                            : t.kind === "lost"
+                            ? "pill-red"
+                            : "pill-blue"
+                        }`}
+                      >
+                        <span className="dot" />
+                        {t.label} · {fmtTime(t.atMs)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p
+                className="text-body-sm"
+                style={{ color: "var(--color-muted-ash)", lineHeight: 1.5 }}
+              >
+                Tap a key while you&rsquo;re recording to flag a moment. We&rsquo;ll pull them up in the report.
+              </p>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="rec-side-card rec-actions">
             {state === "idle" && (
-              <button onClick={start} className="btn-primary">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6" /></svg>
+              <button onClick={start} className="rec-cta rec-cta-start">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="12" cy="12" r="6" />
+                </svg>
                 Start recording
               </button>
             )}
             {state === "starting" && (
-              <button className="btn-primary" disabled>
+              <button className="rec-cta rec-cta-start" disabled>
                 Starting…
               </button>
             )}
             {state === "recording" && (
               <>
-                <button onClick={pause} className="btn-light">Pause</button>
-                <button onClick={stop} className="btn-danger">Stop</button>
+                <button onClick={stop} className="rec-cta rec-cta-stop">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="1" />
+                  </svg>
+                  Stop recording
+                </button>
+                <button onClick={pause} className="rec-secondary">
+                  Pause
+                </button>
               </>
             )}
             {state === "paused" && (
               <>
-                <button onClick={resume} className="btn-primary">Resume</button>
-                <button onClick={stop} className="btn-danger">Stop</button>
+                <button onClick={resume} className="rec-cta rec-cta-start">
+                  Resume
+                </button>
+                <button onClick={stop} className="rec-secondary" style={{ color: "var(--color-leadgen-red)" }}>
+                  Stop
+                </button>
               </>
             )}
-            {state === "stopping" && <button className="btn-primary" disabled>Stopping…</button>}
-            {state === "uploading" && <button className="btn-primary" disabled>Uploading…</button>}
+            {state === "stopping" && (
+              <button className="rec-cta rec-cta-start" disabled>
+                Stopping…
+              </button>
+            )}
+            {state === "uploading" && (
+              <button className="rec-cta rec-cta-start" disabled>
+                Uploading…
+              </button>
+            )}
             {state === "error" && (
-              <button onClick={() => { setState("idle"); setErrorMsg(null); }} className="btn-light">
+              <button
+                onClick={() => {
+                  setState("idle");
+                  setErrorMsg(null);
+                }}
+                className="rec-cta rec-cta-start"
+              >
                 Try again
               </button>
             )}
-          </div>
-        </div>
-
-        {errorMsg && (
-          <p className="text-body-sm mt-4" style={{ color: "var(--color-leadgen-red)" }}>
-            {errorMsg}
-          </p>
-        )}
-      </div>
-
-      {/* Mode toggle (locked once you press record) */}
-      <div className="mt-6 flex items-center gap-2">
-        <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>Mode</span>
-        <div
-          className="flex"
-          style={{
-            background: "var(--color-canvas-white)",
-            border: "1px solid rgba(17,17,17,0.08)",
-            borderRadius: 8,
-            padding: 4,
-            gap: 4,
-          }}
-        >
-          {(["with-script", "freestyle"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => state === "idle" && setMode(m)}
-              disabled={state !== "idle"}
-              className="btn-ghost"
-              style={{
-                fontSize: 13,
-                padding: "6px 12px",
-                background: mode === m ? "var(--color-midnight-ink)" : "transparent",
-                color: mode === m ? "var(--color-canvas-white)" : "var(--color-muted-ash)",
-                cursor: state === "idle" ? "pointer" : "not-allowed",
-              }}
-            >
-              {m === "with-script" ? "Teleprompter" : "Freestyle"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Section rail */}
-      {sections.length > 0 && (
-        <div className="mt-10">
-          <h2 className="text-heading-sm">Sections</h2>
-          <div
-            className="mt-4"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-              gap: 10,
-            }}
-          >
-            {sections.map((s) => (
-              <div key={s.id} className={`section-pill ${s.id === currentSectionId ? "is-current" : ""}`}>
-                <div>
-                  <div style={{ fontWeight: 500 }}>{s.name}</div>
-                  <div className="text-caption num mt-1" style={{ color: "var(--color-muted-ash)" }}>
-                    Target {fmtTime(s.targetSec * 1000)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Teleprompter / freestyle copy */}
-      {mode === "with-script" ? (
-        <div className="mt-10">
-          <h2 className="text-heading-sm">Script</h2>
-          <div className="script-panel mt-4">
-            {sections.map((s) => (
-              <p key={s.id} data-section-id={s.id}>
-                {s.id === currentSectionId ? (
-                  <mark className="current-section">{s.body}</mark>
-                ) : (
-                  s.body
-                )}
+            {errorMsg && (
+              <p className="rec-status-msg is-error" style={{ marginTop: 10 }}>
+                {errorMsg}
               </p>
-            ))}
+            )}
           </div>
-        </div>
-      ) : (
-        <div className="mt-10 empty-state" style={{ maxWidth: 920 }}>
-          <p className="text-subheading">Freestyle mode</p>
-          <p className="text-body mt-2" style={{ color: "var(--color-muted-ash)" }}>
-            Script hidden. We&rsquo;ll diff what you said against what you wrote when you stop.
-          </p>
-        </div>
-      )}
-
-      {/* Live tags collected */}
-      {tags.length > 0 && (
-        <div className="mt-10">
-          <h2 className="text-heading-sm">Live notes you flagged</h2>
-          <div className="mt-4 flex gap-2 flex-wrap">
-            {tags.map((t, i) => (
-              <span
-                key={i}
-                className={`badge ${
-                  t.kind === "landed"
-                    ? "pill-mint"
-                    : t.kind === "flat"
-                    ? "pill-gold"
-                    : t.kind === "lost"
-                    ? "pill-red"
-                    : "pill-blue"
-                }`}
-              >
-                <span className="dot" />
-                {t.label} · {fmtTime(t.atMs)}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="mt-10">
-        <Link href={`/app/speeches/${speechId}`} className="btn-ghost">
-          Cancel and return
-        </Link>
+        </aside>
       </div>
     </>
   );
