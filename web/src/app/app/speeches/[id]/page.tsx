@@ -39,6 +39,25 @@ export default async function SpeechDetailPage({
     0,
   );
 
+  // Pull real sessions for this speech.
+  const { data: sessionRows } = await supabase
+    .from("session_summaries")
+    .select("session_id, mode, status, total_actual_seconds, total_target_seconds, created_at")
+    .eq("speech_id", id)
+    .order("created_at", { ascending: false });
+  const sessions = sessionRows ?? [];
+
+  function fmtRel(iso: string | null) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const diff = (Date.now() - d.getTime()) / 1000;
+    if (diff < 60) return "just now";
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`;
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
   return (
     <div>
       <div
@@ -68,6 +87,13 @@ export default async function SpeechDetailPage({
         <div className="flex gap-2">
           <Link href={`/app/speeches/${speech.id}/edit`} className="btn-light">
             Edit script
+          </Link>
+          <Link href={`/app/speeches/${speech.id}/record`} className="btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <circle cx="12" cy="12" r="4" fill="currentColor" />
+            </svg>
+            Record session
           </Link>
         </div>
       </div>
@@ -153,16 +179,88 @@ export default async function SpeechDetailPage({
         <div className="lg:col-span-5">
           <h2 className="text-heading">Sessions</h2>
           <p className="text-body mt-2" style={{ color: "var(--color-muted-ash)" }}>
-            Recording lands in Phase 2. For now, edit the script and watch your version history
-            grow.
+            {sessions.length === 0
+              ? "Hit record to see your speech come back as numbers."
+              : `${sessions.length} so far.`}
           </p>
-          <div className="empty-state mt-5">
-            <p className="text-subheading">Coming soon.</p>
-            <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-              Real audio capture, transcription, pacing reports, and the said-vs-written diff are
-              the next phase.
-            </p>
-          </div>
+
+          {sessions.length === 0 ? (
+            <div className="empty-state mt-5">
+              <p className="text-subheading">Ready when you are.</p>
+              <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
+                Hit record. Speak the speech. We&rsquo;ll do the rest.
+              </p>
+              <Link
+                href={`/app/speeches/${speech.id}/record`}
+                className="btn-primary mt-6"
+                style={{ marginTop: 24 }}
+              >
+                Begin session
+              </Link>
+            </div>
+          ) : (
+            <div className="mt-5" style={{ display: "grid", gap: 10 }}>
+              {sessions.map((sess, i) => {
+                const actual = sess.total_actual_seconds ?? 0;
+                const target = sess.total_target_seconds ?? targetTotal;
+                const delta = actual - target;
+                const deltaColor =
+                  Math.abs(delta) <= 5
+                    ? "var(--color-deliver-green)"
+                    : delta > 0
+                    ? "var(--color-leadgen-red)"
+                    : "var(--color-engagement-gold)";
+                return (
+                  <Link
+                    key={sess.session_id ?? i}
+                    href={`/app/speeches/${speech.id}/sessions/${sess.session_id}`}
+                    className="card-elevated"
+                    style={{
+                      padding: "14px 16px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      alignItems: "center",
+                      textDecoration: "none",
+                      color: "inherit",
+                    }}
+                  >
+                    <div>
+                      <div className="text-body-sm" style={{ fontWeight: 500 }}>
+                        Session {sessions.length - i}{" "}
+                        <span style={{ color: "var(--color-muted-ash)", fontWeight: 400 }}>
+                          · {sess.mode === "with-script" ? "Teleprompter" : "Freestyle"}
+                        </span>
+                      </div>
+                      <div className="text-caption mt-1" style={{ color: "var(--color-muted-ash)" }}>
+                        {fmtRel(sess.created_at)}
+                        {sess.status && sess.status !== "transcribed" ? ` · ${sess.status}` : ""}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      {actual > 0 ? (
+                        <>
+                          <div className="text-body-sm num" style={{ fontWeight: 500 }}>
+                            {Math.floor(actual / 60).toString().padStart(2, "0")}:
+                            {Math.floor(actual % 60).toString().padStart(2, "0")}
+                          </div>
+                          <div className="text-caption num" style={{ color: deltaColor }}>
+                            {delta >= 0 ? "+" : "−"}
+                            {Math.floor(Math.abs(delta) / 60).toString().padStart(2, "0")}:
+                            {Math.floor(Math.abs(delta) % 60).toString().padStart(2, "0")}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+                          processing
+                        </div>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
