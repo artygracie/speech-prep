@@ -107,13 +107,12 @@ export function CoachCard({
   const kindPill = (k: SuggestedEdit["kind"]) =>
     ({ cut: "pill-red", adopt: "pill-blue", rephrase: "pill-gold" }[k]);
 
-  // Summary copy on the primary CTA changes with state so the user
-  // always sees what's about to happen.
+  // Primary CTA copy. The staged count already shows in the header
+  // above — no need to repeat it on the button itself.
   const primaryLabel = useMemo(() => {
     if (pending) return "Working…";
     if (staged.size === 0) return "Record again →";
-    if (staged.size === 1) return "Apply 1 change & record →";
-    return `Apply ${staged.size} changes & record →`;
+    return "Apply & record →";
   }, [staged.size, pending]);
 
   return (
@@ -145,138 +144,279 @@ export function CoachCard({
         </div>
       )}
 
-      {/* ===== Per-section notes ===== */}
+      {/* ===== Shared coach-section styles ===== */}
+      <style>{`
+        /* Per-section notes — inline editorial annotations.
+           No card boundary, no badges. Section heading sits as small
+           caps; what-landed flows as serif body; what-to-work-on gets
+           a single quiet tell — a 2px gold left rule — to mark it as
+           the actionable bit without making it shout. */
+        .coach-notes {
+          margin-top: 24px;
+          max-width: 720px;
+          display: grid;
+          gap: 36px;
+        }
+        .coach-note-head {
+          display: flex; align-items: baseline; justify-content: space-between;
+          gap: 16px;
+          margin-bottom: 14px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid rgba(17,17,17,0.06);
+        }
+        .coach-note-section-name {
+          font-size: 11px; font-weight: 500;
+          letter-spacing: 0.12em; text-transform: uppercase;
+          color: var(--color-muted-ash);
+        }
+        .coach-note-headline {
+          font-family: var(--font-script);
+          font-size: 22px; font-weight: 500;
+          line-height: 1.25; letter-spacing: -0.012em;
+          color: var(--color-midnight-ink);
+          margin-top: 4px;
+        }
+        .coach-note-practice {
+          font-size: 12px; font-weight: 500;
+          color: var(--color-muted-ash);
+          text-decoration: underline;
+          text-decoration-color: rgba(17,17,17,0.18);
+          text-underline-offset: 4px;
+          text-decoration-thickness: 1px;
+          white-space: nowrap;
+          flex-shrink: 0;
+          transition: color 120ms ease, text-decoration-color 120ms ease;
+        }
+        .coach-note-practice:hover {
+          color: var(--color-midnight-ink);
+          text-decoration-color: var(--color-midnight-ink);
+        }
+        .coach-note-paragraph {
+          font-family: var(--font-script);
+          font-size: 16.5px;
+          line-height: 1.7;
+          color: var(--color-midnight-ink);
+        }
+        .coach-note-paragraph + .coach-note-paragraph {
+          margin-top: 12px;
+        }
+        /* The "work on" paragraph: quiet gold left rule, no background
+           wash. The rule signals action; the rest of the prose flows
+           with what-landed so they read as one continuous voice. */
+        .coach-note-paragraph.is-workon {
+          padding-left: 16px;
+          border-left: 2px solid rgba(201, 154, 74, 0.45);
+          color: rgba(17,17,17,0.82);
+        }
+
+        /* Suggested edits — redline-style track-changes.
+           Visual continuity with the diff view above: a "cut" is the
+           same struck-through-red as a skipped line in the diff; an
+           "adopt" is the same blue italic as an ad-lib; a "rephrase"
+           shows old struck-through then new in soft gold, mirroring
+           the diff's paraphrase treatment. */
+        .coach-edits {
+          max-width: 720px;
+          margin-top: 36px;
+        }
+        .coach-edit {
+          padding: 18px 4px 18px 0;
+          border-top: 1px solid rgba(17,17,17,0.08);
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 24px;
+          align-items: flex-start;
+          transition: background 160ms ease;
+        }
+        .coach-edit:last-child {
+          border-bottom: 1px solid rgba(17,17,17,0.08);
+        }
+        .coach-edit.is-staged {
+          background: rgba(71, 208, 150, 0.06);
+          border-radius: 6px;
+          padding-left: 12px;
+          padding-right: 12px;
+          margin-left: -12px;
+          margin-right: -12px;
+          border-color: rgba(71, 208, 150, 0.24);
+        }
+        .coach-edit.is-staged + .coach-edit { border-top-color: rgba(71, 208, 150, 0.24); }
+        .coach-edit-meta {
+          display: flex; align-items: baseline; gap: 8px;
+          font-size: 11px; font-weight: 500;
+          letter-spacing: 0.1em; text-transform: uppercase;
+          color: var(--color-muted-ash);
+          margin-bottom: 10px;
+        }
+        .coach-edit-meta strong {
+          font-weight: 500;
+          color: var(--color-midnight-ink);
+        }
+        .coach-edit-meta strong.cut { color: #88321a; }
+        .coach-edit-meta strong.adopt { color: var(--color-deep-indigo); }
+        .coach-edit-meta strong.rephrase { color: #5a4310; }
+        .coach-edit-redline {
+          font-family: var(--font-script);
+          font-size: 16.5px;
+          line-height: 1.6;
+          margin: 0;
+        }
+        .coach-edit-redline.cut {
+          color: rgba(17,17,17,0.45);
+          text-decoration: line-through;
+          text-decoration-color: rgba(225,101,64,0.5);
+          text-decoration-thickness: 1.5px;
+        }
+        .coach-edit-redline.adopt {
+          color: var(--color-deep-indigo);
+          font-style: italic;
+          background: rgba(50,142,250,0.08);
+          border-radius: 4px;
+          padding: 1px 6px;
+          display: inline-block;
+        }
+        .coach-edit-redline.adopt::before {
+          content: "+ ";
+          font-style: normal;
+          opacity: 0.55;
+          margin-right: 2px;
+        }
+        .coach-edit-redline.rephrase-old {
+          color: rgba(17,17,17,0.45);
+          text-decoration: line-through;
+          text-decoration-color: rgba(225,101,64,0.5);
+          text-decoration-thickness: 1.5px;
+        }
+        .coach-edit-redline.rephrase-new {
+          background: rgba(251,199,104,0.22);
+          color: #4a3508;
+          border-radius: 4px;
+          padding: 1px 6px;
+          display: inline-block;
+          margin-top: 4px;
+        }
+        .coach-edit-reason {
+          font-size: 13.5px;
+          line-height: 1.55;
+          color: var(--color-muted-ash);
+          margin-top: 10px;
+          font-family: var(--font-sans);
+        }
+        .coach-edit-stage-btn {
+          appearance: none;
+          background: transparent;
+          border: 1px solid rgba(17,17,17,0.16);
+          padding: 7px 14px;
+          border-radius: 7px;
+          font-size: 12px; font-weight: 500;
+          letter-spacing: 0.04em;
+          color: var(--color-midnight-ink);
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+        }
+        .coach-edit-stage-btn:hover {
+          background: var(--color-whisper-gray);
+          border-color: rgba(17,17,17,0.24);
+        }
+        .coach-edit-stage-btn.is-staged {
+          background: var(--color-midnight-ink);
+          border-color: var(--color-midnight-ink);
+          color: var(--color-canvas-white);
+        }
+        .coach-edit-stage-btn.is-staged:hover {
+          background: rgba(17,17,17,0.85);
+        }
+      `}</style>
+
+      {/* ===== Per-section notes — inline editorial annotations ===== */}
       {perSection.length > 0 && (
-        <div className="mt-6" style={{ display: "grid", gap: 12, maxWidth: 760 }}>
+        <div className="coach-notes">
           {perSection.map((note) => (
-            <div key={note.section_id} className="card-bordered" style={{ padding: 20 }}>
-              <div className="flex items-baseline justify-between" style={{ gap: 12 }}>
+            <article key={note.section_id}>
+              <header className="coach-note-head">
                 <div>
-                  <div
-                    className="text-caption"
-                    style={{ color: "var(--color-muted-ash)", marginBottom: 6 }}
-                  >
+                  <div className="coach-note-section-name">
                     {sectionNameById[note.section_id] ?? "Section"}
                   </div>
-                  <h4 className="text-subheading">{note.headline}</h4>
+                  <h4 className="coach-note-headline">{note.headline}</h4>
                 </div>
-                {/* Per-section drill link — pre-fills the recorder
-                    with this section in scope so the user can rehearse
-                    just this part instead of the whole speech. */}
                 <Link
                   href={`/app/speeches/${speechId}/record?section=${note.section_id}`}
-                  className="text-caption"
-                  style={{
-                    color: "var(--color-deep-indigo)",
-                    textDecoration: "underline",
-                    textUnderlineOffset: 4,
-                    whiteSpace: "nowrap",
-                  }}
+                  className="coach-note-practice"
                 >
                   Practice this part →
                 </Link>
-              </div>
-              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-                <p className="text-body-sm">
-                  <span
-                    className="badge pill-mint"
-                    style={{ marginRight: 8, verticalAlign: "1px" }}
-                  >
-                    <span className="dot" />
-                    Landed
-                  </span>
-                  {note.what_landed}
-                </p>
-                <p className="text-body-sm">
-                  <span
-                    className="badge pill-gold"
-                    style={{ marginRight: 8, verticalAlign: "1px" }}
-                  >
-                    <span className="dot" />
-                    Work on
-                  </span>
-                  {note.what_to_work_on}
-                </p>
-              </div>
-            </div>
+              </header>
+              <p className="coach-note-paragraph">{note.what_landed}</p>
+              <p className="coach-note-paragraph is-workon">{note.what_to_work_on}</p>
+            </article>
           ))}
         </div>
       )}
 
-      {/* ===== Suggested edits ===== */}
+      {/* ===== Suggested edits — redline track-changes ===== */}
       {suggestedEdits.length > 0 && (
-        <div className="mt-8" style={{ maxWidth: 760 }}>
-          <h3 className="text-subheading">Suggested edits</h3>
-          <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
-            Tap to stage the ones you want. Apply them and record your next take.
-          </p>
+        <div className="coach-edits">
+          <div className="flex items-baseline justify-between" style={{ gap: 16, marginBottom: 6 }}>
+            <h3 className="text-subheading">Suggested edits</h3>
+            <p className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
+              Stage the ones you want, then apply.
+            </p>
+          </div>
 
-          <div className="mt-5" style={{ display: "grid", gap: 10 }}>
+          <div>
             {suggestedEdits.map((edit) => {
               const on = staged.has(edit.id);
               return (
-                <button
+                <div
                   key={edit.id}
-                  onClick={() => toggle(edit.id)}
-                  className="card-bordered"
-                  style={{
-                    padding: 18,
-                    textAlign: "left",
-                    cursor: "pointer",
-                    background: on ? "var(--color-whisper-gray)" : "var(--color-canvas-white)",
-                    border: on
-                      ? "1px solid var(--color-midnight-ink)"
-                      : "1px solid rgba(17,17,17,0.08)",
-                  }}
+                  className={`coach-edit ${on ? "is-staged" : ""}`}
                 >
-                  <div className="flex items-baseline justify-between">
-                    <div className="flex items-baseline gap-2">
-                      <span className={`badge ${kindPill(edit.kind)}`}>
-                        <span className="dot" />
-                        {kindLabel(edit.kind)}
-                      </span>
-                      <span
-                        className="text-caption"
-                        style={{ color: "var(--color-muted-ash)" }}
-                      >
-                        {sectionNameById[edit.section_id] ?? "Section"}
-                      </span>
+                  <div>
+                    <div className="coach-edit-meta">
+                      <strong className={edit.kind}>{kindLabel(edit.kind)}</strong>
+                      <span aria-hidden="true">·</span>
+                      <span>{sectionNameById[edit.section_id] ?? "Section"}</span>
                     </div>
-                    <span
-                      className="text-body-sm"
-                      style={{
-                        color: on ? "var(--color-deliver-green)" : "var(--color-muted-ash)",
-                        fontWeight: on ? 500 : 400,
-                      }}
-                    >
-                      {on ? "Staged" : "Tap to stage"}
-                    </span>
+
+                    {edit.kind === "cut" && edit.before && (
+                      <p className="coach-edit-redline cut">
+                        &ldquo;{edit.before}&rdquo;
+                      </p>
+                    )}
+                    {edit.kind === "adopt" && edit.after && (
+                      <p className="coach-edit-redline adopt">
+                        &ldquo;{edit.after}&rdquo;
+                      </p>
+                    )}
+                    {edit.kind === "rephrase" && (
+                      <>
+                        {edit.before && (
+                          <p className="coach-edit-redline rephrase-old">
+                            &ldquo;{edit.before}&rdquo;
+                          </p>
+                        )}
+                        {edit.after && (
+                          <p className="coach-edit-redline rephrase-new">
+                            &ldquo;{edit.after}&rdquo;
+                          </p>
+                        )}
+                      </>
+                    )}
+
+                    <p className="coach-edit-reason">{edit.reason}</p>
                   </div>
 
-                  {edit.before && (
-                    <p
-                      className="diff-line diff-skipped"
-                      style={{ marginTop: 12 }}
-                    >
-                      &ldquo;{edit.before}&rdquo;
-                    </p>
-                  )}
-                  {edit.after && (
-                    <p
-                      className="diff-line diff-improv"
-                      style={{ marginTop: 4 }}
-                    >
-                      + &ldquo;{edit.after}&rdquo;
-                    </p>
-                  )}
-
-                  <p
-                    className="text-body-sm mt-3"
-                    style={{ color: "var(--color-muted-ash)" }}
+                  <button
+                    type="button"
+                    onClick={() => toggle(edit.id)}
+                    className={`coach-edit-stage-btn ${on ? "is-staged" : ""}`}
+                    aria-pressed={on}
                   >
-                    {edit.reason}
-                  </p>
-                </button>
+                    {on ? "Staged ✓" : "Stage"}
+                  </button>
+                </div>
               );
             })}
           </div>
