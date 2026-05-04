@@ -42,15 +42,6 @@ export default async function AppLayout({
           padding: 20px 16px; display: flex; flex-direction: column; gap: 6px;
           position: sticky; top: 0; height: 100vh;
         }
-        .app-topbar {
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 14px 40px;
-          border-bottom: 1px solid rgba(17,17,17,0.06);
-          background: rgba(255,255,255,0.85);
-          backdrop-filter: saturate(140%) blur(8px);
-          position: sticky; top: 0; z-index: 30;
-        }
-        @media (max-width: 880px) { .app-topbar { padding: 12px 20px; } }
         .app-main-pad { padding: 36px 40px; }
         @media (max-width: 880px) { .app-main-pad { padding: 24px 20px; } }
         .group-label {
@@ -108,14 +99,10 @@ export default async function AppLayout({
         </aside>
 
         <main>
-          <div className="app-topbar">
-            <div className="text-body-sm" style={{ color: "var(--color-muted-ash)" }} id="topbar-context">
-              Workspace
-            </div>
-            {/* Right side intentionally empty. Users typically focus on
-                one speech at a time, so a global "New speech" CTA was
-                noise. The dashboard surfaces it where it belongs. */}
-          </div>
+          {/* No topbar — every authed page already has its own header
+              (back link + title + version), so the global breadcrumb
+              strip was redundant. Removing it gives more vertical
+              room to whatever the page is showing. */}
           <div className="app-main-pad">{children}</div>
         </main>
       </div>
