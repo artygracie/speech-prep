@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { UpgradeCard } from "@/components/upgrade-card";
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -47,6 +48,32 @@ export default async function SpeechDetailPage({
     .order("created_at", { ascending: false });
   const sessions = sessionRows ?? [];
 
+  // Entitlement gate. If the free plan is exhausted we replace the
+  // "Record session" CTA with an inline upgrade card — that way the
+  // user sees the wall here on the detail page rather than discovering
+  // it after clicking through to the recorder.
+  const {
+    data: { user: currentUser },
+  } = await supabase.auth.getUser();
+  const { data: ent } = currentUser
+    ? await supabase
+        .from("entitlements")
+        .select("plan, free_sessions_remaining, one_shot_speech_id")
+        .eq("user_id", currentUser.id)
+        .maybeSingle()
+    : { data: null };
+  const plan = ent?.plan ?? "free";
+  const isFreePlan = plan === "free";
+  const freeSessionsRemaining = ent?.free_sessions_remaining ?? 3;
+  // The single-speech pass is locked to one speech. If the user has a
+  // pass but it's for a different speech, treat them as walled here.
+  const isWrongSpeechPass =
+    plan === "single_speech" &&
+    ent?.one_shot_speech_id != null &&
+    ent.one_shot_speech_id !== id;
+  const isWalled =
+    (isFreePlan && freeSessionsRemaining <= 0) || isWrongSpeechPass;
+
   function fmtRel(iso: string | null) {
     if (!iso) return "";
     const d = new Date(iso);
@@ -88,15 +115,31 @@ export default async function SpeechDetailPage({
           <Link href={`/app/speeches/${speech.id}/edit`} className="btn-light">
             Edit script
           </Link>
-          <Link href={`/app/speeches/${speech.id}/record`} className="btn-primary">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <circle cx="12" cy="12" r="4" fill="currentColor" />
-            </svg>
-            Record session
-          </Link>
+          {!isWalled && (
+            <Link href={`/app/speeches/${speech.id}/record`} className="btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="4" fill="currentColor" />
+              </svg>
+              Record session
+            </Link>
+          )}
         </div>
       </div>
+
+      {/* Upgrade gate. Surfaces only when the user actually can't
+          record — either out of free sessions, or holding a one-shot
+          pass for a different speech. The Free plan with sessions
+          remaining gets a quieter nudge from the top-bar pill instead. */}
+      {isWalled && (
+        <div className="mt-8">
+          <UpgradeCard
+            freeSessionsRemaining={freeSessionsRemaining}
+            speechId={speech.id}
+            context="speech-detail"
+          />
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-12 gap-10 mt-10">
         <div className="lg:col-span-7">
@@ -190,13 +233,15 @@ export default async function SpeechDetailPage({
               <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
                 Hit record. Speak the speech. We&rsquo;ll do the rest.
               </p>
-              <Link
-                href={`/app/speeches/${speech.id}/record`}
-                className="btn-primary mt-6"
-                style={{ marginTop: 24 }}
-              >
-                Begin session
-              </Link>
+              {!isWalled && (
+                <Link
+                  href={`/app/speeches/${speech.id}/record`}
+                  className="btn-primary mt-6"
+                  style={{ marginTop: 24 }}
+                >
+                  Begin session
+                </Link>
+              )}
             </div>
           ) : (
             <div className="mt-5" style={{ display: "grid", gap: 10 }}>

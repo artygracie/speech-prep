@@ -31,6 +31,7 @@ import { CoachRail } from "./coach-rail";
 import { AutoRefresh } from "./auto-refresh";
 import { DiffDocument } from "./diff-document";
 import { PlaybackDock } from "./playback-dock";
+import { UpgradeCard } from "@/components/upgrade-card";
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -62,6 +63,25 @@ export default async function SessionReportPage({
     .select("title")
     .eq("id", speechId)
     .single();
+
+  // Entitlement — drives whether to show the conversion card after this
+  // session. Free-plan users with sessions left get a soft nudge; users
+  // who just hit the wall get the gate.
+  const {
+    data: { user: currentUser },
+  } = await supabase.auth.getUser();
+  const { data: ent } = currentUser
+    ? await supabase
+        .from("entitlements")
+        .select("plan, free_sessions_remaining")
+        .eq("user_id", currentUser.id)
+        .maybeSingle()
+    : { data: null };
+  const isFreePlan = (ent?.plan ?? "free") === "free";
+  const freeSessionsRemaining = ent?.free_sessions_remaining ?? 3;
+  // Hide the card while the pipeline is still running — we don't want
+  // to interrupt the "we're processing" moment with a sales pitch.
+  const showUpgrade = isFreePlan;
 
   // Sections at the version that was recorded.
   const { data: secRows } = await supabase
@@ -249,6 +269,20 @@ export default async function SessionReportPage({
       `}</style>
       <div className="report-grid">
        <div>
+      {/* Upgrade nudge — only shown on the free plan, and only once the
+          pipeline has landed so we don't interrupt the "we're still
+          processing" moment with a sales pitch. The variant escalates
+          with how close the user is to the wall (see UpgradeCard). */}
+      {showUpgrade && pipelineDone && (
+        <div className="mt-10">
+          <UpgradeCard
+            freeSessionsRemaining={freeSessionsRemaining}
+            speechId={speechId}
+            context="post-session"
+          />
+        </div>
+      )}
+
       {/* ===== 1. SAID vs. WRITTEN =====
           Document-style view with three tabs:
             Diff (default)  — script with track-changes inline

@@ -8,6 +8,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Recorder } from "./recorder";
 import { FirstRunCoach } from "./first-run-coach";
+import { UpgradeCard } from "@/components/upgrade-card";
 
 export default async function RecordPage({
   params,
@@ -23,6 +24,29 @@ export default async function RecordPage({
     .eq("id", id)
     .single();
   if (!speech) notFound();
+
+  // Entitlement gate. The createSession server action enforces this
+  // server-side too — but if we render the recorder UI for a walled
+  // user they'd hit "click record → error → bounce to /billing", which
+  // is a worse experience than just showing the upgrade options here.
+  const {
+    data: { user: currentUser },
+  } = await supabase.auth.getUser();
+  const { data: ent } = currentUser
+    ? await supabase
+        .from("entitlements")
+        .select("plan, free_sessions_remaining, one_shot_speech_id")
+        .eq("user_id", currentUser.id)
+        .maybeSingle()
+    : { data: null };
+  const plan = ent?.plan ?? "free";
+  const freeSessionsRemaining = ent?.free_sessions_remaining ?? 3;
+  const isWrongSpeechPass =
+    plan === "single_speech" &&
+    ent?.one_shot_speech_id != null &&
+    ent.one_shot_speech_id !== id;
+  const isWalled =
+    (plan === "free" && freeSessionsRemaining <= 0) || isWrongSpeechPass;
 
   const { data: scriptRows } = await supabase
     .from("current_script")
@@ -77,17 +101,27 @@ export default async function RecordPage({
         </div>
       </div>
 
-      <Recorder
-        speechId={speech.id}
-        sections={sections}
-      />
+      {isWalled ? (
+        <UpgradeCard
+          freeSessionsRemaining={freeSessionsRemaining}
+          speechId={speech.id}
+          context="recorder-gate"
+        />
+      ) : (
+        <>
+          <Recorder
+            speechId={speech.id}
+            sections={sections}
+          />
 
-      {/* First-run coach-mark. Renders only when the user arrived from
-          /app/onboarding (?firstRun=1) and hasn't dismissed it before.
-          Wrapped in Suspense because it reads useSearchParams. */}
-      <Suspense fallback={null}>
-        <FirstRunCoach />
-      </Suspense>
+          {/* First-run coach-mark. Renders only when the user arrived from
+              /app/onboarding (?firstRun=1) and hasn't dismissed it before.
+              Wrapped in Suspense because it reads useSearchParams. */}
+          <Suspense fallback={null}>
+            <FirstRunCoach />
+          </Suspense>
+        </>
+      )}
     </div>
   );
 }
