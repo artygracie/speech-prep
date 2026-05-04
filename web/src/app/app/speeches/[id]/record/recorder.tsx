@@ -408,9 +408,11 @@ export function Recorder({
           display: inline-block;
         }
 
-        /* Sections inside freestyle — same layout as teleprompter, but the
-           body is replaced by a row of em-dashes that sit at the same
-           height/rhythm as a paragraph would. */
+        /* Sections inside freestyle — same layout AND content as teleprompter,
+           but the body text is blurred + greyed. The page keeps its full
+           visual weight (no collapse, no placeholder), and the user can
+           tell where each section sits without being able to read the
+           words. */
         .rec-freestyle-section {
           padding: 18px 0;
         }
@@ -436,16 +438,31 @@ export function Recorder({
           color: var(--color-muted-ash);
           transition: color 240ms ease;
         }
-        .rec-freestyle-dashes {
+        /* Real script body, blurred. user-select disabled so a curious
+           user can't copy + paste it out (defeats the rehearsal purpose).
+           pointer-events: none too, for the same reason. */
+        .rec-freestyle-body {
           font-family: var(--font-script);
           font-size: 19px;
           line-height: 1.75;
-          letter-spacing: 0.2em;
-          color: rgba(17,17,17,0.22);
+          color: rgba(17,17,17,0.55);
+          white-space: pre-wrap;
+          filter: blur(5px);
+          -webkit-filter: blur(5px);
           user-select: none;
+          pointer-events: none;
+          transition: filter 360ms ease, color 360ms ease, opacity 360ms ease;
         }
-        .rec-grid.is-live .rec-freestyle-section:not(.is-active) .rec-freestyle-dashes {
-          color: rgba(17,17,17,0.14);
+        /* While recording, push non-active sections further away — fainter
+           text + heavier blur — so the eye lands on the current section
+           without tempting the speaker to peek. */
+        .rec-grid.is-live .rec-freestyle-section:not(.is-active) .rec-freestyle-body {
+          filter: blur(7px);
+          -webkit-filter: blur(7px);
+          color: rgba(17,17,17,0.32);
+        }
+        .rec-grid.is-live .rec-freestyle-section.is-active .rec-freestyle-body {
+          color: rgba(17,17,17,0.6);
         }
 
         /* Switch-to-teleprompter footer */
@@ -714,20 +731,13 @@ export function Recorder({
                     Target {fmtTime(s.targetSec * 1000)}
                   </span>
                 </header>
-                {/* Word count of the original body, expressed as a count of
-                    em-dash placeholders. Caps at ~24 so a long section
-                    doesn't span six lines of dashes. */}
-                <div className="rec-freestyle-dashes" aria-hidden="true">
-                  {Array.from(
-                    {
-                      length: Math.min(
-                        24,
-                        Math.max(8, Math.round(s.body.split(/\s+/).filter(Boolean).length / 6)),
-                      ),
-                    },
-                    (_, idx) => "—",
-                  ).join(" ")}
-                </div>
+                {/* Real script body, blurred. We render the actual words
+                    (with aria-hidden so screen readers don't read them
+                    out — they're not meant to be consumed in this mode)
+                    so the section keeps its true visual height. */}
+                <p className="rec-freestyle-body" aria-hidden="true">
+                  {s.body || "—"}
+                </p>
               </section>
             ))}
 
