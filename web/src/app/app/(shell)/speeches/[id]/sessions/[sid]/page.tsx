@@ -1,13 +1,21 @@
-// Session report. The page renders four bands:
+// Session report.
 //
-//  1. Header with delta-vs-target.
-//  2. Pacing report — bars per section. If section_metrics rows exist
-//     (i.e. transcription + alignment have run) we use those; otherwise
-//     we show a polite "transcribing" placeholder.
-//  3. Audio playback (signed URL into Storage).
-//  4. Said-vs-written diff — only rendered if a transcript exists.
+// Layout, in priority order — these are the three things the user
+// actually came here to see, in this order:
 //
-// All reads are RSC; nothing about the report needs interactivity.
+//   1. Their recording      — listen back to themselves
+//   2. Said vs. written     — the diff between their script and what
+//                             they actually said (the differentiating
+//                             screen of the whole product)
+//   3. Coach feedback       — the AI summary + suggested edits
+//
+// Below the fold (still useful, but not the headline):
+//   4. Per-section pacing graph
+//   5. Live notes the user flagged during recording
+//
+// While the transcript and coach are still landing, an inline
+// AutoRefresh component re-fetches the page every 3s and (if the
+// session looks stuck) fires a wake-up to retry transcription.
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -16,6 +24,7 @@ import { getPlaybackUrl } from "@/app/app/sessions-actions";
 import { buildDiff } from "@/lib/alignment";
 import type { TranscriptWord, ScriptSection } from "@/lib/alignment";
 import { CoachCard } from "./coach-card";
+import { AutoRefresh } from "./auto-refresh";
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -99,8 +108,28 @@ export default async function SessionReportPage({
     diff = buildDiff(sections, transcript.words as TranscriptWord[]);
   }
 
+  // Pipeline state derivations.
+  const hasTranscript = !!transcript?.words && Array.isArray(transcript.words);
+  const hasCoach = !!aiReport;
+  // The whole pipeline is "done" when both transcript AND coach landed —
+  // those are the two server-side jobs that happen post-stop.
+  const pipelineDone = hasTranscript && hasCoach;
+  // Suspect a stuck transcribe if the session has been uploaded for
+  // > 60s with no transcript. The wake handler will re-fire it.
+  const ageMs = Date.now() - new Date(session.created_at).getTime();
+  const suspectedStuck =
+    !hasTranscript && session.status !== "transcribed" && ageMs > 60_000;
+
   return (
     <div>
+      {/* Polls the page until everything's landed. Renders nothing. */}
+      <AutoRefresh
+        sessionId={sessionId}
+        done={pipelineDone}
+        suspectedStuck={suspectedStuck}
+      />
+
+      {/* ===== Header ===== */}
       <div style={{ display: "flex", gap: 16, alignItems: "end", justifyContent: "space-between", flexWrap: "wrap" }}>
         <div>
           <Link href={`/app/speeches/${speechId}`} className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
@@ -111,7 +140,7 @@ export default async function SessionReportPage({
             <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
               {new Date(session.created_at).toLocaleString()} · {session.mode === "with-script" ? "Teleprompter" : "Freestyle"}
             </span>
-            {metrics.length > 0 ? (
+            {pipelineDone ? (
               <>
                 <span className="badge pill-soft num">
                   <span className="dot" />
@@ -128,8 +157,10 @@ export default async function SessionReportPage({
               </>
             ) : (
               <span className="badge pill-blue">
-                <span className="dot" />
-                {session.status === "uploaded" ? "Transcribing…" : session.status}
+                <span className="dot pulse" />
+                {hasTranscript
+                  ? "Coach is writing your feedback…"
+                  : "Transcribing your recording…"}
               </span>
             )}
           </div>
@@ -139,36 +170,142 @@ export default async function SessionReportPage({
         </div>
       </div>
 
-      {/* ===== Audio playback ===== */}
+      {/* Tiny CSS for the pulsing status dot — only needed in this file. */}
+      <style>{`
+        .badge .dot.pulse {
+          animation: report-pulse 1.4s ease-out infinite;
+        }
+        @keyframes report-pulse {
+          0%   { opacity: 1; }
+          50%  { opacity: 0.35; }
+          100% { opacity: 1; }
+        }
+      `}</style>
+
+      {/* ===== 1. RECORDING ===== */}
       {playbackUrl && (
         <section className="mt-10">
-          <h2 className="text-heading">Listen back</h2>
+          <h2 className="text-heading">Your recording</h2>
           <div className="card-bordered mt-5" style={{ padding: 24 }}>
             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <audio controls preload="metadata" src={playbackUrl} style={{ width: "100%" }} />
+            {session.duration_ms != null && (
+              <p
+                className="text-caption mt-3"
+                style={{ color: "var(--color-muted-ash)" }}
+              >
+                {fmtTime(Math.round(session.duration_ms / 1000))} total
+                {session.audio_mime ? ` · ${session.audio_mime.split(";")[0]}` : ""}
+              </p>
+            )}
           </div>
         </section>
       )}
 
-      {/* ===== Pacing ===== */}
+      {/* ===== 2. SAID vs. WRITTEN ===== */}
       <section className="mt-12">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-heading">Pacing</h2>
-          {metrics.length > 0 && (
+        <h2 className="text-heading">What you said vs. what you wrote</h2>
+        {diff.length > 0 ? (
+          <div className="card-elevated mt-5" style={{ padding: 28 }}>
+            <div style={{ display: "grid", gap: 6 }}>
+              {diff.map((row, i) => {
+                if (row.kind === "match") return <p key={i} className="diff-line diff-match">&ldquo;{row.spoken}&rdquo;</p>;
+                if (row.kind === "paraphrase")
+                  return (
+                    <p key={i} className="diff-line diff-paraphrase">
+                      &ldquo;{row.spoken}&rdquo;{" "}
+                      <span style={{ color: "var(--color-muted-ash)", fontStyle: "italic", fontSize: 13 }}>
+                        — written: &ldquo;{row.written}&rdquo;
+                      </span>
+                    </p>
+                  );
+                if (row.kind === "skipped") return <p key={i} className="diff-line diff-skipped">&ldquo;{row.written}&rdquo;</p>;
+                return <p key={i} className="diff-line diff-improv">+ &ldquo;{row.spoken}&rdquo;</p>;
+              })}
+            </div>
+
+            <div className="mt-7 flex gap-2 flex-wrap">
+              <span className="badge pill-soft">
+                <span className="dot" />
+                {diff.filter((r) => r.kind === "match").length} matched
+              </span>
+              <span className="badge pill-gold">
+                <span className="dot" />
+                {diff.filter((r) => r.kind === "paraphrase").length} paraphrased
+              </span>
+              <span className="badge pill-red">
+                <span className="dot" />
+                {diff.filter((r) => r.kind === "skipped").length} skipped
+              </span>
+              <span className="badge pill-blue">
+                <span className="dot" />
+                {diff.filter((r) => r.kind === "improv").length} ad-lib
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state mt-5">
+            <p className="text-subheading">
+              Lining up your transcript against the script…
+            </p>
+            <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
+              This page refreshes itself — you don&rsquo;t need to do anything.
+            </p>
+          </div>
+        )}
+      </section>
+
+      {/* ===== 3. COACH ===== */}
+      {hasCoach && aiReport ? (
+        <CoachCard
+          speechId={speechId}
+          sessionId={sessionId}
+          summary={aiReport.summary ?? ""}
+          perSection={
+            (Array.isArray(aiReport.per_section) ? aiReport.per_section : []) as unknown as {
+              section_id: string;
+              headline: string;
+              what_landed: string;
+              what_to_work_on: string;
+            }[]
+          }
+          suggestedEdits={
+            (Array.isArray(aiReport.suggested_edits) ? aiReport.suggested_edits : []) as unknown as {
+              id: string;
+              kind: "cut" | "adopt" | "rephrase";
+              section_id: string;
+              before?: string;
+              after?: string;
+              reason: string;
+            }[]
+          }
+          sectionNameById={Object.fromEntries(sectionNameById)}
+        />
+      ) : (
+        <section className="mt-14">
+          <h2 className="text-heading">Coach</h2>
+          <div className="empty-state mt-5">
+            <p className="text-subheading">
+              {hasTranscript
+                ? "Reading the transcript and writing your notes…"
+                : "Your coach is waiting on the transcript."}
+            </p>
+            <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
+              Usually about a minute after the recording uploads.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* ===== 4. PACING (below the fold — useful but not the headline) ===== */}
+      {metrics.length > 0 && (
+        <section className="mt-14">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-heading">Pacing</h2>
             <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
               Target {fmtTime(targetTotal)} · Actual {fmtTime(actualTotal)}
             </span>
-          )}
-        </div>
-
-        {metrics.length === 0 ? (
-          <div className="empty-state mt-5">
-            <p className="text-subheading">Pacing arrives once the transcript does.</p>
-            <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-              Transcription runs automatically once the recording is uploaded. Refresh in a moment.
-            </p>
           </div>
-        ) : (
           <div className="card-bordered mt-5" style={{ padding: 24 }}>
             <div style={{ display: "grid", gap: 18 }}>
               {sections.map((sec) => {
@@ -224,82 +361,10 @@ export default async function SessionReportPage({
               })}
             </div>
           </div>
-        )}
-      </section>
-
-      {/* ===== Diff ===== */}
-      {diff.length > 0 && (
-        <section className="mt-14">
-          <h2 className="text-heading">What you said vs. what you wrote</h2>
-          <div className="card-elevated mt-5" style={{ padding: 28 }}>
-            <div style={{ display: "grid", gap: 6 }}>
-              {diff.map((row, i) => {
-                if (row.kind === "match") return <p key={i} className="diff-line diff-match">&ldquo;{row.spoken}&rdquo;</p>;
-                if (row.kind === "paraphrase")
-                  return (
-                    <p key={i} className="diff-line diff-paraphrase">
-                      &ldquo;{row.spoken}&rdquo;{" "}
-                      <span style={{ color: "var(--color-muted-ash)", fontStyle: "italic", fontSize: 13 }}>
-                        — written: &ldquo;{row.written}&rdquo;
-                      </span>
-                    </p>
-                  );
-                if (row.kind === "skipped") return <p key={i} className="diff-line diff-skipped">&ldquo;{row.written}&rdquo;</p>;
-                return <p key={i} className="diff-line diff-improv">+ &ldquo;{row.spoken}&rdquo;</p>;
-              })}
-            </div>
-
-            <div className="mt-7 flex gap-2 flex-wrap">
-              <span className="badge pill-soft">
-                <span className="dot" />
-                {diff.filter((r) => r.kind === "match").length} matched
-              </span>
-              <span className="badge pill-gold">
-                <span className="dot" />
-                {diff.filter((r) => r.kind === "paraphrase").length} paraphrased
-              </span>
-              <span className="badge pill-red">
-                <span className="dot" />
-                {diff.filter((r) => r.kind === "skipped").length} skipped
-              </span>
-              <span className="badge pill-blue">
-                <span className="dot" />
-                {diff.filter((r) => r.kind === "improv").length} ad-lib
-              </span>
-            </div>
-          </div>
         </section>
       )}
 
-      {/* ===== Coach (AI report) ===== */}
-      {aiReport && (
-        <CoachCard
-          speechId={speechId}
-          sessionId={sessionId}
-          summary={aiReport.summary ?? ""}
-          perSection={
-            (Array.isArray(aiReport.per_section) ? aiReport.per_section : []) as unknown as {
-              section_id: string;
-              headline: string;
-              what_landed: string;
-              what_to_work_on: string;
-            }[]
-          }
-          suggestedEdits={
-            (Array.isArray(aiReport.suggested_edits) ? aiReport.suggested_edits : []) as unknown as {
-              id: string;
-              kind: "cut" | "adopt" | "rephrase";
-              section_id: string;
-              before?: string;
-              after?: string;
-              reason: string;
-            }[]
-          }
-          sectionNameById={Object.fromEntries(sectionNameById)}
-        />
-      )}
-
-      {/* ===== Live tags ===== */}
+      {/* ===== 5. LIVE TAGS ===== */}
       {Array.isArray(session.tags) && session.tags.length > 0 && (
         <section className="mt-14">
           <h2 className="text-heading">Live notes you flagged</h2>
