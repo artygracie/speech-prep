@@ -1,0 +1,30 @@
+# Logs / OS
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Next.js / build artifacts
+web/.next/
+web/out/
+web/build/
+web/dist/
+
+# Dependencies
+web/node_modules/
+node_modules/
+
+# Test
+web/coverage/
+.next/
+.turbo/
+.vercel/
+
+# pnpm
+pnpm-debug.log*
+pnpm-lock.yaml.bak

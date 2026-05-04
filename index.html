@@ -1,0 +1,1257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SpeechPrep — Practice your speech before you give it.</title>
+    <meta name="description" content="Practice your speech with AI feedback. Upload the script, record yourself, and see — to the second — which sections ran long, which lines you skipped, and which off-script moments landed better than what you wrote." />
+
+    <link rel="canonical" href="https://speechprep.ai/" />
+    <meta name="theme-color" content="#111111" />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SpeechPrep" />
+    <meta property="og:title" content="SpeechPrep — Practice your speech before you give it." />
+    <meta property="og:description" content="AI rehearsal for prepared speech. Upload the script, record yourself, and see — to the second — what landed and what didn't." />
+    <meta property="og:url" content="https://speechprep.ai/" />
+    <meta property="og:image" content="https://speechprep.ai/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="SpeechPrep — practice your speech before you give it." />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SpeechPrep — Practice your speech before you give it." />
+    <meta name="twitter:description" content="AI rehearsal for prepared speech. Upload the script, record yourself, and see — to the second — what landed and what didn't." />
+    <meta name="twitter:image" content="https://speechprep.ai/og.png" />
+
+    <!-- Favicon — brand logo -->
+    <link rel="icon" type="image/svg+xml" href="assets/Logo.svg" />
+    <link rel="apple-touch-icon" href="assets/Logo.svg" />
+
+    <!-- Schema.org: SoftwareApplication (rich app card in Google) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "SpeechPrep",
+      "url": "https://speechprep.ai/",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "description": "AI rehearsal for prepared speech. Upload your script, record yourself, and get section-level pacing, a script-vs-transcript diff, and specific coaching notes.",
+      "offers": [
+        { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "USD", "description": "Three full sessions" },
+        { "@type": "Offer", "name": "Practiced", "price": "12", "priceCurrency": "USD", "description": "Monthly subscription, unlimited sessions" },
+        { "@type": "Offer", "name": "Single speech", "price": "19", "priceCurrency": "USD", "description": "One-time pass, seven days, one speech" }
+      ]
+    }
+    </script>
+
+    <!-- Schema.org: FAQPage (rich FAQ result in Google) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What happens to my recording?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Encrypted at rest, never used for training, ours to host but yours to delete. Default retention is ninety days; one click and it's gone sooner." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I have to write a script first?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Bullet points work. So does a paragraph. We'll structure it into sections and the diff still tells you what stuck." }
+        },
+        {
+          "@type": "Question",
+          "name": "How honest is the AI feedback?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Pacing is exact — it's just arithmetic on a transcript. The qualitative coaching is genuinely useful for structure, clarity, and rhythm. It is not a human coach. We won't pretend it is." }
+        },
+        {
+          "@type": "Question",
+          "name": "Does it work on my phone?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes, in any modern mobile browser. Native apps later this year." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can someone else watch the session and leave notes?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Pro accounts can generate a private share link. Reviewers leave timestamped comments without making an account." }
+        },
+        {
+          "@type": "Question",
+          "name": "What languages are supported?",
+          "acceptedAnswer": { "@type": "Answer", "text": "English at launch. Spanish, French, German, and Portuguese before the end of the year." }
+        }
+      ]
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+      :root {
+        --color-midnight-ink: #111111;
+        --color-canvas-white: #ffffff;
+        --color-surface-charcoal: #272625;
+        --color-muted-ash: #6d6c6b;
+        --color-whisper-gray: #f4f3ef;
+        --color-light-taupe: #ecebea;
+        --color-phoenix-orange: #e8400d;
+        --gradient-phoenix-orange: radial-gradient(386.06% 162.79% at -13.1926% -17.1008%, rgb(232, 64, 13) 0%, rgb(255, 238, 216) 26.1559%, rgb(208, 178, 255) 84.1533%);
+        --color-cyan-glow: #99fff9;
+        --gradient-cyan-glow: radial-gradient(80.17% 109.2% at 52.1169% 62.5363%, rgb(208, 178, 255) 0%, rgb(198, 236, 233) 35.282%, rgb(153, 255, 249) 96.5565%);
+        --color-deep-indigo: #10054d;
+        --color-petal-pink: #ffd7f0;
+        --color-mint-green: #b7efb2;
+        --color-canary-yellow: #ffef99;
+        --color-subtle-lavender: #e2ddfd;
+        --color-midnight-violet: #2e2460;
+        --color-engagement-gold: #fbc768;
+        --color-leadgen-red: #e16540;
+        --color-intelligence-blue: #328efa;
+        --color-deliver-green: #47d096;
+
+        --shadow-subtle: rgba(17, 17, 17, 0.05) 0px 0px 0px 1px inset;
+        --shadow-xl: rgba(17, 17, 17, 0.12) 0px 26px 60px -6px, rgba(17, 17, 17, 0.02) 0px 28px 28px -14px, rgba(17, 17, 17, 0.04) 0px 6px 6px -3px, rgba(17, 17, 17, 0.04) 0px 1px 1px -0.5px;
+        --shadow-sm: rgba(17, 17, 17, 0.02) 0px -6px 6px 0px, rgba(17, 17, 17, 0.01) 0px -23px 9px 0px;
+        --shadow-subtle-3: rgba(17, 17, 17, 0.04) 0px 1px 2px 0px, rgba(17, 17, 17, 0.04) 0px 4px 8px 0px;
+      }
+
+      html { background: var(--color-canvas-white); color: var(--color-midnight-ink); }
+
+      body {
+        font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-feature-settings: "ss01", "ss02";
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      .serif { font-family: 'Instrument Serif', 'Iowan Old Style', 'Palatino', Georgia, serif; font-weight: 400; font-style: italic; letter-spacing: -0.01em; }
+
+      .text-display { font-size: clamp(48px, 8.5vw, 96px); line-height: 0.95; letter-spacing: -0.05em; font-weight: 500; }
+      .text-heading-lg { font-size: clamp(34px, 5vw, 52px); line-height: 1.04; letter-spacing: -0.035em; font-weight: 500; }
+      .text-heading { font-size: clamp(24px, 2.4vw, 30px); line-height: 1.1; letter-spacing: -0.02em; font-weight: 500; }
+      .text-heading-sm { font-size: 22px; line-height: 1.15; letter-spacing: -0.012em; font-weight: 500; }
+      .text-subheading { font-size: 19px; line-height: 1.2; letter-spacing: -0.008em; font-weight: 500; }
+      .text-body { font-size: 16px; line-height: 1.5; }
+      .text-body-sm { font-size: 14px; line-height: 1.5; letter-spacing: 0.01em; }
+      .text-caption { font-size: 11px; line-height: 1.3; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
+
+      .surface-canvas { background: var(--color-canvas-white); }
+      .surface-whisper { background: var(--color-whisper-gray); }
+      .surface-charcoal { background: var(--color-surface-charcoal); color: var(--color-canvas-white); }
+      .surface-ink { background: var(--color-midnight-ink); color: var(--color-canvas-white); }
+
+      .card-elevated {
+        background: var(--color-canvas-white);
+        border-radius: 12px;
+        box-shadow: var(--shadow-subtle-3);
+      }
+
+      .card-bordered {
+        background: var(--color-canvas-white);
+        border-radius: 12px;
+        border: 1px solid rgba(17,17,17,0.08);
+      }
+
+      .input {
+        background: var(--color-canvas-white);
+        border: 1px solid rgba(17, 17, 17, 0.12);
+        border-radius: 12px;
+        padding: 14px 16px;
+        font-size: 16px;
+        outline: none;
+        transition: border-color 120ms ease;
+      }
+      .input:focus { border-color: var(--color-midnight-ink); }
+
+      .btn-primary {
+        background: var(--color-midnight-ink);
+        color: var(--color-canvas-white);
+        border-radius: 8px;
+        padding: 13px 20px;
+        font-weight: 500;
+        font-size: 15px;
+        transition: transform 120ms ease, opacity 120ms ease;
+        letter-spacing: -0.005em;
+      }
+      .btn-primary:hover { opacity: 0.92; transform: translateY(-1px); }
+
+      .btn-light {
+        background: var(--color-canvas-white);
+        color: var(--color-midnight-ink);
+        border-radius: 8px;
+        padding: 13px 20px;
+        font-weight: 500;
+        font-size: 15px;
+        box-shadow: var(--shadow-subtle);
+      }
+      .btn-light:hover { background: var(--color-light-taupe); }
+
+      .btn-ghost {
+        background: transparent;
+        color: var(--color-muted-ash);
+        border-radius: 8px;
+        padding: 8px 14px;
+        font-weight: 500;
+        font-size: 14px;
+      }
+      .btn-ghost:hover { color: var(--color-midnight-ink); }
+
+      .nav-link {
+        color: var(--color-muted-ash);
+        font-weight: 500;
+        font-size: 14px;
+        padding: 8px 14px;
+        border-radius: 8px;
+      }
+      .nav-link:hover { color: var(--color-midnight-ink); }
+
+      /* Hero ambient gradient — softer, off-center */
+      .hero-bg {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+        z-index: 0;
+      }
+      .hero-bg::before {
+        content: "";
+        position: absolute;
+        top: -25%; left: -15%; width: 70%; height: 95%;
+        background: var(--gradient-phoenix-orange);
+        filter: blur(70px);
+        opacity: 0.5;
+        border-radius: 50%;
+      }
+      .hero-bg::after {
+        content: "";
+        position: absolute;
+        top: 5%; right: -20%; width: 65%; height: 85%;
+        background: var(--gradient-cyan-glow);
+        filter: blur(80px);
+        opacity: 0.4;
+        border-radius: 50%;
+      }
+
+      .marker-bar {
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(17,17,17,0.06);
+        overflow: hidden;
+        position: relative;
+      }
+      .marker-bar > span {
+        position: absolute;
+        inset: 0 auto 0 0;
+        border-radius: 999px;
+      }
+
+      .ticker {
+        display: flex;
+        gap: 48px;
+        align-items: center;
+        animation: ticker 50s linear infinite;
+        white-space: nowrap;
+      }
+      @keyframes ticker {
+        from { transform: translateX(0); }
+        to { transform: translateX(-50%); }
+      }
+      .ticker-mask {
+        mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+      }
+
+      .diff-line {
+        font-family: 'Iowan Old Style', 'Charter', Georgia, serif;
+        font-size: 15px;
+        line-height: 1.6;
+        padding: 7px 14px;
+        border-radius: 6px;
+      }
+      .diff-match { color: var(--color-midnight-ink); }
+      .diff-paraphrase { background: rgba(251, 199, 104, 0.22); color: #4a3508; border-left: 2px solid var(--color-engagement-gold); }
+      .diff-skipped { color: rgba(17,17,17,0.35); text-decoration: line-through; text-decoration-thickness: 1px; }
+      .diff-improv { background: rgba(50, 142, 250, 0.10); color: var(--color-deep-indigo); border-left: 2px solid var(--color-intelligence-blue); }
+
+      .grid-faq summary { cursor: pointer; list-style: none; }
+      .grid-faq summary::-webkit-details-marker { display: none; }
+      .grid-faq details[open] .chev { transform: rotate(180deg); color: var(--color-midnight-ink); }
+      .grid-faq details { transition: background 200ms; }
+
+      .floating-card {
+        background: var(--color-canvas-white);
+        border-radius: 16px;
+        box-shadow: var(--shadow-xl);
+      }
+
+      header.site-nav {
+        backdrop-filter: saturate(140%) blur(10px);
+        background: rgba(255,255,255,0.78);
+        border-bottom: 1px solid rgba(17,17,17,0.06);
+      }
+
+      .container-x { max-width: 1240px; margin-inline: auto; padding-inline: 24px; }
+      @media (min-width: 768px) { .container-x { padding-inline: 40px; } }
+
+      .container-narrow { max-width: 880px; margin-inline: auto; padding-inline: 24px; }
+
+      .pill-orange { background: var(--color-petal-pink); color: var(--color-deep-indigo); }
+      .pill-mint { background: var(--color-mint-green); color: #0d3d22; }
+      .pill-yellow { background: var(--color-canary-yellow); color: #5a4310; }
+      .pill-lav { background: var(--color-subtle-lavender); color: var(--color-deep-indigo); }
+      .pill-charcoal { background: var(--color-surface-charcoal); color: var(--color-canvas-white); }
+
+      .badge {
+        border-radius: 999px;
+        padding: 5px 11px;
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .dot { width: 6px; height: 6px; border-radius: 999px; display: inline-block; }
+
+      .scroll-shadow {
+        background:
+          linear-gradient(white, white) padding-box,
+          linear-gradient(180deg, rgba(17,17,17,0.08), rgba(17,17,17,0)) border-box;
+        border: 1px solid transparent;
+      }
+
+      .num-display {
+        font-family: 'Instrument Serif', Georgia, serif;
+        font-style: italic;
+        font-weight: 400;
+        font-size: 64px;
+        line-height: 1;
+        letter-spacing: -0.03em;
+      }
+
+      /* Subtle dot grid for technical sections */
+      .dotgrid {
+        background-image: radial-gradient(rgba(17,17,17,0.08) 1px, transparent 1px);
+        background-size: 16px 16px;
+      }
+
+      .quote-mark {
+        font-family: 'Instrument Serif', Georgia, serif;
+        font-style: italic;
+        font-size: 96px;
+        line-height: 0.5;
+        color: var(--color-phoenix-orange);
+      }
+
+      .ring-tab {
+        border: 1px solid rgba(17,17,17,0.08);
+        background: var(--color-canvas-white);
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--color-muted-ash);
+      }
+      .ring-tab.is-active {
+        background: var(--color-midnight-ink);
+        color: var(--color-canvas-white);
+        border-color: var(--color-midnight-ink);
+      }
+
+      /* Waveform mock */
+      .wave {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        height: 32px;
+      }
+      .wave > i {
+        display: block;
+        width: 2px;
+        background: var(--color-midnight-ink);
+        opacity: 0.55;
+        border-radius: 2px;
+      }
+
+      .underline-wavy {
+        text-decoration: underline;
+        text-decoration-style: wavy;
+        text-decoration-color: var(--color-phoenix-orange);
+        text-underline-offset: 6px;
+        text-decoration-thickness: 1.5px;
+      }
+
+      /* --- Live recording mockup --- */
+      .rec-dot {
+        width: 8px; height: 8px; border-radius: 999px;
+        background: var(--color-leadgen-red);
+        display: inline-block;
+        box-shadow: 0 0 0 0 rgba(225, 101, 64, 0.55);
+        animation: rec-pulse 1.4s ease-out infinite;
+      }
+      @keyframes rec-pulse {
+        0%   { box-shadow: 0 0 0 0 rgba(225, 101, 64, 0.5); }
+        70%  { box-shadow: 0 0 0 9px rgba(225, 101, 64, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(225, 101, 64, 0); }
+      }
+
+      .live-wave {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        height: 56px;
+        padding: 0 2px;
+      }
+      .live-wave > i {
+        flex: 1;
+        display: block;
+        background: var(--color-midnight-ink);
+        border-radius: 3px;
+        opacity: 0.85;
+        height: 14%;
+        animation: wave-bar 1.1s ease-in-out infinite;
+        will-change: transform;
+        transform-origin: center;
+      }
+      .live-wave > i:nth-child(2)  { animation-delay: -1.05s; animation-duration: 0.95s; }
+      .live-wave > i:nth-child(3)  { animation-delay: -0.95s; animation-duration: 1.20s; }
+      .live-wave > i:nth-child(4)  { animation-delay: -0.80s; animation-duration: 1.05s; }
+      .live-wave > i:nth-child(5)  { animation-delay: -0.65s; animation-duration: 0.85s; }
+      .live-wave > i:nth-child(6)  { animation-delay: -0.55s; animation-duration: 1.30s; }
+      .live-wave > i:nth-child(7)  { animation-delay: -0.40s; animation-duration: 1.10s; }
+      .live-wave > i:nth-child(8)  { animation-delay: -0.30s; animation-duration: 0.90s; }
+      .live-wave > i:nth-child(9)  { animation-delay: -0.15s; animation-duration: 1.25s; }
+      .live-wave > i:nth-child(10) { animation-delay: -0.05s; animation-duration: 1.00s; }
+      .live-wave > i:nth-child(11) { animation-delay: -0.95s; animation-duration: 1.15s; }
+      .live-wave > i:nth-child(12) { animation-delay: -0.75s; animation-duration: 0.95s; }
+      .live-wave > i:nth-child(13) { animation-delay: -0.60s; animation-duration: 1.20s; }
+      .live-wave > i:nth-child(14) { animation-delay: -0.45s; animation-duration: 1.00s; }
+      .live-wave > i:nth-child(15) { animation-delay: -0.20s; animation-duration: 1.10s; }
+      .live-wave > i:nth-child(16) { animation-delay: -0.10s; animation-duration: 0.90s; }
+      .live-wave > i:nth-child(17) { animation-delay: -0.85s; animation-duration: 1.05s; }
+      .live-wave > i:nth-child(18) { animation-delay: -0.70s; animation-duration: 1.30s; }
+      .live-wave > i:nth-child(19) { animation-delay: -0.50s; animation-duration: 0.95s; }
+      .live-wave > i:nth-child(20) { animation-delay: -0.35s; animation-duration: 1.15s; }
+      .live-wave > i:nth-child(21) { animation-delay: -0.25s; animation-duration: 1.00s; }
+      .live-wave > i:nth-child(22) { animation-delay: -0.10s; animation-duration: 0.90s; }
+      .live-wave > i:nth-child(23) { animation-delay: -0.95s; animation-duration: 1.25s; }
+      .live-wave > i:nth-child(24) { animation-delay: -0.80s; animation-duration: 1.10s; }
+      .live-wave > i:nth-child(25) { animation-delay: -0.65s; animation-duration: 0.85s; }
+      .live-wave > i:nth-child(26) { animation-delay: -0.50s; animation-duration: 1.05s; }
+      .live-wave > i:nth-child(27) { animation-delay: -0.35s; animation-duration: 1.20s; }
+      .live-wave > i:nth-child(28) { animation-delay: -0.20s; animation-duration: 0.95s; }
+      .live-wave > i:nth-child(29) { animation-delay: -0.10s; animation-duration: 1.15s; }
+      .live-wave > i:nth-child(30) { animation-delay: 0s;      animation-duration: 1.00s; }
+      .live-wave > i:nth-child(31) { animation-delay: -0.90s; animation-duration: 0.90s; }
+      .live-wave > i:nth-child(32) { animation-delay: -0.75s; animation-duration: 1.25s; }
+      .live-wave > i:nth-child(33) { animation-delay: -0.60s; animation-duration: 1.05s; }
+      .live-wave > i:nth-child(34) { animation-delay: -0.45s; animation-duration: 0.95s; }
+      .live-wave > i:nth-child(35) { animation-delay: -0.30s; animation-duration: 1.20s; }
+      .live-wave > i:nth-child(36) { animation-delay: -0.15s; animation-duration: 1.10s; }
+      .live-wave > i:nth-child(37) { animation-delay: -0.05s; animation-duration: 0.85s; }
+      .live-wave > i:nth-child(38) { animation-delay: -0.85s; animation-duration: 1.15s; }
+      .live-wave > i:nth-child(39) { animation-delay: -0.70s; animation-duration: 1.00s; }
+      .live-wave > i:nth-child(40) { animation-delay: -0.55s; animation-duration: 0.95s; }
+      .live-wave > i:nth-child(41) { animation-delay: -0.40s; animation-duration: 1.30s; }
+      .live-wave > i:nth-child(42) { animation-delay: -0.25s; animation-duration: 1.05s; }
+      .live-wave > i:nth-child(43) { animation-delay: -0.10s; animation-duration: 1.20s; }
+      .live-wave > i:nth-child(44) { animation-delay: 0s;      animation-duration: 0.90s; }
+      .live-wave > i:nth-child(45) { animation-delay: -0.95s; animation-duration: 1.10s; }
+      .live-wave > i:nth-child(46) { animation-delay: -0.80s; animation-duration: 1.00s; }
+      .live-wave > i:nth-child(47) { animation-delay: -0.65s; animation-duration: 1.25s; }
+      .live-wave > i:nth-child(48) { animation-delay: -0.50s; animation-duration: 0.95s; }
+      .live-wave > i:nth-child(49) { animation-delay: -0.35s; animation-duration: 1.05s; }
+      .live-wave > i:nth-child(50) { animation-delay: -0.20s; animation-duration: 1.15s; }
+
+      @keyframes wave-bar {
+        0%, 100% { transform: scaleY(0.18); }
+        50%      { transform: scaleY(1);    }
+      }
+
+      .transcript-line {
+        font-family: 'Iowan Old Style', 'Charter', Georgia, serif;
+        font-size: 18px;
+        line-height: 1.55;
+        color: var(--color-midnight-ink);
+        min-height: 56px;
+      }
+      .t-said { }
+      .t-said.fading-in {
+        opacity: 0;
+        animation: fadein 240ms ease-out forwards;
+      }
+      .t-paraphrased {
+        background: rgba(251, 199, 104, 0.22);
+        color: #4a3508;
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      .t-skipped {
+        color: rgba(17,17,17,0.32);
+        text-decoration: line-through;
+        text-decoration-thickness: 1px;
+      }
+      .t-improv {
+        background: rgba(50, 142, 250, 0.10);
+        color: var(--color-deep-indigo);
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-style: italic;
+      }
+      .t-cursor {
+        display: inline-block;
+        width: 2px;
+        height: 1.05em;
+        background: var(--color-midnight-ink);
+        vertical-align: -0.15em;
+        margin-left: 2px;
+        animation: caret 1s steps(1) infinite;
+      }
+      @keyframes caret { 50% { opacity: 0; } }
+      @keyframes fadein { to { opacity: 1; } }
+
+      .live-tag {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 4px 9px;
+        border-radius: 999px;
+        opacity: 0;
+        animation: tag-in 280ms ease-out forwards;
+      }
+      .live-tag .dot { width: 6px; height: 6px; border-radius: 999px; display: inline-block; margin-right: 6px; vertical-align: 1px; }
+      .tag-paraphrase { background: rgba(251, 199, 104, 0.22); color: #4a3508; }
+      .tag-paraphrase .dot { background: var(--color-engagement-gold); }
+      .tag-skip { background: rgba(225, 101, 64, 0.10); color: #88321a; }
+      .tag-skip .dot { background: var(--color-leadgen-red); }
+      .tag-improv { background: rgba(50, 142, 250, 0.10); color: var(--color-deep-indigo); }
+      .tag-improv .dot { background: var(--color-intelligence-blue); }
+      @keyframes tag-in {
+        from { opacity: 0; transform: translateY(4px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .rec-dot, .live-wave > i, .t-cursor, .t-said.fading-in, .live-tag {
+          animation: none !important;
+        }
+        .t-said.fading-in { opacity: 1; }
+        .live-tag { opacity: 1; }
+      }
+    </style>
+  </head>
+  <body class="surface-canvas">
+
+    <!-- Nav -->
+    <header class="site-nav sticky top-0 z-50">
+      <div class="container-x flex items-center justify-between py-3.5">
+        <a href="#" class="flex items-center" aria-label="SpeechPrep — home">
+          <img src="assets/logo-wordmark-dark.png" alt="SpeechPrep" style="height: 24px; width: auto; display: block;" />
+        </a>
+        <nav class="hidden md:flex items-center gap-1">
+          <a href="#how" class="nav-link">How it works</a>
+          <a href="#features" class="nav-link">What you get</a>
+          <a href="#evidence" class="nav-link">Evidence</a>
+          <a href="#pricing" class="nav-link">Pricing</a>
+        </nav>
+        <div class="flex items-center gap-2">
+          <a href="app.html" class="btn-ghost hidden sm:inline-flex">Open app</a>
+          <a href="#cta" class="btn-primary">Begin</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Hero -->
+    <section class="relative overflow-hidden">
+      <div class="hero-bg"></div>
+      <div class="container-x relative z-10 pt-24 pb-24 md:pt-32 md:pb-28">
+        <div class="max-w-4xl">
+          <span class="text-caption" style="color: var(--color-muted-ash);">Practice your speech before you give it</span>
+          <h1 class="text-display mt-7">
+            The room before<br/><span style="font-weight: 900; font-style: italic; letter-spacing: -0.05em;">THE</span> room.
+          </h1>
+          <p class="mt-8 text-body md:text-subheading max-w-xl" style="color: var(--color-muted-ash);">
+            Upload the speech. Record yourself giving it. SpeechPrep tells you, to the second, which sections ran long &mdash; which lines you skipped &mdash; and which off-script moments were better than what you wrote down.
+          </p>
+
+          <form id="cta" class="mt-10 flex flex-col sm:flex-row gap-3 max-w-lg" onsubmit="event.preventDefault(); document.getElementById('cta-success').classList.remove('hidden'); this.reset();">
+            <label class="sr-only" for="email">Work email</label>
+            <input id="email" type="email" required placeholder="you@yourdomain.com" class="input flex-1" />
+            <button type="submit" class="btn-primary">Begin</button>
+          </form>
+          <p id="cta-success" class="hidden mt-3 text-body-sm" style="color: var(--color-deliver-green)">
+            On the list. We'll be in touch shortly.
+          </p>
+          <p class="mt-4 text-body-sm" style="color: var(--color-muted-ash)">
+            Three sessions free. Then $12 a month, or $19 once.
+          </p>
+        </div>
+
+        <!-- Hero product preview: live recording -->
+        <div class="mt-16 md:mt-20 max-w-2xl floating-card p-7 md:p-9">
+          <!-- Top row: status + timer + section -->
+          <div class="flex items-center justify-between mb-7">
+            <div class="flex items-center gap-2.5">
+              <span class="rec-dot" aria-hidden="true"></span>
+              <span class="text-caption" style="color: var(--color-leadgen-red);">Recording</span>
+              <span class="text-caption" style="color: var(--color-muted-ash);">&middot; The road trip</span>
+            </div>
+            <span id="hero-timer" class="text-body-sm" style="color: var(--color-muted-ash); font-variant-numeric: tabular-nums; letter-spacing: 0.04em;">00:00</span>
+          </div>
+
+          <!-- Live waveform -->
+          <div class="live-wave" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+
+          <!-- Live transcript -->
+          <div class="mt-7">
+            <div class="flex items-baseline justify-between mb-3">
+              <span class="text-caption" style="color: var(--color-muted-ash);">Live transcript</span>
+              <span class="text-caption" style="color: var(--color-muted-ash);"><span id="hero-wpm" style="font-variant-numeric: tabular-nums;">142</span> wpm</span>
+            </div>
+            <p id="hero-transcript" class="transcript-line">
+              <span class="t-said">Sarah and I met on a Tuesday in October.</span>
+              <span class="t-cursor"></span>
+            </p>
+            <div id="hero-tags" class="mt-3 flex gap-2 min-h-[24px]"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Use-cases ticker -->
+    <section class="surface-whisper py-9 overflow-hidden ticker-mask border-y" style="border-color: rgba(17,17,17,0.06);">
+      <div class="container-x">
+        <div class="ticker text-subheading" style="color: var(--color-muted-ash);">
+          <span>Wedding toasts</span><span>&middot;</span>
+          <span>Eulogies</span><span>&middot;</span>
+          <span>Keynote talks</span><span>&middot;</span>
+          <span>Investor pitches</span><span>&middot;</span>
+          <span>Best-man speeches</span><span>&middot;</span>
+          <span>Demo days</span><span>&middot;</span>
+          <span>Valedictorians</span><span>&middot;</span>
+          <span>Board presentations</span><span>&middot;</span>
+          <span>TEDx auditions</span><span>&middot;</span>
+          <span>Toastmasters</span><span>&middot;</span>
+          <span>Sermons</span><span>&middot;</span>
+          <span>Closing arguments</span><span>&middot;</span>
+          <!-- duplicate set for seamless scroll -->
+          <span>Wedding toasts</span><span>&middot;</span>
+          <span>Eulogies</span><span>&middot;</span>
+          <span>Keynote talks</span><span>&middot;</span>
+          <span>Investor pitches</span><span>&middot;</span>
+          <span>Best-man speeches</span><span>&middot;</span>
+          <span>Demo days</span><span>&middot;</span>
+          <span>Valedictorians</span><span>&middot;</span>
+          <span>Board presentations</span><span>&middot;</span>
+          <span>TEDx auditions</span><span>&middot;</span>
+          <span>Toastmasters</span><span>&middot;</span>
+          <span>Sermons</span><span>&middot;</span>
+          <span>Closing arguments</span><span>&middot;</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- The argument: why this exists -->
+    <section class="py-28 md:py-36">
+      <div class="container-narrow">
+        <span class="text-caption" style="color: var(--color-muted-ash);">The premise</span>
+        <h2 class="text-heading-lg mt-5">
+          Most people prepare a speech in a Google Doc and read it aloud twice. Then they go and give it. <span class="serif" style="color: var(--color-phoenix-orange);">That's the whole rehearsal.</span>
+        </h2>
+        <div class="mt-10 grid md:grid-cols-2 gap-x-12 gap-y-6 text-body" style="color: var(--color-muted-ash); max-width: 720px;">
+          <p>
+            Practice happens to nobody. Nothing is timed. Nothing is compared to the script. The lines you keep cutting on the day &mdash; you cut them in rehearsal too. You just didn't notice.
+          </p>
+          <p>
+            And the speech you wrote and the speech you actually give are two different documents that never meet. By the third pass, the room has the second draft in its head and the script still has the first.
+          </p>
+        </div>
+        <p class="mt-10 text-heading" style="max-width: 720px;">
+          SpeechPrep makes the rehearsal <span class="underline-wavy">measurable</span>, and lets the script keep up.
+        </p>
+      </div>
+    </section>
+
+
+    <!-- How it works — narrative steps -->
+    <section id="how" class="py-24 md:py-32 surface-whisper">
+      <div class="container-x">
+        <div class="grid md:grid-cols-12 gap-10">
+          <div class="md:col-span-4">
+            <span class="text-caption" style="color: var(--color-muted-ash);">How it works</span>
+            <h2 class="text-heading-lg mt-5">A rehearsal, captured.</h2>
+            <p class="text-body mt-5" style="color: var(--color-muted-ash);">
+              You don't change how you practice. We just sit in the corner with a stopwatch and a transcript.
+            </p>
+          </div>
+
+          <div class="md:col-span-8 space-y-3">
+            <article class="card-bordered p-7 grid md:grid-cols-12 gap-6 items-start">
+              <div class="md:col-span-1 num-display" style="color: var(--color-muted-ash); opacity: 0.5;">01</div>
+              <div class="md:col-span-11">
+                <h3 class="text-heading-sm">Drop in the speech.</h3>
+                <p class="text-body mt-2" style="color: var(--color-muted-ash);">
+                  Paste it, upload a doc, or import from Drive. Either mark the sections yourself, or let us read it once and propose them.
+                </p>
+              </div>
+            </article>
+            <article class="card-bordered p-7 grid md:grid-cols-12 gap-6 items-start">
+              <div class="md:col-span-1 num-display" style="color: var(--color-muted-ash); opacity: 0.5;">02</div>
+              <div class="md:col-span-11">
+                <h3 class="text-heading-sm">Give the speech.</h3>
+                <p class="text-body mt-2" style="color: var(--color-muted-ash);">
+                  In a teleprompter, or freestyle. Tap a key when something lands, when something falls flat, when you lose your place. We listen, we time, we transcribe.
+                </p>
+              </div>
+            </article>
+            <article class="card-bordered p-7 grid md:grid-cols-12 gap-6 items-start">
+              <div class="md:col-span-1 num-display" style="color: var(--color-muted-ash); opacity: 0.5;">03</div>
+              <div class="md:col-span-11">
+                <h3 class="text-heading-sm">Read what came back.</h3>
+                <p class="text-body mt-2" style="color: var(--color-muted-ash);">
+                  A per-section pacing report. A diff between what you wrote and what you said. A handful of specific notes &mdash; not "speak with confidence," but <span class="serif">"the road-trip story is 32 seconds long. Cut the gas station."</span>
+                </p>
+              </div>
+            </article>
+            <article class="card-bordered p-7 grid md:grid-cols-12 gap-6 items-start">
+              <div class="md:col-span-1 num-display" style="color: var(--color-muted-ash); opacity: 0.5;">04</div>
+              <div class="md:col-span-11">
+                <h3 class="text-heading-sm">Update the script.</h3>
+                <p class="text-body mt-2" style="color: var(--color-muted-ash);">
+                  Accept the ad-libs that worked. The script becomes a living version of the speech &mdash; not the one you wrote on Monday, the one you actually want to give on Saturday.
+                </p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- What you get — large feature blocks, no emoji, dense content -->
+    <section id="features" class="py-28 md:py-36">
+      <div class="container-x">
+        <div class="max-w-2xl">
+          <span class="text-caption" style="color: var(--color-muted-ash);">What you get</span>
+          <h2 class="text-heading-lg mt-5">Specifics, not vibes.</h2>
+        </div>
+
+        <div class="mt-16 grid lg:grid-cols-12 gap-5">
+          <!-- Feature 1: Section timing -->
+          <article class="lg:col-span-7 p-10 md:p-12" style="background: var(--color-petal-pink); border-radius: 16px;">
+            <span class="badge" style="background: var(--color-canvas-white); color: var(--color-deep-indigo);">Pacing</span>
+            <h3 class="text-heading mt-6" style="max-width: 480px;">Where the speech runs long, in seconds.</h3>
+            <p class="text-body mt-4" style="color: var(--color-deep-indigo); opacity: 0.78; max-width: 460px;">
+              The opening went well. The middle ran two minutes over. You knew that already, sort of. Now it's on a graph.
+            </p>
+            <div class="mt-10 p-6 rounded-xl" style="background: var(--color-canvas-white);">
+              <div class="space-y-5">
+                <div>
+                  <div class="flex justify-between text-body-sm mb-2"><span class="font-medium">Open</span><span style="color: var(--color-muted-ash); font-variant-numeric: tabular-nums;">0:42 / 0:45</span></div>
+                  <div class="marker-bar"><span style="width:93%; background: var(--color-midnight-ink)"></span></div>
+                </div>
+                <div>
+                  <div class="flex justify-between text-body-sm mb-2"><span class="font-medium">The road trip</span><span style="color: var(--color-leadgen-red); font-variant-numeric: tabular-nums;">1:32 / 1:00</span></div>
+                  <div class="marker-bar"><span style="width:100%; background: var(--color-leadgen-red)"></span></div>
+                </div>
+                <div>
+                  <div class="flex justify-between text-body-sm mb-2"><span class="font-medium">Why him</span><span style="color: var(--color-muted-ash); font-variant-numeric: tabular-nums;">0:55 / 1:00</span></div>
+                  <div class="marker-bar"><span style="width:91%; background: var(--color-midnight-ink)"></span></div>
+                </div>
+                <div>
+                  <div class="flex justify-between text-body-sm mb-2"><span class="font-medium">The toast</span><span style="color: var(--color-engagement-gold); font-variant-numeric: tabular-nums;">0:18 / 0:30</span></div>
+                  <div class="marker-bar"><span style="width:60%; background: var(--color-engagement-gold)"></span></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- Feature 2: Diff -->
+          <article class="lg:col-span-5 p-10 md:p-12" style="background: var(--color-subtle-lavender); border-radius: 16px;">
+            <span class="badge" style="background: var(--color-canvas-white); color: var(--color-deep-indigo);">Said vs. written</span>
+            <h3 class="text-heading mt-6">The diff view.</h3>
+            <p class="text-body mt-4" style="color: var(--color-deep-indigo); opacity: 0.78;">
+              Matched lines plain. Paraphrases highlighted. Skipped lines struck through. Ad-libs in their own column.
+            </p>
+            <div class="mt-8 p-5 rounded-xl space-y-1" style="background: var(--color-canvas-white);">
+              <p class="diff-line diff-match">"Thanks for being here tonight."</p>
+              <p class="diff-line diff-paraphrase">"What I want to say is simple"</p>
+              <p class="diff-line diff-skipped">"I had a whole speech prepared."</p>
+              <p class="diff-line diff-improv">+ "But honestly, looking at you two &mdash; I don't need it."</p>
+            </div>
+          </article>
+
+          <!-- Feature 3: Self tagging -->
+          <article class="lg:col-span-4 p-10 md:p-12" style="background: var(--color-mint-green); border-radius: 16px;">
+            <span class="badge" style="background: var(--color-canvas-white); color: #0d3d22;">Live notes</span>
+            <h3 class="text-heading mt-6">Tag what you feel as you feel it.</h3>
+            <p class="text-body mt-4" style="color: #0d3d22; opacity: 0.78;">
+              A single keypress while you record: that landed, that fell flat, I lost my place, come back to this. The coach reads your tags first.
+            </p>
+            <div class="mt-8 grid grid-cols-2 gap-2 text-body-sm">
+              <div class="px-3 py-2.5 rounded-md flex items-center justify-between" style="background: var(--color-canvas-white);">
+                <span>Landed</span>
+                <kbd class="text-caption px-1.5 py-0.5 rounded" style="background: var(--color-whisper-gray);">L</kbd>
+              </div>
+              <div class="px-3 py-2.5 rounded-md flex items-center justify-between" style="background: var(--color-canvas-white);">
+                <span>Flat</span>
+                <kbd class="text-caption px-1.5 py-0.5 rounded" style="background: var(--color-whisper-gray);">F</kbd>
+              </div>
+              <div class="px-3 py-2.5 rounded-md flex items-center justify-between" style="background: var(--color-canvas-white);">
+                <span>Lost place</span>
+                <kbd class="text-caption px-1.5 py-0.5 rounded" style="background: var(--color-whisper-gray);">X</kbd>
+              </div>
+              <div class="px-3 py-2.5 rounded-md flex items-center justify-between" style="background: var(--color-canvas-white);">
+                <span>Callback</span>
+                <kbd class="text-caption px-1.5 py-0.5 rounded" style="background: var(--color-whisper-gray);">C</kbd>
+              </div>
+            </div>
+          </article>
+
+          <!-- Feature 4: Iterative script -->
+          <article class="lg:col-span-4 p-10 md:p-12" style="background: var(--color-canary-yellow); border-radius: 16px;">
+            <span class="badge" style="background: var(--color-canvas-white); color: #5a4310;">Versioning</span>
+            <h3 class="text-heading mt-6">A script that learns.</h3>
+            <p class="text-body mt-4" style="color: #5a4310; opacity: 0.82;">
+              Every session produces a proposed v.next. Accept ad-libs line by line. Roll back if a change made things worse. The whole history stays.
+            </p>
+            <div class="mt-8 p-4 rounded-xl text-body-sm" style="background: var(--color-canvas-white);">
+              <div class="flex items-center justify-between">
+                <span class="badge" style="background: var(--color-whisper-gray); color: var(--color-midnight-ink);">v3 &rarr; v4</span>
+                <span style="color: var(--color-muted-ash);" class="text-caption">3 changes</span>
+              </div>
+              <ul class="mt-3 space-y-1.5" style="font-family: 'Iowan Old Style', Georgia, serif; font-size: 14px; color: var(--color-midnight-ink);">
+                <li>+ "I don't need it."</li>
+                <li>&minus; "the gas station in Bakersfield"</li>
+                <li>~ "pouring" &rarr; "raining sideways"</li>
+              </ul>
+            </div>
+          </article>
+
+          <!-- Feature 5: Two modes -->
+          <article class="lg:col-span-4 p-10 md:p-12 dotgrid" style="background: var(--color-canvas-white); border-radius: 16px; border: 1px solid rgba(17,17,17,0.08);">
+            <span class="badge pill-charcoal">Two modes</span>
+            <h3 class="text-heading mt-6">With the script. Without.</h3>
+            <p class="text-body mt-4" style="color: var(--color-muted-ash);">
+              In teleprompter mode, the script scrolls at your speaking pace. In freestyle, it disappears &mdash; and the diff afterwards tells you how much of it stuck.
+            </p>
+            <div class="mt-8 space-y-2">
+              <div class="card-bordered p-4 text-body-sm flex items-center justify-between">
+                <span><span class="font-medium">Teleprompter</span> &mdash; voice-paced scroll</span>
+                <span class="badge pill-mint">Default</span>
+              </div>
+              <div class="card-bordered p-4 text-body-sm flex items-center justify-between">
+                <span><span class="font-medium">Freestyle</span> &mdash; script hidden</span>
+                <span class="text-caption" style="color: var(--color-muted-ash);">Memorisation</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Editorial pull-quote — the one number that tells the story -->
+    <section id="evidence" class="py-24 md:py-32 surface-ink">
+      <div class="container-narrow">
+        <span class="text-caption" style="color: var(--color-muted-ash);">The point</span>
+        <p class="text-heading-lg mt-5" style="color: var(--color-canvas-white); max-width: 760px;">
+          On average, the speech you give is <span class="serif" style="color: var(--color-cyan-glow); font-style: italic;">eighteen percent</span> different from the speech you wrote. The question is whether the eighteen percent is the part that landed &mdash; or the part that got cut.
+        </p>
+        <p class="text-body mt-8" style="color: var(--color-canvas-white); opacity: 0.55; max-width: 580px;">
+          Three sessions is usually enough to find out.
+        </p>
+      </div>
+    </section>
+
+    <!-- Comparison: what we don't do -->
+    <section class="py-28">
+      <div class="container-x">
+        <div class="max-w-2xl">
+          <span class="text-caption" style="color: var(--color-muted-ash);">Honestly</span>
+          <h2 class="text-heading-lg mt-5">What this isn't.</h2>
+        </div>
+        <div class="mt-12 grid md:grid-cols-3 gap-5">
+          <div class="p-7 card-bordered">
+            <h4 class="text-subheading">Not a meeting coach.</h4>
+            <p class="text-body mt-3" style="color: var(--color-muted-ash);">It doesn't sit in your Zoom calls. There are good tools for that. This one is for the speech you write down before you give it.</p>
+          </div>
+          <div class="p-7 card-bordered">
+            <h4 class="text-subheading">Not a content generator.</h4>
+            <p class="text-body mt-3" style="color: var(--color-muted-ash);">We won't write the speech for you. The whole point is that the words are yours. We help you find which of them work in your own mouth.</p>
+          </div>
+          <div class="p-7 card-bordered">
+            <h4 class="text-subheading">Not a public stage.</h4>
+            <p class="text-body mt-3" style="color: var(--color-muted-ash);">Recordings are encrypted. They're not used to train anything. You can delete them whenever, and we will too.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pricing — confident, not aggressive -->
+    <section id="pricing" class="py-28 surface-whisper">
+      <div class="container-x">
+        <div class="max-w-2xl">
+          <span class="text-caption" style="color: var(--color-muted-ash);">Pricing</span>
+          <h2 class="text-heading-lg mt-5">Three free sessions. Then it depends on you.</h2>
+          <p class="text-body mt-5" style="color: var(--color-muted-ash); max-width: 560px;">
+            One session shows you the timing. Three show you the convergence. We give you all three before asking for anything.
+          </p>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-5 mt-14">
+          <!-- Free -->
+          <div class="p-8 flex flex-col card-bordered">
+            <div class="flex items-baseline justify-between">
+              <h3 class="text-heading-sm">Free</h3>
+              <span class="text-caption" style="color: var(--color-muted-ash);">Start here</span>
+            </div>
+            <div class="mt-7 flex items-baseline gap-1.5">
+              <span class="num-display" style="font-size: 72px;">$0</span>
+            </div>
+            <p class="text-body-sm mt-1" style="color: var(--color-muted-ash);">Three sessions, on the house</p>
+            <ul class="mt-8 space-y-3 text-body-sm" style="color: var(--color-midnight-ink); min-height: 188px;">
+              <li class="flex gap-3"><span style="color: var(--color-muted-ash);">&mdash;</span> Three full sessions</li>
+              <li class="flex gap-3"><span style="color: var(--color-muted-ash);">&mdash;</span> Speeches up to five minutes</li>
+              <li class="flex gap-3"><span style="color: var(--color-muted-ash);">&mdash;</span> Section pacing report</li>
+              <li class="flex gap-3"><span style="color: var(--color-muted-ash);">&mdash;</span> Said-vs-written diff</li>
+              <li class="flex gap-3"><span style="color: var(--color-muted-ash);">&mdash;</span> Audio recording</li>
+            </ul>
+            <a href="#cta" class="btn-light mt-auto text-center">Begin</a>
+          </div>
+
+          <!-- Pro -->
+          <div class="p-8 flex flex-col relative" style="background: var(--color-midnight-ink); color: var(--color-canvas-white); border-radius: 12px;">
+            <div class="flex items-baseline justify-between">
+              <h3 class="text-heading-sm">Practiced</h3>
+              <span class="text-caption" style="opacity: 0.6;">For repeat speakers</span>
+            </div>
+            <div class="mt-7 flex items-baseline gap-1.5">
+              <span class="num-display" style="font-size: 72px;">$12</span>
+              <span class="text-body-sm" style="opacity: 0.6;">/ month</span>
+            </div>
+            <p class="text-body-sm mt-1" style="opacity: 0.6;">Or $96 a year &mdash; two months free</p>
+            <ul class="mt-8 space-y-3 text-body-sm" style="min-height: 188px;">
+              <li class="flex gap-3"><span style="opacity: 0.5;">&mdash;</span> Unlimited sessions</li>
+              <li class="flex gap-3"><span style="opacity: 0.5;">&mdash;</span> Speeches up to sixty minutes</li>
+              <li class="flex gap-3"><span style="opacity: 0.5;">&mdash;</span> Audio and video</li>
+              <li class="flex gap-3"><span style="opacity: 0.5;">&mdash;</span> Live keypress tagging</li>
+              <li class="flex gap-3"><span style="opacity: 0.5;">&mdash;</span> Iterative script versioning</li>
+              <li class="flex gap-3"><span style="opacity: 0.5;">&mdash;</span> Trends across speeches</li>
+              <li class="flex gap-3"><span style="opacity: 0.5;">&mdash;</span> PDF export and share links</li>
+            </ul>
+            <a href="#cta" class="mt-auto text-center" style="background: var(--color-canvas-white); color: var(--color-midnight-ink); border-radius: 8px; padding: 13px 20px; font-weight: 500; font-size: 15px;">Subscribe</a>
+          </div>
+
+          <!-- One-shot -->
+          <div class="p-8 flex flex-col card-bordered">
+            <div class="flex items-baseline justify-between">
+              <h3 class="text-heading-sm">Single speech</h3>
+              <span class="text-caption" style="color: var(--color-muted-ash);">One-time pass</span>
+            </div>
+            <div class="mt-7 flex items-baseline gap-1.5">
+              <span class="num-display" style="font-size: 72px;">$19</span>
+              <span class="text-body-sm" style="color: var(--color-muted-ash);">once</span>
+            </div>
+            <p class="text-body-sm mt-1" style="color: var(--color-muted-ash);">Seven days, one speech, no card after</p>
+            <ul class="mt-8 space-y-3 text-body-sm" style="color: var(--color-midnight-ink); min-height: 188px;">
+              <li class="flex gap-3"><span style="color: var(--color-muted-ash);">&mdash;</span> Unlimited sessions for a week</li>
+              <li class="flex gap-3"><span style="color: var(--color-muted-ash);">&mdash;</span> Everything in Practiced</li>
+              <li class="flex gap-3"><span style="color: var(--color-muted-ash);">&mdash;</span> One speech, locked in</li>
+              <li class="flex gap-3"><span style="color: var(--color-muted-ash);">&mdash;</span> No subscription, no auto-renew</li>
+              <li class="flex gap-3"><span style="color: var(--color-muted-ash);">&mdash;</span> We delete the recording after, if you want</li>
+            </ul>
+            <a href="#cta" class="btn-light mt-auto text-center">Buy the pass</a>
+          </div>
+        </div>
+
+        <p class="mt-12 text-body-sm" style="color: var(--color-muted-ash);">
+          Coaching a team or running a class? <a href="#" style="color: var(--color-midnight-ink); text-decoration: underline; text-underline-offset: 4px;">There's a Coach plan for that.</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="py-28 md:py-36">
+      <div class="container-x grid md:grid-cols-12 gap-10">
+        <div class="md:col-span-4">
+          <span class="text-caption" style="color: var(--color-muted-ash);">Questions</span>
+          <h2 class="text-heading-lg mt-5">The reasonable ones.</h2>
+          <p class="text-body mt-5" style="color: var(--color-muted-ash);">
+            If yours isn't here, we read every email at <a href="mailto:hello@speechprep.ai" style="color: var(--color-midnight-ink); text-decoration: underline; text-underline-offset: 4px;">hello@speechprep.ai</a>.
+          </p>
+        </div>
+        <div class="md:col-span-8 grid-faq divide-y" style="border-color: rgba(17,17,17,0.1);">
+          <details class="py-7" open>
+            <summary class="flex justify-between items-baseline gap-6">
+              <span class="text-subheading">What happens to my recording?</span>
+              <svg class="chev shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none" style="transition: transform 220ms ease; color: var(--color-muted-ash);" aria-hidden="true"><path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="text-body mt-4" style="color: var(--color-muted-ash); max-width: 620px;">
+              Encrypted at rest, never used for training, ours to host but yours to delete. Default retention is ninety days; one click and it's gone sooner.
+            </p>
+          </details>
+          <details class="py-7">
+            <summary class="flex justify-between items-baseline gap-6">
+              <span class="text-subheading">Do I have to write a script first?</span>
+              <svg class="chev shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none" style="transition: transform 220ms ease; color: var(--color-muted-ash);" aria-hidden="true"><path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="text-body mt-4" style="color: var(--color-muted-ash); max-width: 620px;">
+              No. Bullet points work. So does a paragraph. We'll structure it into sections and the diff still tells you what stuck.
+            </p>
+          </details>
+          <details class="py-7">
+            <summary class="flex justify-between items-baseline gap-6">
+              <span class="text-subheading">How honest is the AI feedback?</span>
+              <svg class="chev shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none" style="transition: transform 220ms ease; color: var(--color-muted-ash);" aria-hidden="true"><path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="text-body mt-4" style="color: var(--color-muted-ash); max-width: 620px;">
+              Pacing is exact &mdash; it's just arithmetic on a transcript. The qualitative coaching is genuinely useful for structure, clarity, and rhythm. It is not a human coach. We won't pretend it is.
+            </p>
+          </details>
+          <details class="py-7">
+            <summary class="flex justify-between items-baseline gap-6">
+              <span class="text-subheading">Does it work on my phone?</span>
+              <svg class="chev shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none" style="transition: transform 220ms ease; color: var(--color-muted-ash);" aria-hidden="true"><path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="text-body mt-4" style="color: var(--color-muted-ash); max-width: 620px;">
+              Yes, in any modern mobile browser. Native apps later this year.
+            </p>
+          </details>
+          <details class="py-7">
+            <summary class="flex justify-between items-baseline gap-6">
+              <span class="text-subheading">Can someone else watch the session and leave notes?</span>
+              <svg class="chev shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none" style="transition: transform 220ms ease; color: var(--color-muted-ash);" aria-hidden="true"><path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="text-body mt-4" style="color: var(--color-muted-ash); max-width: 620px;">
+              Pro accounts can generate a private share link. Reviewers leave timestamped comments without making an account.
+            </p>
+          </details>
+          <details class="py-7">
+            <summary class="flex justify-between items-baseline gap-6">
+              <span class="text-subheading">Languages?</span>
+              <svg class="chev shrink-0" width="14" height="14" viewBox="0 0 14 14" fill="none" style="transition: transform 220ms ease; color: var(--color-muted-ash);" aria-hidden="true"><path d="M3 5.5L7 9.5L11 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </summary>
+            <p class="text-body mt-4" style="color: var(--color-muted-ash); max-width: 620px;">
+              English at launch. Spanish, French, German, Portuguese before the end of the year.
+            </p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="pb-28">
+      <div class="container-x">
+        <div class="surface-ink rounded-2xl p-12 md:p-20 relative overflow-hidden">
+          <div class="absolute -top-32 -right-32 h-[28rem] w-[28rem] rounded-full" style="background: var(--gradient-phoenix-orange); filter: blur(60px); opacity: 0.55;"></div>
+          <div class="absolute -bottom-32 -left-20 h-80 w-80 rounded-full" style="background: var(--gradient-cyan-glow); filter: blur(70px); opacity: 0.35;"></div>
+          <div class="relative z-10 max-w-3xl">
+            <h2 class="text-heading-lg" style="color: var(--color-canvas-white)">
+              The speech you give next is one of the few that actually matters. <span class="serif" style="color: var(--color-cyan-glow);">Don't wing it.</span>
+            </h2>
+            <form class="mt-10 flex flex-col sm:flex-row gap-3 max-w-lg" onsubmit="event.preventDefault(); document.getElementById('cta-success-2').classList.remove('hidden'); this.reset();">
+              <input type="email" required placeholder="you@yourdomain.com" class="input flex-1" style="background: rgba(255,255,255,0.06); color: var(--color-canvas-white); border-color: rgba(255,255,255,0.18);" />
+              <button type="submit" class="btn-light">Begin, free</button>
+            </form>
+            <p id="cta-success-2" class="hidden text-body-sm mt-3" style="color: var(--color-mint-green)">On the list. We'll be in touch shortly.</p>
+            <p class="mt-5 text-body-sm" style="color: var(--color-canvas-white); opacity: 0.55;">
+              Three sessions. No card. Roughly twelve minutes from now you have a pacing report.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="pb-16">
+      <div class="container-x">
+        <div class="grid md:grid-cols-12 gap-10 pt-12 border-t" style="border-color: rgba(17,17,17,0.1);">
+          <div class="md:col-span-5">
+            <img src="assets/logo-wordmark-dark.png" alt="SpeechPrep" style="height: 26px; width: auto; display: block;" />
+            <p class="text-body mt-5 max-w-xs" style="color: var(--color-muted-ash);">
+              The rehearsal room for people who actually rehearse.
+            </p>
+          </div>
+          <div class="md:col-span-2">
+            <div class="text-caption mb-4" style="color: var(--color-muted-ash);">Product</div>
+            <ul class="space-y-2.5 text-body-sm">
+              <li><a href="#how" style="color: var(--color-midnight-ink);">How it works</a></li>
+              <li><a href="#features" style="color: var(--color-midnight-ink);">What you get</a></li>
+              <li><a href="#pricing" style="color: var(--color-midnight-ink);">Pricing</a></li>
+              <li><a href="#" style="color: var(--color-midnight-ink);">Changelog</a></li>
+            </ul>
+          </div>
+          <div class="md:col-span-2">
+            <div class="text-caption mb-4" style="color: var(--color-muted-ash);">For</div>
+            <ul class="space-y-2.5 text-body-sm">
+              <li><a href="#" style="color: var(--color-midnight-ink);">Wedding toasts</a></li>
+              <li><a href="#" style="color: var(--color-midnight-ink);">Keynote talks</a></li>
+              <li><a href="#" style="color: var(--color-midnight-ink);">Investor pitches</a></li>
+              <li><a href="#" style="color: var(--color-midnight-ink);">Toastmasters</a></li>
+            </ul>
+          </div>
+          <div class="md:col-span-3">
+            <div class="text-caption mb-4" style="color: var(--color-muted-ash);">Company</div>
+            <ul class="space-y-2.5 text-body-sm">
+              <li><a href="#" style="color: var(--color-midnight-ink);">About</a></li>
+              <li><a href="#" style="color: var(--color-midnight-ink);">Privacy</a></li>
+              <li><a href="#" style="color: var(--color-midnight-ink);">Terms</a></li>
+              <li><a href="mailto:hello@speechprep.ai" style="color: var(--color-midnight-ink);">hello@speechprep.ai</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="mt-12 flex flex-col md:flex-row justify-between gap-3 text-caption" style="color: var(--color-muted-ash);">
+          <span>&copy; 2026 SpeechPrep</span>
+          <span class="serif" style="font-style: italic; font-size: 13px;">made for the room before the room</span>
+        </div>
+      </div>
+    </footer>
+
+    <style>
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.85); }
+      }
+    </style>
+
+    <script>
+      (function () {
+        // Tokens drive the live transcript. Each token has a kind that styles
+        // it once placed: said | paraphrased | skipped | improv. A "tag" is
+        // surfaced inline with paraphrased / skipped / improv so the user
+        // sees, in real time, what kind of moment just happened.
+        const tokens = [
+          { kind: 'said',         text: 'Sarah and I met on a Tuesday in October. ' },
+          { kind: 'paraphrased',  text: 'It was raining sideways. ',  tag: { label: 'Paraphrase', cls: 'tag-paraphrase', written: 'pouring' } },
+          { kind: 'skipped',      text: 'And neither of us had an umbrella. ', tag: { label: 'Skipped line', cls: 'tag-skip' } },
+          { kind: 'improv',       text: 'And honestly? I think that’s when I knew. ', tag: { label: 'Ad-lib', cls: 'tag-improv' } },
+          { kind: 'said',         text: 'She laughed. I was a goner.' },
+        ];
+
+        const transcriptEl = document.getElementById('hero-transcript');
+        const cursorEl = transcriptEl ? transcriptEl.querySelector('.t-cursor') : null;
+        const tagsEl = document.getElementById('hero-tags');
+        const timerEl = document.getElementById('hero-timer');
+
+        if (!transcriptEl || !cursorEl || !tagsEl || !timerEl) return;
+
+        const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // Timer ticks up at roughly real time.
+        let elapsed = 0;
+        const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+        timerEl.textContent = fmt(elapsed);
+        const timerHandle = setInterval(() => {
+          elapsed += 1;
+          timerEl.textContent = fmt(elapsed);
+          if (elapsed >= 132) elapsed = 0; // loop with the transcript
+        }, 1000);
+
+        const classFor = {
+          said: 't-said',
+          paraphrased: 't-paraphrased',
+          skipped: 't-skipped',
+          improv: 't-improv',
+        };
+
+        const wordPause = reduceMotion ? 0 : 95;   // ms between words
+        const tokenPause = reduceMotion ? 0 : 380; // ms between tokens
+        const restartPause = 2400;
+
+        function clearAll() {
+          // Wipe everything between the leading whitespace and the cursor.
+          while (transcriptEl.firstChild && transcriptEl.firstChild !== cursorEl) {
+            transcriptEl.removeChild(transcriptEl.firstChild);
+          }
+          tagsEl.innerHTML = '';
+        }
+
+        function appendTag(tag) {
+          if (!tag) return;
+          const el = document.createElement('span');
+          el.className = `live-tag ${tag.cls}`;
+          const dot = document.createElement('span');
+          dot.className = 'dot';
+          el.appendChild(dot);
+          if (tag.written) {
+            el.append(`${tag.label} · written: “${tag.written}”`);
+          } else {
+            el.append(tag.label);
+          }
+          tagsEl.appendChild(el);
+        }
+
+        function typeToken(token, done) {
+          const span = document.createElement('span');
+          span.className = classFor[token.kind] || 't-said';
+          transcriptEl.insertBefore(span, cursorEl);
+
+          if (reduceMotion) {
+            span.textContent = token.text;
+            appendTag(token.tag);
+            done();
+            return;
+          }
+
+          const words = token.text.split(/(\s+)/); // keep spaces
+          let i = 0;
+          (function next() {
+            if (i >= words.length) {
+              appendTag(token.tag);
+              done();
+              return;
+            }
+            span.append(words[i]);
+            i += 1;
+            // Whitespace tokens advance instantly so spacing feels natural.
+            const isSpace = /^\s+$/.test(words[i - 1]);
+            setTimeout(next, isSpace ? 30 : wordPause);
+          })();
+        }
+
+        function runOnce(after) {
+          let idx = 0;
+          (function nextToken() {
+            if (idx >= tokens.length) { after(); return; }
+            const t = tokens[idx];
+            idx += 1;
+            typeToken(t, () => setTimeout(nextToken, tokenPause));
+          })();
+        }
+
+        function loop() {
+          clearAll();
+          runOnce(() => setTimeout(loop, restartPause));
+        }
+
+        // Only animate when the hero is actually on screen.
+        const io = new IntersectionObserver((entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            loop();
+            io.disconnect();
+          }
+        }, { threshold: 0.2 });
+
+        io.observe(transcriptEl);
+      })();
+    </script>
+
+  </body>
+</html>

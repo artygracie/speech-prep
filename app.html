@@ -1,0 +1,2128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SpeechPrep — Workspace</title>
+    <meta name="description" content="The SpeechPrep workspace — record, review, and refine the speech you wrote." />
+    <meta name="robots" content="noindex,nofollow" />
+
+    <link rel="icon" type="image/svg+xml" href="assets/Logo.svg" />
+    <link rel="apple-touch-icon" href="assets/Logo.svg" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+      /* ============================================================
+         Tokens — shared with the landing page so the product feels
+         like a continuation of the marketing site, not a new app.
+         ============================================================ */
+      :root {
+        --color-midnight-ink: #111111;
+        --color-canvas-white: #ffffff;
+        --color-surface-charcoal: #272625;
+        --color-muted-ash: #6d6c6b;
+        --color-whisper-gray: #f4f3ef;
+        --color-light-taupe: #ecebea;
+        --color-phoenix-orange: #e8400d;
+        --gradient-phoenix-orange: radial-gradient(386.06% 162.79% at -13.1926% -17.1008%, rgb(232, 64, 13) 0%, rgb(255, 238, 216) 26.1559%, rgb(208, 178, 255) 84.1533%);
+        --color-cyan-glow: #99fff9;
+        --gradient-cyan-glow: radial-gradient(80.17% 109.2% at 52.1169% 62.5363%, rgb(208, 178, 255) 0%, rgb(198, 236, 233) 35.282%, rgb(153, 255, 249) 96.5565%);
+        --color-deep-indigo: #10054d;
+        --color-petal-pink: #ffd7f0;
+        --color-mint-green: #b7efb2;
+        --color-canary-yellow: #ffef99;
+        --color-subtle-lavender: #e2ddfd;
+        --color-engagement-gold: #fbc768;
+        --color-leadgen-red: #e16540;
+        --color-intelligence-blue: #328efa;
+        --color-deliver-green: #47d096;
+
+        --shadow-subtle: rgba(17, 17, 17, 0.05) 0px 0px 0px 1px inset;
+        --shadow-xl: rgba(17, 17, 17, 0.12) 0px 26px 60px -6px, rgba(17, 17, 17, 0.02) 0px 28px 28px -14px, rgba(17, 17, 17, 0.04) 0px 6px 6px -3px, rgba(17, 17, 17, 0.04) 0px 1px 1px -0.5px;
+        --shadow-subtle-3: rgba(17, 17, 17, 0.04) 0px 1px 2px 0px, rgba(17, 17, 17, 0.04) 0px 4px 8px 0px;
+      }
+
+      html, body { background: var(--color-canvas-white); color: var(--color-midnight-ink); }
+      body {
+        font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-feature-settings: "ss01", "ss02";
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      .serif { font-family: 'Instrument Serif', 'Iowan Old Style', 'Palatino', Georgia, serif; font-weight: 400; font-style: italic; letter-spacing: -0.01em; }
+
+      .text-display { font-size: clamp(40px, 6vw, 64px); line-height: 1; letter-spacing: -0.04em; font-weight: 500; }
+      .text-heading-lg { font-size: clamp(28px, 4vw, 40px); line-height: 1.05; letter-spacing: -0.025em; font-weight: 500; }
+      .text-heading { font-size: clamp(22px, 2.2vw, 28px); line-height: 1.1; letter-spacing: -0.018em; font-weight: 500; }
+      .text-heading-sm { font-size: 20px; line-height: 1.2; letter-spacing: -0.012em; font-weight: 500; }
+      .text-subheading { font-size: 17px; line-height: 1.3; letter-spacing: -0.005em; font-weight: 500; }
+      .text-body { font-size: 15px; line-height: 1.55; }
+      .text-body-sm { font-size: 13.5px; line-height: 1.5; letter-spacing: 0.005em; }
+      .text-caption { font-size: 11px; line-height: 1.3; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
+      .num { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+      .surface-canvas { background: var(--color-canvas-white); }
+      .surface-whisper { background: var(--color-whisper-gray); }
+      .surface-ink { background: var(--color-midnight-ink); color: var(--color-canvas-white); }
+
+      .card { background: var(--color-canvas-white); border-radius: 12px; border: 1px solid rgba(17,17,17,0.08); }
+      .card-elevated { background: var(--color-canvas-white); border-radius: 12px; box-shadow: var(--shadow-subtle-3); }
+
+      .input {
+        background: var(--color-canvas-white);
+        border: 1px solid rgba(17, 17, 17, 0.12);
+        border-radius: 10px;
+        padding: 11px 14px;
+        font-size: 14px;
+        outline: none;
+        transition: border-color 120ms ease;
+        width: 100%;
+      }
+      .input:focus { border-color: var(--color-midnight-ink); }
+      .input-lg { padding: 14px 16px; font-size: 16px; border-radius: 12px; }
+
+      textarea.input { font-family: 'Iowan Old Style', 'Charter', Georgia, serif; line-height: 1.6; resize: vertical; }
+
+      .btn-primary {
+        background: var(--color-midnight-ink); color: var(--color-canvas-white);
+        border-radius: 8px; padding: 10px 16px; font-weight: 500; font-size: 14px;
+        transition: transform 120ms ease, opacity 120ms ease;
+        display: inline-flex; align-items: center; gap: 8px;
+      }
+      .btn-primary:hover { opacity: 0.92; transform: translateY(-1px); }
+      .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+      .btn-light {
+        background: var(--color-canvas-white); color: var(--color-midnight-ink);
+        border-radius: 8px; padding: 10px 16px; font-weight: 500; font-size: 14px;
+        box-shadow: var(--shadow-subtle);
+        display: inline-flex; align-items: center; gap: 8px;
+      }
+      .btn-light:hover { background: var(--color-light-taupe); }
+
+      .btn-ghost {
+        background: transparent; color: var(--color-muted-ash);
+        border-radius: 8px; padding: 8px 12px; font-weight: 500; font-size: 14px;
+        display: inline-flex; align-items: center; gap: 6px;
+      }
+      .btn-ghost:hover { color: var(--color-midnight-ink); background: var(--color-whisper-gray); }
+
+      .btn-danger {
+        background: var(--color-leadgen-red); color: var(--color-canvas-white);
+        border-radius: 8px; padding: 10px 16px; font-weight: 500; font-size: 14px;
+        display: inline-flex; align-items: center; gap: 8px;
+      }
+      .btn-danger:hover { opacity: 0.92; }
+
+      .badge {
+        border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 500;
+        letter-spacing: 0.06em; text-transform: uppercase;
+        display: inline-flex; align-items: center; gap: 6px;
+      }
+      .badge .dot { width: 6px; height: 6px; border-radius: 999px; display: inline-block; }
+      .pill-mint  { background: rgba(71,208,150,0.18); color: #0d4a30; }
+      .pill-mint  .dot { background: var(--color-deliver-green); }
+      .pill-gold  { background: rgba(251,199,104,0.22); color: #4a3508; }
+      .pill-gold  .dot { background: var(--color-engagement-gold); }
+      .pill-red   { background: rgba(225,101,64,0.12); color: #88321a; }
+      .pill-red   .dot { background: var(--color-leadgen-red); }
+      .pill-blue  { background: rgba(50,142,250,0.12); color: var(--color-deep-indigo); }
+      .pill-blue  .dot { background: var(--color-intelligence-blue); }
+      .pill-charcoal { background: var(--color-surface-charcoal); color: var(--color-canvas-white); }
+      .pill-charcoal .dot { background: var(--color-canvas-white); opacity: 0.8; }
+      .pill-soft  { background: rgba(17,17,17,0.04); color: var(--color-midnight-ink); }
+      .pill-soft  .dot { background: var(--color-midnight-ink); }
+
+      kbd {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px; padding: 2px 6px; border-radius: 4px;
+        background: var(--color-whisper-gray);
+        border: 1px solid rgba(17,17,17,0.08);
+        box-shadow: 0 1px 0 rgba(17,17,17,0.04);
+      }
+
+      /* App shell */
+      .shell { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+      @media (max-width: 880px) { .shell { grid-template-columns: 1fr; } .sidenav { display: none; } }
+      .sidenav {
+        background: var(--color-whisper-gray);
+        border-right: 1px solid rgba(17,17,17,0.06);
+        padding: 20px 16px; display: flex; flex-direction: column; gap: 6px;
+        position: sticky; top: 0; height: 100vh;
+      }
+      .sidenav a {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 10px; border-radius: 8px;
+        color: var(--color-muted-ash); font-size: 14px; font-weight: 500;
+      }
+      .sidenav a:hover { background: var(--color-light-taupe); color: var(--color-midnight-ink); }
+      .sidenav a.is-active { background: var(--color-canvas-white); color: var(--color-midnight-ink); box-shadow: var(--shadow-subtle); }
+      .sidenav .group-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-muted-ash); padding: 12px 10px 4px; }
+
+      main.main { min-width: 0; }
+      .main-pad { padding: 36px 40px; }
+      @media (max-width: 880px) { .main-pad { padding: 24px 20px; } }
+
+      .topbar {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 14px 40px;
+        border-bottom: 1px solid rgba(17,17,17,0.06);
+        background: rgba(255,255,255,0.85);
+        backdrop-filter: saturate(140%) blur(8px);
+        position: sticky; top: 0; z-index: 30;
+      }
+      @media (max-width: 880px) { .topbar { padding: 12px 20px; } }
+
+      /* ===== Diff view styling — same colors as the landing page ===== */
+      .diff-line {
+        font-family: 'Iowan Old Style', 'Charter', Georgia, serif;
+        font-size: 16px; line-height: 1.6;
+        padding: 8px 14px; border-radius: 6px;
+        position: relative;
+      }
+      .diff-match { color: var(--color-midnight-ink); }
+      .diff-paraphrase { background: rgba(251, 199, 104, 0.18); color: #4a3508; border-left: 2px solid var(--color-engagement-gold); }
+      .diff-skipped { color: rgba(17,17,17,0.35); text-decoration: line-through; text-decoration-thickness: 1px; }
+      .diff-improv { background: rgba(50, 142, 250, 0.10); color: var(--color-deep-indigo); border-left: 2px solid var(--color-intelligence-blue); font-style: italic; }
+      .diff-line .meta { color: var(--color-muted-ash); font-style: italic; font-size: 13px; }
+
+      /* ===== Marker bar (timing visualisations) ===== */
+      .marker-bar { height: 6px; border-radius: 999px; background: rgba(17,17,17,0.06); overflow: hidden; position: relative; }
+      .marker-bar > span { position: absolute; inset: 0 auto 0 0; border-radius: 999px; }
+
+      /* ===== Live recording — copied from the hero on the landing page ===== */
+      .rec-dot {
+        width: 8px; height: 8px; border-radius: 999px;
+        background: var(--color-leadgen-red); display: inline-block;
+        box-shadow: 0 0 0 0 rgba(225, 101, 64, 0.55);
+        animation: rec-pulse 1.4s ease-out infinite;
+      }
+      @keyframes rec-pulse {
+        0%   { box-shadow: 0 0 0 0 rgba(225, 101, 64, 0.5); }
+        70%  { box-shadow: 0 0 0 9px rgba(225, 101, 64, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(225, 101, 64, 0); }
+      }
+      .live-wave {
+        display: flex; align-items: center; gap: 3px;
+        height: 64px; padding: 0 2px;
+      }
+      .live-wave > i {
+        flex: 1; display: block;
+        background: var(--color-midnight-ink);
+        border-radius: 3px; opacity: 0.85; height: 14%;
+        animation: wave-bar 1.1s ease-in-out infinite;
+        will-change: transform; transform-origin: center;
+      }
+      .live-wave.is-paused > i { animation-play-state: paused; opacity: 0.25; }
+      @keyframes wave-bar {
+        0%, 100% { transform: scaleY(0.18); }
+        50%      { transform: scaleY(1);    }
+      }
+      .transcript-live {
+        font-family: 'Iowan Old Style', 'Charter', Georgia, serif;
+        font-size: 19px; line-height: 1.6;
+        color: var(--color-midnight-ink);
+        min-height: 96px;
+      }
+      .t-cursor {
+        display: inline-block; width: 2px; height: 1.05em;
+        background: var(--color-midnight-ink); vertical-align: -0.15em;
+        margin-left: 2px; animation: caret 1s steps(1) infinite;
+      }
+      @keyframes caret { 50% { opacity: 0; } }
+
+      /* ===== Tag chip flash when a key is pressed during recording ===== */
+      .tag-flash {
+        position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%);
+        z-index: 60;
+        padding: 10px 16px; border-radius: 999px;
+        background: var(--color-midnight-ink); color: var(--color-canvas-white);
+        font-size: 13px; font-weight: 500; letter-spacing: 0.02em;
+        box-shadow: var(--shadow-xl);
+        opacity: 0; pointer-events: none;
+        animation: tag-flash 1.6s ease-out forwards;
+      }
+      @keyframes tag-flash {
+        0%   { opacity: 0; transform: translate(-50%, 12px); }
+        12%  { opacity: 1; transform: translate(-50%, 0); }
+        70%  { opacity: 1; transform: translate(-50%, 0); }
+        100% { opacity: 0; transform: translate(-50%, -12px); }
+      }
+
+      /* ===== Section pill (script editor + recording header) ===== */
+      .section-pill {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 14px; border-radius: 10px;
+        background: var(--color-canvas-white);
+        border: 1px solid rgba(17,17,17,0.08);
+        font-size: 14px;
+      }
+      .section-pill.is-current { box-shadow: 0 0 0 2px var(--color-midnight-ink); border-color: var(--color-midnight-ink); }
+      .section-pill .name { font-weight: 500; }
+
+      /* Hidden by default; toggled via JS */
+      [hidden] { display: none !important; }
+
+      /* Scrollable script panel during recording */
+      .script-panel {
+        background: var(--color-whisper-gray);
+        border-radius: 12px;
+        padding: 24px 28px;
+        max-height: 320px;
+        overflow-y: auto;
+        font-family: 'Iowan Old Style', 'Charter', Georgia, serif;
+        font-size: 17px; line-height: 1.7;
+      }
+      .script-panel mark.current-section {
+        background: rgba(251,199,104,0.45);
+        padding: 2px 0;
+        border-radius: 2px;
+      }
+
+      /* ============================================================
+         Script editor — document-style
+         ============================================================ */
+      .editor-shell { display: flex; flex-direction: column; }
+      .editor-topbar {
+        display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+        padding-bottom: 24px;
+        border-bottom: 1px solid rgba(17,17,17,0.06);
+      }
+      .editor-title-display {
+        font-family: 'Iowan Old Style', 'Charter', Georgia, serif;
+        font-size: clamp(28px, 4vw, 40px);
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        font-weight: 500;
+      }
+
+      .editor-grid {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        gap: 56px;
+        margin-top: 28px;
+        align-items: start;
+      }
+      @media (max-width: 1100px) { .editor-grid { grid-template-columns: 1fr; gap: 32px; } .editor-outline { order: 2; } }
+
+      .editor-outline {
+        position: sticky; top: 90px;
+        padding: 4px 0;
+      }
+      .editor-outline nav { display: grid; gap: 2px; }
+      .outline-link {
+        display: grid; grid-template-columns: auto 1fr auto; gap: 10px;
+        align-items: baseline;
+        padding: 7px 8px; border-radius: 6px;
+        color: var(--color-muted-ash);
+        font-size: 13.5px; line-height: 1.4;
+        text-decoration: none;
+        transition: background 120ms ease, color 120ms ease;
+      }
+      .outline-link:hover { background: var(--color-whisper-gray); color: var(--color-midnight-ink); }
+      .outline-num {
+        font-family: 'Iowan Old Style', Georgia, serif;
+        font-style: italic;
+        font-size: 12px;
+        color: var(--color-muted-ash);
+        font-variant-numeric: tabular-nums;
+      }
+      .outline-name { color: var(--color-midnight-ink); font-weight: 500; }
+      .outline-time {
+        font-size: 11px; letter-spacing: 0.04em; color: var(--color-muted-ash);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .editor-canvas { min-width: 0; }
+
+      .editor-toolbar {
+        display: flex; align-items: center; gap: 6px;
+        padding: 0 0 14px;
+        margin-bottom: 10px;
+      }
+      .editor-toolbar .btn-ghost { padding: 6px 10px; font-size: 13px; }
+
+      .editor-doc {
+        background: var(--color-canvas-white);
+        border: 1px solid rgba(17,17,17,0.08);
+        border-radius: 12px;
+        padding: 56px 64px 64px;
+        min-height: 60vh;
+      }
+      @media (max-width: 880px) { .editor-doc { padding: 32px 28px 40px; } }
+
+      .doc-heading {
+        margin: 36px 0 8px;
+        position: relative;
+      }
+      .doc-heading:first-child { margin-top: 0; }
+      .doc-heading.is-flash::before {
+        content: ""; position: absolute; inset: -8px -12px; border-radius: 8px;
+        background: rgba(251,199,104,0.25);
+        animation: heading-flash 800ms ease-out forwards;
+      }
+      @keyframes heading-flash { to { background: transparent; } }
+
+      .doc-heading-row {
+        display: flex; align-items: baseline; gap: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid rgba(17,17,17,0.06);
+      }
+      .doc-heading-marker {
+        font-family: 'Iowan Old Style', Georgia, serif;
+        font-style: italic;
+        color: var(--color-muted-ash);
+        opacity: 0.5;
+        font-size: 18px;
+        line-height: 1;
+      }
+      .doc-heading-name {
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--color-midnight-ink);
+        outline: none;
+        flex: 1;
+        min-width: 0;
+      }
+      .doc-heading-name:focus { color: var(--color-midnight-ink); }
+      .doc-heading-name:empty::before {
+        content: attr(data-placeholder);
+        color: var(--color-muted-ash);
+        opacity: 0.6;
+      }
+
+      .doc-heading-time {
+        font-size: 11px; font-weight: 500; letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--color-muted-ash);
+        font-variant-numeric: tabular-nums;
+        padding: 4px 8px;
+        border-radius: 6px;
+        background: transparent;
+        cursor: pointer;
+        transition: background 120ms ease, color 120ms ease;
+      }
+      .doc-heading-time:hover { background: var(--color-whisper-gray); color: var(--color-midnight-ink); }
+
+      .doc-heading-remove {
+        opacity: 0; transition: opacity 120ms ease;
+        background: transparent; padding: 4px;
+        color: var(--color-muted-ash);
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .doc-heading:hover .doc-heading-remove { opacity: 1; }
+      .doc-heading-remove:hover { color: var(--color-leadgen-red); background: var(--color-whisper-gray); }
+
+      .doc-paragraph {
+        font-family: 'Iowan Old Style', 'Charter', Georgia, serif;
+        font-size: 19px;
+        line-height: 1.7;
+        color: var(--color-midnight-ink);
+        margin: 16px 0;
+        outline: none;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+      .doc-paragraph:empty::before {
+        content: attr(data-placeholder);
+        color: var(--color-muted-ash);
+        opacity: 0.6;
+        pointer-events: none;
+      }
+      .doc-paragraph:focus { background: rgba(251,199,104,0.06); border-radius: 4px; }
+
+      .editor-statusbar {
+        display: flex; align-items: center; gap: 8px;
+        padding: 16px 4px 0;
+        border-top: 1px solid rgba(17,17,17,0.06);
+        margin-top: 28px;
+        color: var(--color-muted-ash);
+      }
+
+      /* Script document — shown as one continuous read with section headings */
+      .script-doc {
+        background: var(--color-canvas-white);
+        border-radius: 12px;
+        border: 1px solid rgba(17,17,17,0.06);
+        padding: 8px 36px 36px;
+      }
+      .script-section {
+        padding: 28px 0 8px;
+        border-top: 1px solid rgba(17,17,17,0.06);
+      }
+      .script-section:first-child { border-top: 0; }
+      .script-section-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+      .script-section-name {
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--color-muted-ash);
+      }
+      .script-section-meta {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--color-muted-ash);
+      }
+      .script-section-body {
+        font-family: 'Iowan Old Style', 'Charter', Georgia, serif;
+        font-size: 18px;
+        line-height: 1.65;
+        color: var(--color-midnight-ink);
+      }
+
+      /* Subtle wave for empty states */
+      .empty-state {
+        border: 1px dashed rgba(17,17,17,0.15);
+        border-radius: 12px;
+        padding: 48px;
+        text-align: center;
+      }
+
+      /* Stat card on the dashboard */
+      .stat-card { padding: 20px; border-radius: 12px; background: var(--color-whisper-gray); }
+      .stat-num { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 44px; line-height: 1; }
+
+      .clickable-row {
+        display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.5fr; gap: 16px; align-items: center;
+        padding: 16px 18px;
+        border-radius: 10px;
+        transition: background 120ms ease;
+      }
+      .clickable-row:hover { background: var(--color-whisper-gray); cursor: pointer; }
+
+      /* Versions list */
+      .version-row { display: grid; grid-template-columns: 80px 1fr auto; gap: 14px; padding: 14px 0; border-top: 1px solid rgba(17,17,17,0.06); align-items: baseline; }
+      .version-row:first-child { border-top: 0; }
+      .version-tag { font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 26px; }
+
+      /* Range slider used to scrub timing on report */
+      input[type="range"].timeline {
+        -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+        background: rgba(17,17,17,0.08); border-radius: 999px; outline: none;
+      }
+      input[type="range"].timeline::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 999px; background: var(--color-midnight-ink); border: 2px solid var(--color-canvas-white); box-shadow: 0 1px 4px rgba(0,0,0,0.2); cursor: pointer; }
+      input[type="range"].timeline::-moz-range-thumb { width: 14px; height: 14px; border-radius: 999px; background: var(--color-midnight-ink); border: 2px solid var(--color-canvas-white); cursor: pointer; }
+
+      /* Toast */
+      .toast {
+        position: fixed; bottom: 24px; right: 24px; z-index: 80;
+        padding: 12px 16px; border-radius: 10px;
+        background: var(--color-midnight-ink); color: var(--color-canvas-white);
+        font-size: 13px; box-shadow: var(--shadow-xl);
+        opacity: 0; transform: translateY(8px);
+        transition: opacity 200ms ease, transform 200ms ease;
+        pointer-events: none;
+      }
+      .toast.is-open { opacity: 1; transform: translateY(0); }
+
+      @media (prefers-reduced-motion: reduce) {
+        .rec-dot, .live-wave > i, .t-cursor, .tag-flash { animation: none !important; }
+        .tag-flash { opacity: 1; }
+      }
+    </style>
+  </head>
+  <body class="surface-canvas">
+
+    <!-- Tag flash element, positioned by JS -->
+    <div id="tag-flash" hidden></div>
+    <div id="toast" class="toast"></div>
+
+    <div class="shell">
+
+      <!-- ======== SIDENAV ======== -->
+      <aside class="sidenav">
+        <a href="index.html" aria-label="Home" style="padding: 4px 6px; margin-bottom: 12px;">
+          <img src="assets/logo-wordmark-dark.png" alt="SpeechPrep" style="height: 22px; width: auto;" />
+        </a>
+
+        <a href="#/" data-route="/" class="route-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M5 10v10h14V10"/></svg>
+          Speeches
+        </a>
+        <a href="#/library" data-route="/library" class="route-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          All sessions
+        </a>
+        <a href="#/trends" data-route="/trends" class="route-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
+          Trends
+        </a>
+
+        <div class="group-label">Account</div>
+        <a href="#/settings" data-route="/settings" class="route-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </a>
+        <a href="#/billing" data-route="/billing" class="route-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="13" rx="2"/><line x1="2" y1="11" x2="22" y2="11"/></svg>
+          Billing
+        </a>
+
+        <div style="margin-top: auto; padding: 12px 10px;">
+          <div class="text-body-sm" style="font-weight:500;">Grace Williams</div>
+          <div class="text-caption" style="color: var(--color-muted-ash);">Free plan · 2 of 3 used</div>
+        </div>
+      </aside>
+
+      <!-- ======== MAIN ======== -->
+      <main class="main">
+        <div class="topbar">
+          <div id="topbar-context" class="text-body-sm" style="color: var(--color-muted-ash);">Speeches</div>
+          <div class="flex items-center gap-2">
+            <a href="index.html" class="btn-ghost">Marketing site</a>
+            <button class="btn-primary" id="topbar-cta">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              New speech
+            </button>
+          </div>
+        </div>
+
+        <div id="view" class="main-pad"></div>
+      </main>
+    </div>
+
+    <!-- ============================================================
+         MOCK DATA + ROUTER + RENDERERS
+         All in one IIFE. No backend, no build step.
+         ============================================================ -->
+    <script>
+    (function () {
+      'use strict';
+
+      // ---------- Utilities ----------
+      const $ = (sel, root = document) => root.querySelector(sel);
+      const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2,'0')}:${String(Math.floor(s % 60)).padStart(2,'0')}`;
+      const signTime = (s) => (s >= 0 ? '+' : '−') + fmtTime(Math.abs(s));
+      const escapeHtml = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      const fmtRel = (iso) => {
+        const d = new Date(iso); const now = Date.now();
+        const diff = (now - d.getTime()) / 1000;
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+        if (diff < 86400 * 7) return `${Math.floor(diff/86400)}d ago`;
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      };
+
+      function toast(msg) {
+        const el = $('#toast');
+        el.textContent = msg;
+        el.classList.add('is-open');
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => el.classList.remove('is-open'), 2200);
+      }
+
+      function flashTag(label, kindClass) {
+        const f = $('#tag-flash');
+        f.className = '';
+        f.removeAttribute('hidden');
+        f.innerHTML = `<span class="tag-flash"><span class="dot" style="display:inline-block;width:6px;height:6px;border-radius:999px;background:var(--color-canvas-white);opacity:0.8;margin-right:8px;vertical-align:1px;"></span>${label}</span>`;
+        // Restart the animation by replacing the node
+        const inner = f.firstElementChild;
+        inner.style.animation = 'none'; void inner.offsetWidth; inner.style.animation = '';
+        clearTimeout(flashTag._t);
+        flashTag._t = setTimeout(() => f.setAttribute('hidden', ''), 1800);
+      }
+
+      // ---------- Mock data ----------
+      // The wedding-toast example threads through every screen — same one
+      // featured on the landing page, so the demo has narrative continuity.
+      const STATE = {
+        user: { name: 'Grace Williams', plan: 'free', sessionsUsed: 2, sessionsLimit: 3 },
+        speeches: [
+          {
+            id: 'wedding-toast',
+            title: 'Wedding toast for Sarah & Jonas',
+            occasion: 'Wedding',
+            createdAt: '2026-04-22T14:00:00Z',
+            currentVersion: 3,
+            versions: [
+              { v: 1, createdAt: '2026-04-22T14:00:00Z', summary: 'First draft, dictated' },
+              { v: 2, createdAt: '2026-04-26T10:30:00Z', summary: 'Tightened the road-trip story' },
+              { v: 3, createdAt: '2026-05-01T22:11:00Z', summary: 'Added the gas-station detour back, rewrote the close' }
+            ],
+            sections: [
+              { id: 'open',     name: 'Open',          targetSec: 45, body: "Sarah and I met on a Tuesday in October. It was pouring rain. Neither of us had an umbrella. She laughed at me trying to keep my coffee dry. I was a goner." },
+              { id: 'roadtrip', name: 'The road trip', targetSec: 60, body: "Two months later we drove from San Francisco to Bakersfield to see her grandmother. We stopped at a gas station near Coalinga. I called my brother that night. He told me to keep her." },
+              { id: 'whyhim',   name: 'Why him',       targetSec: 60, body: "Jonas — when Sarah introduced you, the first thing she said was that you made her quieter. Not because you took her voice. Because around you, she didn't have to perform. That's rare." },
+              { id: 'toast',    name: 'The toast',     targetSec: 30, body: "So here's to Sarah, who taught me what it looks like to actually listen. And to Jonas, for making her listen back. Cheers." }
+            ],
+            sessions: [
+              {
+                id: 's1', date: '2026-04-22T14:30:00Z', mode: 'with-script', durationSec: 195,
+                versionAtTime: 1,
+                sectionStats: [ { id:'open', actual: 38 }, { id:'roadtrip', actual: 75 }, { id:'whyhim', actual: 62 }, { id:'toast', actual: 20 } ]
+              },
+              {
+                id: 's2', date: '2026-04-27T11:20:00Z', mode: 'freestyle', durationSec: 212,
+                versionAtTime: 2,
+                sectionStats: [ { id:'open', actual: 42 }, { id:'roadtrip', actual: 92 }, { id:'whyhim', actual: 60 }, { id:'toast', actual: 18 } ]
+              }
+            ]
+          },
+          {
+            id: 'investor-pitch',
+            title: 'Series A pitch — opening five minutes',
+            occasion: 'Pitch',
+            createdAt: '2026-04-30T09:00:00Z',
+            currentVersion: 1,
+            versions: [
+              { v: 1, createdAt: '2026-04-30T09:00:00Z', summary: 'First draft' }
+            ],
+            sections: [
+              { id: 'hook',    name: 'Hook',                 targetSec: 30, body: "Eighty percent of teams who pitch us have never timed a single rehearsal. We think that's where the real edge is." },
+              { id: 'problem', name: 'The problem',          targetSec: 60, body: "Speech prep is the last serious creative work that happens entirely without feedback. You write it, you say it, you hope." },
+              { id: 'solution',name: 'How we close the gap', targetSec: 90, body: "We pair the script and the recording. Every rehearsal yields a measurable diff. The doc converges with the room." },
+              { id: 'ask',     name: 'The ask',              targetSec: 30, body: "We're raising a small round to grow the team we already have. You in?" }
+            ],
+            sessions: []
+          }
+        ]
+      };
+
+      // Diff data: a hand-curated alignment between the v3 script of the
+      // wedding toast and the transcript of session #2. Real version would
+      // run Needleman–Wunsch on tokens.
+      const DIFF_S2 = {
+        sectionId: 'roadtrip',
+        rows: [
+          { kind: 'match',      written: 'Two months later we drove from San Francisco to Bakersfield to see her grandmother.',  spoken: 'Two months later we drove from San Francisco to Bakersfield to see her grandmother.' },
+          { kind: 'paraphrase', written: 'We stopped at a gas station near Coalinga.', spoken: "We stopped at this gas station, middle of nowhere — Coalinga." },
+          { kind: 'skipped',    written: 'I called my brother that night.', spoken: null },
+          { kind: 'improv',     written: null, spoken: "And honestly? I think that's when I knew." },
+          { kind: 'paraphrase', written: 'He told me to keep her.', spoken: "He just said, 'finally.'" }
+        ],
+        coachNote: "You ran 32 seconds long here. The audience was leaning in — the side detour about the gas station is what cost you. Cut it, keep the ad-lib, and the section comes in at 1:08."
+      };
+
+      const TAG_DEFS = [
+        { key: 'l', code: 'KeyL', kind: 'landed',     label: 'Landed' },
+        { key: 'f', code: 'KeyF', kind: 'flat',       label: 'Flat' },
+        { key: 'x', code: 'KeyX', kind: 'lost',       label: 'Lost place' },
+        { key: 'c', code: 'KeyC', kind: 'callback',   label: 'Callback' }
+      ];
+
+      // ---------- Router ----------
+      const routes = [
+        { match: /^\/?$/,                              view: viewSpeeches,        ctx: 'Speeches' },
+        { match: /^\/library\/?$/,                     view: viewLibrary,         ctx: 'All sessions' },
+        { match: /^\/trends\/?$/,                      view: viewTrends,          ctx: 'Trends' },
+        { match: /^\/settings\/?$/,                    view: viewSettings,        ctx: 'Settings' },
+        { match: /^\/billing\/?$/,                     view: viewBilling,         ctx: 'Billing' },
+        { match: /^\/speeches\/new\/?$/,               view: viewNewSpeech,       ctx: 'New speech' },
+        { match: /^\/speeches\/([^/]+)\/?$/,           view: viewSpeechDetail,    ctx: speechCtx },
+        { match: /^\/speeches\/([^/]+)\/edit\/?$/,     view: viewScriptEditor,    ctx: speechCtx },
+        { match: /^\/speeches\/([^/]+)\/record\/?$/,   view: viewRecord,          ctx: speechCtx },
+        { match: /^\/speeches\/([^/]+)\/sessions\/([^/]+)\/?$/, view: viewSessionReport, ctx: sessionCtx },
+        { match: /^\/speeches\/([^/]+)\/versions\/?$/, view: viewVersions,        ctx: speechCtx }
+      ];
+
+      function speechCtx(speechId) {
+        const s = STATE.speeches.find(x => x.id === speechId);
+        return s ? s.title : 'Speech';
+      }
+      function sessionCtx(speechId) {
+        const s = STATE.speeches.find(x => x.id === speechId);
+        return s ? `${s.title} · Session report` : 'Session';
+      }
+
+      function navigate(path) {
+        if (location.hash !== '#' + path) location.hash = path;
+        else render();
+      }
+      window.navigate = navigate;
+
+      function currentPath() {
+        const h = location.hash.replace(/^#/, '') || '/';
+        return h.startsWith('/') ? h : '/' + h;
+      }
+
+      function render() {
+        const path = currentPath();
+        const root = $('#view');
+        root.innerHTML = '';
+
+        // Highlight active sidenav link
+        document.querySelectorAll('.route-link').forEach(a => {
+          const r = a.getAttribute('data-route');
+          let active = false;
+          if (r === '/' && path === '/') active = true;
+          else if (r !== '/' && path.startsWith(r)) active = true;
+          a.classList.toggle('is-active', active);
+        });
+
+        for (const r of routes) {
+          const m = path.match(r.match);
+          if (m) {
+            const args = m.slice(1);
+            $('#topbar-context').textContent = typeof r.ctx === 'function' ? r.ctx(...args) : r.ctx;
+
+            // Topbar CTA changes per route
+            const cta = $('#topbar-cta');
+            if (path.startsWith('/speeches/') && args[0] && !path.endsWith('/edit') && !path.endsWith('/record')) {
+              cta.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>Record session`;
+              cta.onclick = () => navigate(`/speeches/${args[0]}/record`);
+            } else {
+              cta.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New speech`;
+              cta.onclick = () => navigate('/speeches/new');
+            }
+
+            r.view(root, ...args);
+            window.scrollTo(0, 0);
+            return;
+          }
+        }
+        // Fallback
+        viewSpeeches(root);
+      }
+
+      window.addEventListener('hashchange', render);
+
+      // ============================================================
+      //   VIEW: Speeches dashboard
+      // ============================================================
+      function viewSpeeches(root) {
+        const speeches = STATE.speeches;
+        root.innerHTML = `
+          <div style="display:flex; align-items:end; justify-content:space-between; gap: 16px;">
+            <div>
+              <h1 class="text-display">Your speeches</h1>
+              <p class="text-body mt-3" style="color: var(--color-muted-ash); max-width: 540px;">
+                The room before the room. Pick up where you left off, or start something new.
+              </p>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-4 mt-10">
+            <div class="stat-card">
+              <div class="text-caption" style="color: var(--color-muted-ash);">Sessions this week</div>
+              <div class="stat-num mt-2">${speeches.reduce((a,s)=>a+s.sessions.length,0)}</div>
+            </div>
+            <div class="stat-card">
+              <div class="text-caption" style="color: var(--color-muted-ash);">Active speeches</div>
+              <div class="stat-num mt-2">${speeches.length}</div>
+            </div>
+            <div class="stat-card">
+              <div class="text-caption" style="color: var(--color-muted-ash);">Free sessions left</div>
+              <div class="stat-num mt-2">${Math.max(0, STATE.user.sessionsLimit - STATE.user.sessionsUsed)}<span style="font-size:18px; opacity:0.4;"> / ${STATE.user.sessionsLimit}</span></div>
+            </div>
+          </div>
+
+          <div class="card mt-10" style="overflow: hidden;">
+            <div class="clickable-row" style="padding: 14px 18px; border-bottom: 1px solid rgba(17,17,17,0.06); background: var(--color-whisper-gray);">
+              <span class="text-caption" style="color: var(--color-muted-ash);">Title</span>
+              <span class="text-caption" style="color: var(--color-muted-ash);">Last activity</span>
+              <span class="text-caption" style="color: var(--color-muted-ash);">Sessions</span>
+              <span></span>
+            </div>
+            ${speeches.map(sp => {
+              const last = sp.sessions[sp.sessions.length - 1];
+              return `
+                <div class="clickable-row" data-href="/speeches/${sp.id}">
+                  <div>
+                    <div class="text-subheading">${escapeHtml(sp.title)}</div>
+                    <div class="text-caption mt-1" style="color: var(--color-muted-ash);">${escapeHtml(sp.occasion)} · v${sp.currentVersion}</div>
+                  </div>
+                  <div class="text-body-sm" style="color: var(--color-muted-ash);">${last ? fmtRel(last.date) : 'Never recorded'}</div>
+                  <div class="text-body-sm" style="color: var(--color-muted-ash);">${sp.sessions.length}</div>
+                  <div style="text-align: right;">
+                    <span class="text-body-sm" style="color: var(--color-muted-ash);">→</span>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          ${speeches.length === 0 ? `
+            <div class="empty-state mt-10">
+              <p class="text-heading-sm">Nothing yet.</p>
+              <p class="text-body mt-3" style="color: var(--color-muted-ash);">Drop in a speech to get started.</p>
+              <button class="btn-primary mt-6" data-href="/speeches/new">Begin</button>
+            </div>` : ''}
+        `;
+
+        root.querySelectorAll('[data-href]').forEach(el => {
+          el.addEventListener('click', () => navigate(el.getAttribute('data-href')));
+        });
+      }
+
+      // ============================================================
+      //   VIEW: New speech
+      // ============================================================
+      function viewNewSpeech(root) {
+        root.innerHTML = `
+          <div style="max-width: 720px;">
+            <a href="#/" class="text-body-sm" style="color: var(--color-muted-ash);">← Back to speeches</a>
+            <h1 class="text-heading-lg mt-4">A new speech.</h1>
+            <p class="text-body mt-3" style="color: var(--color-muted-ash);">
+              What's it for? Drop the script in below. We'll suggest section breaks once you're in the editor — you can keep them, move them, or ignore them.
+            </p>
+
+            <form id="new-speech-form" class="mt-8" style="display: grid; gap: 20px;">
+              <div>
+                <label class="text-caption" style="color: var(--color-muted-ash);">Title</label>
+                <input class="input input-lg mt-2" name="title" required placeholder="e.g. Best-man speech for Tom" autocomplete="off" />
+              </div>
+              <div>
+                <label class="text-caption" style="color: var(--color-muted-ash);">Occasion <span style="text-transform: none; letter-spacing: 0; color: var(--color-muted-ash); opacity: 0.7;">— optional</span></label>
+                <input class="input input-lg mt-2" name="occasion" placeholder="Wedding, conference talk, eulogy, pitch…" autocomplete="off" />
+              </div>
+              <div>
+                <label class="text-caption" style="color: var(--color-muted-ash);">The speech</label>
+                <textarea class="input input-lg mt-2" name="body" rows="14" placeholder="Paste it here. Or start from scratch — we'll drop you straight into the editor." style="font-family: 'Iowan Old Style', Georgia, serif; font-size: 16px; line-height: 1.65;"></textarea>
+                <p class="text-caption mt-2" style="color: var(--color-muted-ash);">Anything from a few bullets to a full draft. Section breaks are added in the editor.</p>
+              </div>
+              <div class="flex gap-3 items-center">
+                <button type="submit" class="btn-primary">Open editor</button>
+                <a href="#/" class="btn-ghost">Cancel</a>
+              </div>
+            </form>
+          </div>
+        `;
+
+        $('#new-speech-form').addEventListener('submit', (e) => {
+          e.preventDefault();
+          const f = e.target;
+          const title = f.title.value.trim();
+          const occasion = f.occasion.value.trim() || 'Speech';
+          const body = f.body.value.trim();
+          if (!title) return;
+
+          const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) + '-' + Math.random().toString(36).slice(2, 6);
+          const sections = body ? autoSection(body) : [{ id: 'sec-1', name: 'Open', targetSec: 60, body: '' }];
+          const speech = {
+            id, title, occasion,
+            createdAt: new Date().toISOString(),
+            currentVersion: 1,
+            versions: [{ v: 1, createdAt: new Date().toISOString(), summary: 'First draft' }],
+            sections,
+            sessions: []
+          };
+          STATE.speeches.unshift(speech);
+          toast('Speech created. Open the editor to refine it.');
+          navigate(`/speeches/${id}/edit`);
+        });
+      }
+
+      // Naive section splitter — splits on blank lines, falls back to paragraphs.
+      function autoSection(text) {
+        const blocks = text.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+        if (blocks.length === 1) {
+          // one paragraph — split into halves so the user can see something to edit
+          const sentences = blocks[0].match(/[^.!?]+[.!?]+/g) || [blocks[0]];
+          const mid = Math.ceil(sentences.length / 2);
+          return [
+            { id: 'open',  name: 'Open',  targetSec: 60, body: sentences.slice(0, mid).join(' ').trim() },
+            { id: 'close', name: 'Close', targetSec: 60, body: sentences.slice(mid).join(' ').trim() || sentences.join(' ').trim() }
+          ];
+        }
+        const names = ['Open', 'Story', 'Turn', 'Close', 'Aside', 'Coda'];
+        return blocks.map((b, i) => ({
+          id: 'sec-' + i,
+          name: names[i] || `Section ${i+1}`,
+          targetSec: estimateSec(b),
+          body: b
+        }));
+      }
+      function estimateSec(text) {
+        const words = text.trim().split(/\s+/).length;
+        return Math.max(15, Math.round((words / 145) * 60 / 5) * 5); // round to 5s, 145 wpm
+      }
+
+      // ============================================================
+      //   VIEW: Speech detail
+      // ============================================================
+      function viewSpeechDetail(root, speechId) {
+        const sp = STATE.speeches.find(x => x.id === speechId);
+        if (!sp) return notFound(root);
+
+        const targetTotal = sp.sections.reduce((a, s) => a + s.targetSec, 0);
+
+        root.innerHTML = `
+          <div style="display:flex; gap: 16px; align-items: end; justify-content: space-between; flex-wrap: wrap;">
+            <div>
+              <a href="#/" class="text-body-sm" style="color: var(--color-muted-ash);">← Speeches</a>
+              <h1 class="text-heading-lg mt-3">${escapeHtml(sp.title)}</h1>
+              <div class="flex items-center gap-3 mt-3">
+                <span class="badge pill-soft"><span class="dot"></span>${escapeHtml(sp.occasion)}</span>
+                <span class="text-body-sm" style="color: var(--color-muted-ash);">v${sp.currentVersion} · target ${fmtTime(targetTotal)}</span>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <a href="#/speeches/${sp.id}/edit" class="btn-light">Edit script</a>
+              <a href="#/speeches/${sp.id}/versions" class="btn-light">Versions</a>
+              <a href="#/speeches/${sp.id}/record" class="btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
+                Record session
+              </a>
+            </div>
+          </div>
+
+          <div class="grid lg:grid-cols-12 gap-10 mt-10">
+            <!-- LEFT: script as a continuous document -->
+            <div class="lg:col-span-7">
+              <div class="flex items-baseline justify-between">
+                <h2 class="text-heading">Script</h2>
+                <span class="text-caption" style="color: var(--color-muted-ash);">${sp.sections.length} sections · ${sp.sections.reduce((a,s)=>a + s.body.split(/\s+/).filter(Boolean).length, 0)} words</span>
+              </div>
+
+              <article class="script-doc mt-6">
+                ${sp.sections.map(sec => `
+                  <section class="script-section">
+                    <header class="script-section-head">
+                      <h3 class="script-section-name">${escapeHtml(sec.name)}</h3>
+                      <span class="script-section-meta num">Target ${fmtTime(sec.targetSec)}</span>
+                    </header>
+                    <p class="script-section-body">${escapeHtml(sec.body)}</p>
+                  </section>
+                `).join('')}
+              </article>
+            </div>
+
+            <!-- RIGHT: sessions -->
+            <div class="lg:col-span-5">
+              <h2 class="text-heading">Sessions</h2>
+              <p class="text-body mt-2" style="color: var(--color-muted-ash);">${sp.sessions.length === 0 ? 'No sessions yet.' : `${sp.sessions.length} so far.`}</p>
+
+              ${sp.sessions.length === 0 ? `
+                <div class="empty-state mt-5">
+                  <p class="text-subheading">Ready when you are.</p>
+                  <p class="text-body mt-3" style="color: var(--color-muted-ash);">Hit record. Speak the speech. We'll do the rest.</p>
+                  <a href="#/speeches/${sp.id}/record" class="btn-primary mt-6" style="margin-top: 24px;">Begin session</a>
+                </div>
+              ` : `
+                <div class="mt-5" style="display: grid; gap: 10px;">
+                  ${sp.sessions.slice().reverse().map((sess, i) => {
+                    const actual = sess.sectionStats.reduce((a,s)=>a+s.actual, 0);
+                    const delta = actual - targetTotal;
+                    const deltaColor = Math.abs(delta) <= 5 ? 'var(--color-deliver-green)' : delta > 0 ? 'var(--color-leadgen-red)' : 'var(--color-engagement-gold)';
+                    return `
+                      <a href="#/speeches/${sp.id}/sessions/${sess.id}" class="card-elevated" style="padding: 14px 16px; display: flex; justify-content: space-between; gap: 12px; align-items: center;">
+                        <div>
+                          <div class="text-body-sm" style="font-weight: 500;">Session ${sp.sessions.length - i} <span style="color: var(--color-muted-ash); font-weight: 400;">· ${sess.mode === 'with-script' ? 'Teleprompter' : 'Freestyle'}</span></div>
+                          <div class="text-caption mt-1" style="color: var(--color-muted-ash);">${fmtRel(sess.date)} · v${sess.versionAtTime}</div>
+                        </div>
+                        <div style="text-align: right;">
+                          <div class="text-body-sm num" style="font-weight: 500;">${fmtTime(actual)}</div>
+                          <div class="text-caption num" style="color: ${deltaColor};">${signTime(delta)}</div>
+                        </div>
+                      </a>
+                    `;
+                  }).join('')}
+                </div>
+              `}
+            </div>
+          </div>
+        `;
+      }
+
+      // ============================================================
+      //   VIEW: Script editor (document-style)
+      //
+      // The user thinks: "I have a speech. I want to edit it." The editor
+      // surfaces the speech as ONE continuous document. Section headings
+      // live inline — same vertical flow as the body. Headings carry their
+      // own target-time pill on the right. The outline rail on the left
+      // auto-derives from the headings (it is not the source of truth).
+      //
+      // Data model in this view:
+      //   blocks: an ordered array, each item is either
+      //     { kind: 'heading', id, name, targetSec }  or
+      //     { kind: 'paragraph', text }
+      //   On save we walk the blocks, group consecutive paragraphs under
+      //   their preceding heading, and produce the canonical sections[].
+      // ============================================================
+      function viewScriptEditor(root, speechId) {
+        const sp = STATE.speeches.find(x => x.id === speechId);
+        if (!sp) return notFound(root);
+
+        // Build the working block list from current sections.
+        let blocks = sectionsToBlocks(sp.sections);
+        let dirty = false;
+
+        function sectionsToBlocks(sections) {
+          const out = [];
+          for (const s of sections) {
+            out.push({ kind: 'heading', id: s.id, name: s.name, targetSec: s.targetSec });
+            // Split body on blank lines into paragraphs so editing feels natural.
+            const paras = (s.body || '').split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+            if (paras.length === 0) {
+              out.push({ kind: 'paragraph', text: '' });
+            } else {
+              for (const p of paras) out.push({ kind: 'paragraph', text: p });
+            }
+          }
+          return out;
+        }
+
+        function blocksToSections(blocks) {
+          const out = [];
+          let current = null;
+          for (const b of blocks) {
+            if (b.kind === 'heading') {
+              current = { id: b.id, name: b.name, targetSec: b.targetSec, body: '' };
+              out.push(current);
+            } else if (b.kind === 'paragraph') {
+              if (!current) {
+                // No heading yet — start an implicit "Untitled" section.
+                current = { id: 'sec-' + Math.random().toString(36).slice(2,6), name: 'Untitled', targetSec: 30, body: '' };
+                out.push(current);
+              }
+              current.body = current.body ? current.body + '\n\n' + b.text : b.text;
+            }
+          }
+          return out;
+        }
+
+        function totalWords() {
+          let n = 0;
+          for (const b of blocks) if (b.kind === 'paragraph') n += b.text.split(/\s+/).filter(Boolean).length;
+          return n;
+        }
+
+        function totalTarget() {
+          return blocks.filter(b => b.kind === 'heading').reduce((a, h) => a + Number(h.targetSec || 0), 0);
+        }
+
+        function renderShell() {
+          root.innerHTML = `
+            <div class="editor-shell">
+              <header class="editor-topbar">
+                <div>
+                  <a href="#/speeches/${sp.id}" class="text-body-sm" style="color: var(--color-muted-ash);">← Back to speech</a>
+                  <h1 class="editor-title-display mt-2">${escapeHtml(sp.title)}</h1>
+                  <p class="text-caption mt-2" style="color: var(--color-muted-ash);">Editing v${sp.currentVersion} · headings split your speech into timed sections</p>
+                </div>
+                <div class="flex gap-2 items-center">
+                  <span id="save-state" class="text-caption" style="color: var(--color-muted-ash);"></span>
+                  <a href="#/speeches/${sp.id}" class="btn-ghost">Cancel</a>
+                  <button id="save-btn" class="btn-primary">Save</button>
+                </div>
+              </header>
+
+              <div class="editor-grid">
+                <!-- Outline rail (read-only mirror of headings) -->
+                <aside class="editor-outline">
+                  <div class="text-caption" style="color: var(--color-muted-ash);">Outline</div>
+                  <nav id="outline-nav" class="mt-4"></nav>
+                  <button id="add-break-bottom" class="text-body-sm mt-6" style="color: var(--color-muted-ash); display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 14px;">+</span> Add section break at end
+                  </button>
+                </aside>
+
+                <!-- Document canvas -->
+                <div class="editor-canvas">
+                  <div class="editor-toolbar">
+                    <button id="insert-break-here" class="btn-ghost" title="Insert section break at cursor">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="12" x2="9" y2="9"/><line x1="4" y1="12" x2="9" y2="15"/></svg>
+                      Section break
+                    </button>
+                    <span style="width: 1px; height: 16px; background: rgba(17,17,17,0.1); margin: 0 4px;"></span>
+                    <button id="upload-doc" class="btn-ghost" title="Replace with a fresh paste">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                      Replace
+                    </button>
+                  </div>
+
+                  <div id="doc" class="editor-doc"></div>
+
+                  <div class="editor-statusbar">
+                    <span class="text-caption num" id="status-words">0 words</span>
+                    <span class="text-caption" style="color: var(--color-muted-ash);">·</span>
+                    <span class="text-caption num" id="status-est">~0:00 at 145 wpm</span>
+                    <span style="margin-left: auto;"></span>
+                    <span class="text-caption num" style="color: var(--color-muted-ash);">Target</span>
+                    <span class="text-caption num" id="status-target" style="font-weight: 500;">0:00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+
+          $('#save-btn').addEventListener('click', save);
+          $('#insert-break-here').addEventListener('click', () => insertBreakAtCursor());
+          $('#add-break-bottom').addEventListener('click', () => {
+            const idx = blocks.length;
+            blocks.push({ kind: 'heading', id: 'sec-' + Math.random().toString(36).slice(2,6), name: 'New section', targetSec: 30 });
+            blocks.push({ kind: 'paragraph', text: '' });
+            markDirty(); renderDoc(); focusBlock(idx, 'name');
+          });
+          $('#upload-doc').addEventListener('click', () => {
+            if (!confirm('Replace the entire script with a fresh paste? Your current draft will be lost.')) return;
+            const text = prompt('Paste the speech here:', '');
+            if (!text) return;
+            blocks = sectionsToBlocks(autoSection(text));
+            markDirty(); renderDoc();
+          });
+
+          // Cmd/Ctrl-S to save
+          document.addEventListener('keydown', onSaveKey);
+          window.addEventListener('hashchange', cleanup, { once: true });
+        }
+
+        function onSaveKey(e) {
+          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+            e.preventDefault();
+            save();
+          }
+        }
+        function cleanup() {
+          document.removeEventListener('keydown', onSaveKey);
+        }
+
+        function markDirty() {
+          dirty = true;
+          $('#save-state').textContent = 'Unsaved changes';
+        }
+
+        function renderDoc() {
+          renderOutline();
+          renderStatus();
+          const doc = $('#doc');
+          doc.innerHTML = '';
+
+          blocks.forEach((b, idx) => {
+            if (b.kind === 'heading') {
+              const sec = document.createElement('div');
+              sec.className = 'doc-heading';
+              sec.dataset.idx = String(idx);
+              sec.dataset.headingId = b.id;
+              sec.innerHTML = `
+                <div class="doc-heading-row">
+                  <span class="doc-heading-marker">§</span>
+                  <span
+                    class="doc-heading-name"
+                    contenteditable="true"
+                    spellcheck="false"
+                    data-placeholder="Section name"
+                  >${escapeHtml(b.name)}</span>
+                  <button class="doc-heading-time" data-time-idx="${idx}" type="button" title="Edit target time">
+                    ${fmtTime(b.targetSec)}
+                  </button>
+                  <button class="doc-heading-remove" data-remove-idx="${idx}" type="button" title="Remove section break" aria-label="Remove section break">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              `;
+              doc.appendChild(sec);
+            } else {
+              const p = document.createElement('p');
+              p.className = 'doc-paragraph';
+              p.dataset.idx = String(idx);
+              p.contentEditable = 'true';
+              p.spellcheck = true;
+              p.dataset.placeholder = 'Write here, or paste your speech.';
+              p.textContent = b.text;
+              doc.appendChild(p);
+            }
+          });
+
+          // Wire content edits
+          doc.querySelectorAll('.doc-paragraph').forEach(el => {
+            el.addEventListener('input', () => {
+              const i = Number(el.dataset.idx);
+              if (blocks[i] && blocks[i].kind === 'paragraph') {
+                blocks[i].text = el.textContent;
+                markDirty(); renderStatus();
+              }
+            });
+            el.addEventListener('keydown', onParagraphKey);
+            el.addEventListener('paste', onPaste);
+          });
+          doc.querySelectorAll('.doc-heading-name').forEach(el => {
+            el.addEventListener('input', () => {
+              const headingEl = el.closest('.doc-heading');
+              const i = Number(headingEl.dataset.idx);
+              if (blocks[i] && blocks[i].kind === 'heading') {
+                blocks[i].name = el.textContent.trim() || 'Untitled';
+                markDirty(); renderOutline();
+              }
+            });
+            el.addEventListener('blur', () => {
+              if (!el.textContent.trim()) el.textContent = 'Untitled';
+            });
+            el.addEventListener('keydown', (e) => {
+              if (e.key === 'Enter') { e.preventDefault(); el.blur(); }
+            });
+          });
+          doc.querySelectorAll('[data-time-idx]').forEach(el => {
+            el.addEventListener('click', () => {
+              const i = Number(el.dataset.timeIdx);
+              const b = blocks[i];
+              if (!b || b.kind !== 'heading') return;
+              const cur = b.targetSec;
+              const input = prompt(`Target time for "${b.name}" — in seconds:`, String(cur));
+              if (input === null) return;
+              const v = Math.max(5, Math.round(Number(input) || 0));
+              b.targetSec = v;
+              markDirty(); renderDoc(); renderStatus();
+            });
+          });
+          doc.querySelectorAll('[data-remove-idx]').forEach(el => {
+            el.addEventListener('click', () => {
+              const i = Number(el.dataset.removeIdx);
+              if (blocks.filter(b => b.kind === 'heading').length <= 1) {
+                toast('You need at least one section.');
+                return;
+              }
+              blocks.splice(i, 1);
+              markDirty(); renderDoc();
+            });
+          });
+        }
+
+        function onParagraphKey(e) {
+          // Cmd/Ctrl + Enter inserts a section break at the cursor
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            insertBreakAtCursor();
+            return;
+          }
+          // Backspace at start of an empty paragraph immediately after a heading -> remove heading
+          if (e.key === 'Backspace' && e.target.textContent === '') {
+            const idx = Number(e.target.dataset.idx);
+            const prev = blocks[idx - 1];
+            if (prev && prev.kind === 'heading' && blocks.filter(b => b.kind === 'heading').length > 1) {
+              e.preventDefault();
+              blocks.splice(idx - 1, 1); // remove heading
+              markDirty(); renderDoc();
+            }
+          }
+        }
+
+        function onPaste(e) {
+          // Strip formatting on paste — speech text only.
+          if (!e.clipboardData) return;
+          const text = e.clipboardData.getData('text/plain');
+          if (!text) return;
+          e.preventDefault();
+          document.execCommand('insertText', false, text);
+        }
+
+        function insertBreakAtCursor() {
+          // Find which paragraph the selection is in.
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) {
+            // No cursor — append at end
+            const last = blocks.length;
+            blocks.splice(last, 0,
+              { kind: 'heading', id: 'sec-' + Math.random().toString(36).slice(2,6), name: 'New section', targetSec: 30 },
+              { kind: 'paragraph', text: '' }
+            );
+            markDirty(); renderDoc(); focusBlock(last, 'name');
+            return;
+          }
+          const node = sel.anchorNode;
+          const para = node && (node.nodeType === 3 ? node.parentElement : node).closest?.('.doc-paragraph');
+          if (!para) {
+            // Fallback: append
+            const last = blocks.length;
+            blocks.splice(last, 0,
+              { kind: 'heading', id: 'sec-' + Math.random().toString(36).slice(2,6), name: 'New section', targetSec: 30 },
+              { kind: 'paragraph', text: '' }
+            );
+            markDirty(); renderDoc(); focusBlock(last, 'name');
+            return;
+          }
+          const idx = Number(para.dataset.idx);
+          const fullText = para.textContent;
+          const offset = sel.anchorOffset;
+          // Split the paragraph at the cursor
+          const before = fullText.slice(0, offset);
+          const after = fullText.slice(offset);
+          blocks[idx] = { kind: 'paragraph', text: before };
+          const headingIdx = idx + 1;
+          blocks.splice(headingIdx, 0,
+            { kind: 'heading', id: 'sec-' + Math.random().toString(36).slice(2,6), name: 'New section', targetSec: 30 },
+            { kind: 'paragraph', text: after }
+          );
+          markDirty(); renderDoc();
+          focusBlock(headingIdx, 'name');
+        }
+
+        function focusBlock(idx, target) {
+          requestAnimationFrame(() => {
+            const doc = $('#doc');
+            if (!doc) return;
+            if (target === 'name') {
+              const el = doc.querySelector(`.doc-heading[data-idx="${idx}"] .doc-heading-name`);
+              if (el) {
+                el.focus();
+                // Select the text so the user can just type the new name.
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+              }
+            } else {
+              const el = doc.querySelector(`.doc-paragraph[data-idx="${idx}"]`);
+              if (el) el.focus();
+            }
+          });
+        }
+
+        function renderOutline() {
+          const wrap = $('#outline-nav');
+          if (!wrap) return;
+          const headings = blocks.filter(b => b.kind === 'heading');
+          if (headings.length === 0) {
+            wrap.innerHTML = `<p class="text-body-sm" style="color: var(--color-muted-ash);">No section breaks yet.</p>`;
+            return;
+          }
+          wrap.innerHTML = headings.map((h, i) => `
+            <a href="javascript:void(0)" class="outline-link" data-heading-id="${h.id}">
+              <span class="outline-num">${String(i + 1).padStart(2, '0')}</span>
+              <span class="outline-name">${escapeHtml(h.name)}</span>
+              <span class="outline-time num">${fmtTime(h.targetSec)}</span>
+            </a>
+          `).join('');
+          wrap.querySelectorAll('.outline-link').forEach(a => {
+            a.addEventListener('click', () => {
+              const hid = a.dataset.headingId;
+              const target = $('#doc').querySelector(`.doc-heading[data-heading-id="${hid}"]`);
+              if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                target.classList.add('is-flash');
+                setTimeout(() => target.classList.remove('is-flash'), 800);
+              }
+            });
+          });
+        }
+
+        function renderStatus() {
+          const w = totalWords();
+          const est = Math.round((w / 145) * 60);
+          $('#status-words') && ($('#status-words').textContent = `${w} word${w === 1 ? '' : 's'}`);
+          $('#status-est')   && ($('#status-est').textContent = `~${fmtTime(est)} at 145 wpm`);
+          $('#status-target')&& ($('#status-target').textContent = fmtTime(totalTarget()));
+        }
+
+        function save() {
+          const sections = blocksToSections(blocks);
+          if (sections.length === 0 || sections.every(s => !s.body.trim())) {
+            toast('Nothing to save yet.');
+            return;
+          }
+          const newV = sp.currentVersion + 1;
+          sp.currentVersion = newV;
+          sp.sections = sections;
+          sp.versions.push({ v: newV, createdAt: new Date().toISOString(), summary: 'Edited script' });
+          dirty = false;
+          toast(`Saved as v${newV}.`);
+          navigate(`/speeches/${sp.id}`);
+        }
+
+        renderShell();
+        renderDoc();
+      }
+
+      // ============================================================
+      //   VIEW: Record session
+      // ============================================================
+      function viewRecord(root, speechId) {
+        const sp = STATE.speeches.find(x => x.id === speechId);
+        if (!sp) return notFound(root);
+
+        const totalTarget = sp.sections.reduce((a, s) => a + s.targetSec, 0);
+        const isWeddingDemo = sp.id === 'wedding-toast';
+        // Demo transcript chunks for the wedding toast — what the user "says"
+        // as the recording rolls. Real version reads from a transcription stream.
+        const demoTokens = isWeddingDemo ? [
+          { sectionId: 'open',     text: 'Sarah and I met on a Tuesday in October. ' },
+          { sectionId: 'open',     text: 'It was raining sideways. ', tag: 'paraphrase' },
+          { sectionId: 'open',     text: 'She laughed. I was a goner. ' },
+          { sectionId: 'roadtrip', text: 'Two months later we drove from San Francisco to Bakersfield. ' },
+          { sectionId: 'roadtrip', text: 'We stopped at this gas station, middle of nowhere. ', tag: 'paraphrase' },
+          { sectionId: 'roadtrip', text: 'And honestly? I think that’s when I knew. ', tag: 'improv' },
+          { sectionId: 'whyhim',   text: 'Jonas, when Sarah introduced you, the first thing she said was that you made her quieter. ' },
+          { sectionId: 'whyhim',   text: 'Not because you took her voice. Because around you, she didn’t have to perform. ' },
+          { sectionId: 'toast',    text: 'So here’s to Sarah and Jonas. Cheers.' }
+        ] : sp.sections.flatMap(sec => [{ sectionId: sec.id, text: sec.body + ' ' }]);
+
+        let mode = 'with-script';
+        let state = 'idle'; // idle | recording | paused | done
+        let elapsed = 0;
+        let timerHandle = null;
+        let typeHandle = null;
+        let tokenIdx = 0;
+        let wordIdx = 0;
+        let currentTokens = [];
+        let currentSectionId = sp.sections[0].id;
+        const sectionElapsed = Object.fromEntries(sp.sections.map(s => [s.id, 0]));
+        const tagsCaptured = []; // {atSec, kind, label}
+
+        function paint() {
+          const sec = sp.sections.find(s => s.id === currentSectionId) || sp.sections[0];
+          const secElapsed = sectionElapsed[sec.id] || 0;
+          const secOver = secElapsed - sec.targetSec;
+
+          root.innerHTML = `
+            <div style="display:flex; gap: 16px; align-items: end; justify-content: space-between; flex-wrap: wrap;">
+              <div>
+                <a href="#/speeches/${sp.id}" class="text-body-sm" style="color: var(--color-muted-ash);">← Back to ${escapeHtml(sp.title)}</a>
+                <h1 class="text-heading-lg mt-3">${escapeHtml(sp.title)}</h1>
+                <div class="text-caption mt-3" style="color: var(--color-muted-ash);">v${sp.currentVersion} · target ${fmtTime(totalTarget)}</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="card" style="padding: 4px; display: inline-flex; gap: 4px;">
+                  <button class="btn-ghost ${mode==='with-script'?'is-active':''}" data-mode="with-script" style="${mode==='with-script' ? 'background: var(--color-midnight-ink); color: var(--color-canvas-white);' : ''} font-size: 13px; padding: 6px 12px;">Teleprompter</button>
+                  <button class="btn-ghost ${mode==='freestyle'?'is-active':''}" data-mode="freestyle" style="${mode==='freestyle' ? 'background: var(--color-midnight-ink); color: var(--color-canvas-white);' : ''} font-size: 13px; padding: 6px 12px;">Freestyle</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live recording panel — same visual language as the landing page hero -->
+            <div class="card-elevated mt-8" style="padding: 28px; max-width: 920px;">
+
+              <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                  ${state === 'recording' ? `<span class="rec-dot"></span><span class="text-caption" style="color: var(--color-leadgen-red);">Recording</span>` :
+                    state === 'paused'    ? `<span class="text-caption" style="color: var(--color-engagement-gold);">Paused</span>` :
+                    state === 'done'      ? `<span class="text-caption" style="color: var(--color-deliver-green);">Stopped</span>` :
+                                            `<span class="text-caption" style="color: var(--color-muted-ash);">Ready</span>`}
+                  <span class="text-caption" style="color: var(--color-muted-ash);">· ${escapeHtml(sec.name)}</span>
+                </div>
+                <span class="text-body-sm num" style="color: var(--color-muted-ash);">${fmtTime(elapsed)}</span>
+              </div>
+
+              <!-- Waveform -->
+              <div class="live-wave ${state !== 'recording' ? 'is-paused' : ''}">
+                ${Array.from({length: 56}).map((_, i) => `<i style="animation-delay: -${(i * 0.07) % 1.1}s; animation-duration: ${0.85 + ((i*13) % 50)/100}s;"></i>`).join('')}
+              </div>
+
+              <!-- Section progress -->
+              <div class="mt-6 grid" style="grid-template-columns: 1fr; gap: 6px;">
+                <div class="flex items-baseline justify-between">
+                  <span class="text-caption" style="color: var(--color-muted-ash);">Section progress</span>
+                  <span class="text-caption num" style="color: ${secOver > 0 ? 'var(--color-leadgen-red)' : 'var(--color-muted-ash)'};">${fmtTime(secElapsed)} / ${fmtTime(sec.targetSec)}${secOver > 0 ? ' · ' + signTime(secOver) : ''}</span>
+                </div>
+                <div class="marker-bar"><span style="width: ${Math.min(100, (secElapsed / sec.targetSec) * 100)}%; background: ${secOver > 0 ? 'var(--color-leadgen-red)' : 'var(--color-midnight-ink)'};"></span></div>
+              </div>
+
+              <!-- Live transcript -->
+              <div class="mt-7">
+                <div class="text-caption" style="color: var(--color-muted-ash);">Live transcript</div>
+                <p id="rec-transcript" class="transcript-live mt-3"><span class="t-cursor"></span></p>
+              </div>
+
+              <!-- Controls -->
+              <div class="flex items-center justify-between mt-6 pt-6" style="border-top: 1px solid rgba(17,17,17,0.06);">
+                <div class="text-caption" style="color: var(--color-muted-ash);">
+                  ${state === 'recording' ? 'Press <kbd>L</kbd> Landed · <kbd>F</kbd> Flat · <kbd>X</kbd> Lost · <kbd>C</kbd> Callback' : '&nbsp;'}
+                </div>
+                <div class="flex gap-2">
+                  ${state === 'idle' ? `<button id="start-btn" class="btn-primary"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>Start recording</button>` : ''}
+                  ${state === 'recording' ? `<button id="pause-btn" class="btn-light">Pause</button><button id="stop-btn" class="btn-danger">Stop</button>` : ''}
+                  ${state === 'paused' ? `<button id="resume-btn" class="btn-primary">Resume</button><button id="stop-btn" class="btn-danger">Stop</button>` : ''}
+                  ${state === 'done' ? `<button id="finalize-btn" class="btn-primary">View report</button><button id="redo-btn" class="btn-light">Record again</button>` : ''}
+                </div>
+              </div>
+            </div>
+
+            <!-- Sections rail -->
+            <div class="mt-10">
+              <h2 class="text-heading-sm">Sections</h2>
+              <div class="mt-4" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;">
+                ${sp.sections.map(s => {
+                  const e = sectionElapsed[s.id] || 0;
+                  const over = e - s.targetSec;
+                  return `
+                    <div class="section-pill ${s.id === currentSectionId ? 'is-current' : ''}">
+                      <div>
+                        <div class="name">${escapeHtml(s.name)}</div>
+                        <div class="text-caption mt-1 num" style="color: ${over > 0 ? 'var(--color-leadgen-red)' : 'var(--color-muted-ash)'};">${fmtTime(e)} / ${fmtTime(s.targetSec)}</div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            ${mode === 'with-script' ? `
+              <div class="mt-10">
+                <h2 class="text-heading-sm">Script</h2>
+                <div class="script-panel mt-4" id="script-panel">
+                  ${sp.sections.map(s => `<p data-section-id="${s.id}">${s.id === currentSectionId ? `<mark class="current-section">${escapeHtml(s.body)}</mark>` : escapeHtml(s.body)}</p>`).join('')}
+                </div>
+              </div>` : `
+              <div class="mt-10 empty-state" style="max-width: 920px;">
+                <p class="text-subheading">Freestyle mode</p>
+                <p class="text-body mt-2" style="color: var(--color-muted-ash);">Script hidden. We'll diff what you said against what you wrote when you stop.</p>
+              </div>`}
+
+            ${tagsCaptured.length ? `
+              <div class="mt-10">
+                <h2 class="text-heading-sm">Live notes you flagged</h2>
+                <div class="mt-4 flex gap-2 flex-wrap">
+                  ${tagsCaptured.map(t => `<span class="badge ${t.kind === 'landed' ? 'pill-mint' : t.kind === 'flat' ? 'pill-gold' : t.kind === 'lost' ? 'pill-red' : 'pill-blue'}"><span class="dot"></span>${t.label} · ${fmtTime(t.atSec)}</span>`).join('')}
+                </div>
+              </div>` : ''}
+          `;
+
+          wireControls();
+        }
+
+        function wireControls() {
+          root.querySelectorAll('[data-mode]').forEach(b => {
+            b.addEventListener('click', () => {
+              if (state !== 'idle') { toast('Mode is locked once you press record.'); return; }
+              mode = b.getAttribute('data-mode');
+              paint();
+            });
+          });
+          $('#start-btn')?.addEventListener('click', start);
+          $('#pause-btn')?.addEventListener('click', pause);
+          $('#resume-btn')?.addEventListener('click', resume);
+          $('#stop-btn')?.addEventListener('click', stop);
+          $('#redo-btn')?.addEventListener('click', () => { reset(); paint(); });
+          $('#finalize-btn')?.addEventListener('click', finalize);
+        }
+
+        function start() {
+          state = 'recording';
+          currentTokens = demoTokens.slice();
+          tokenIdx = 0; wordIdx = 0;
+          startTimer(); startTyping(); paint();
+        }
+        function pause() {
+          state = 'paused'; clearInterval(timerHandle); clearTimeout(typeHandle); paint();
+        }
+        function resume() {
+          state = 'recording'; startTimer(); startTyping(); paint();
+        }
+        function stop() {
+          state = 'done'; clearInterval(timerHandle); clearTimeout(typeHandle); paint();
+        }
+        function reset() {
+          state = 'idle'; elapsed = 0;
+          for (const k of Object.keys(sectionElapsed)) sectionElapsed[k] = 0;
+          tagsCaptured.length = 0;
+          tokenIdx = 0; wordIdx = 0;
+          currentSectionId = sp.sections[0].id;
+        }
+        function startTimer() {
+          clearInterval(timerHandle);
+          timerHandle = setInterval(() => {
+            elapsed += 1;
+            sectionElapsed[currentSectionId] = (sectionElapsed[currentSectionId] || 0) + 1;
+            // Update display without full repaint
+            const t = $('#rec-transcript')?.parentElement?.parentElement;
+            // Cheap: just repaint
+            paint();
+          }, 1000);
+        }
+
+        function startTyping() {
+          const tEl = () => $('#rec-transcript');
+          const cur = () => tEl()?.querySelector('.t-cursor');
+          function step() {
+            if (state !== 'recording') return;
+            if (tokenIdx >= currentTokens.length) {
+              // Loop: stop; user can decide to stop
+              return;
+            }
+            const tok = currentTokens[tokenIdx];
+            // Section change?
+            if (tok.sectionId !== currentSectionId) {
+              currentSectionId = tok.sectionId;
+              paint(); // refresh script highlight + section progress + transcript element
+              // re-fetch transcript element
+            }
+            const words = tok.text.split(/(\s+)/);
+            if (wordIdx >= words.length) {
+              // emit tag if any
+              if (tok.tag) {
+                const def = tok.tag === 'paraphrase' ? { label: 'Paraphrase noted', cls: 'pill-gold' }
+                          : tok.tag === 'improv'    ? { label: 'Ad-lib captured',   cls: 'pill-blue' }
+                          : { label: 'Skipped line', cls: 'pill-red' };
+                flashTag(def.label, def.cls);
+              }
+              tokenIdx += 1; wordIdx = 0;
+              typeHandle = setTimeout(step, 320);
+              return;
+            }
+            const tEl0 = tEl(); const c = cur();
+            if (tEl0 && c) {
+              c.insertAdjacentText('beforebegin', words[wordIdx]);
+              tEl0.scrollIntoView({ block: 'nearest' });
+            }
+            const isSpace = /^\s+$/.test(words[wordIdx]);
+            wordIdx += 1;
+            typeHandle = setTimeout(step, isSpace ? 40 : 110);
+          }
+          step();
+        }
+
+        function finalize() {
+          // Persist a session — for the demo, only the wedding toast has rich
+          // diff data; for other speeches we generate plausible stats.
+          const sectionStats = sp.sections.map(s => ({ id: s.id, actual: sectionElapsed[s.id] || s.targetSec }));
+          const newSess = {
+            id: 'sess-' + Math.random().toString(36).slice(2,7),
+            date: new Date().toISOString(),
+            mode,
+            durationSec: elapsed,
+            versionAtTime: sp.currentVersion,
+            sectionStats,
+            tags: tagsCaptured.slice()
+          };
+          sp.sessions.push(newSess);
+          STATE.user.sessionsUsed = Math.min(STATE.user.sessionsLimit, STATE.user.sessionsUsed + 1);
+          toast('Session saved.');
+          navigate(`/speeches/${sp.id}/sessions/${newSess.id}`);
+        }
+
+        // Keyboard tags
+        function onKey(e) {
+          if (state !== 'recording') return;
+          // Don't fire when typing in an input
+          if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+          for (const t of TAG_DEFS) {
+            if (e.code === t.code) {
+              e.preventDefault();
+              tagsCaptured.push({ atSec: elapsed, kind: t.kind, label: t.label });
+              flashTag(t.label, '');
+              break;
+            }
+          }
+        }
+        document.addEventListener('keydown', onKey);
+
+        // Cleanup on navigation
+        const oldHashHandler = window.onhashchange;
+        window.addEventListener('hashchange', function clean() {
+          clearInterval(timerHandle); clearTimeout(typeHandle);
+          document.removeEventListener('keydown', onKey);
+          window.removeEventListener('hashchange', clean);
+        });
+
+        paint();
+      }
+
+      // ============================================================
+      //   VIEW: Session report
+      // ============================================================
+      function viewSessionReport(root, speechId, sessionId) {
+        const sp = STATE.speeches.find(x => x.id === speechId);
+        if (!sp) return notFound(root);
+        const sess = sp.sessions.find(x => x.id === sessionId);
+        if (!sess) return notFound(root);
+
+        const targetTotal = sp.sections.reduce((a, s) => a + s.targetSec, 0);
+        const actualTotal = sess.sectionStats.reduce((a, s) => a + s.actual, 0);
+        const isCanonicalDemo = sp.id === 'wedding-toast' && (sess.id === 's2' || sp.sessions[sp.sessions.length - 1] === sess);
+
+        // For the demo wedding toast, build a hand-curated diff.
+        // For any other session, fall back to a derived approximation.
+        const diff = isCanonicalDemo ? DIFF_S2 : derivedDiff(sp, sess);
+
+        root.innerHTML = `
+          <div style="display:flex; gap: 16px; align-items: end; justify-content: space-between; flex-wrap: wrap;">
+            <div>
+              <a href="#/speeches/${sp.id}" class="text-body-sm" style="color: var(--color-muted-ash);">← Back to ${escapeHtml(sp.title)}</a>
+              <h1 class="text-heading-lg mt-3">Session report</h1>
+              <div class="flex items-center gap-3 mt-3 flex-wrap">
+                <span class="text-body-sm" style="color: var(--color-muted-ash);">${fmtRel(sess.date)} · ${sess.mode === 'with-script' ? 'Teleprompter' : 'Freestyle'} · v${sess.versionAtTime}</span>
+                <span class="badge pill-soft num"><span class="dot"></span>${fmtTime(actualTotal)} total</span>
+                <span class="badge ${actualTotal - targetTotal > 0 ? 'pill-red' : actualTotal - targetTotal < -5 ? 'pill-gold' : 'pill-mint'} num"><span class="dot"></span>${signTime(actualTotal - targetTotal)} vs. target</span>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <a href="#/speeches/${sp.id}/record" class="btn-light">Record again</a>
+              <button id="apply-suggestion" class="btn-primary">Apply suggestions to script</button>
+            </div>
+          </div>
+
+          <!-- ============ Pacing report ============ -->
+          <section class="mt-12">
+            <div class="flex items-baseline justify-between">
+              <h2 class="text-heading">Pacing</h2>
+              <span class="text-body-sm" style="color: var(--color-muted-ash);">Target ${fmtTime(targetTotal)} · Actual ${fmtTime(actualTotal)}</span>
+            </div>
+            <div class="card mt-5" style="padding: 24px;">
+              <div style="display: grid; gap: 18px;">
+                ${sp.sections.map(sec => {
+                  const stat = sess.sectionStats.find(s => s.id === sec.id) || { actual: 0 };
+                  const delta = stat.actual - sec.targetSec;
+                  const widthTarget = (sec.targetSec / Math.max(targetTotal, 1)) * 100;
+                  const widthActual = (stat.actual   / Math.max(targetTotal, 1)) * 100;
+                  const color = Math.abs(delta) <= 5 ? 'var(--color-deliver-green)' : delta > 0 ? 'var(--color-leadgen-red)' : 'var(--color-engagement-gold)';
+                  return `
+                    <div>
+                      <div class="flex items-baseline justify-between mb-2">
+                        <span class="text-body-sm" style="font-weight: 500;">${escapeHtml(sec.name)}</span>
+                        <span class="text-body-sm num" style="color: ${color};">${fmtTime(stat.actual)} / ${fmtTime(sec.targetSec)} · ${signTime(delta)}</span>
+                      </div>
+                      <div style="position: relative; height: 18px;">
+                        <div style="position: absolute; inset: 6px 0; background: rgba(17,17,17,0.04); border-radius: 999px;"></div>
+                        <div style="position: absolute; left: 0; top: 6px; height: 6px; width: ${widthTarget}%; background: rgba(17,17,17,0.18); border-radius: 999px;"></div>
+                        <div style="position: absolute; left: 0; top: 6px; height: 6px; width: ${widthActual}%; background: ${color}; border-radius: 999px;"></div>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+            <p class="text-caption mt-3" style="color: var(--color-muted-ash);">Light bar: target. Coloured bar: what you actually did.</p>
+          </section>
+
+          <!-- ============ Diff view ============ -->
+          <section class="mt-14">
+            <div class="flex items-baseline justify-between">
+              <h2 class="text-heading">What you said vs. what you wrote</h2>
+              <span class="text-body-sm" style="color: var(--color-muted-ash);">Showing ${escapeHtml(sp.sections.find(s => s.id === diff.sectionId)?.name || 'section')}</span>
+            </div>
+            <div class="card-elevated mt-5" style="padding: 28px;">
+              <div style="display: grid; gap: 6px;">
+                ${diff.rows.map(row => {
+                  if (row.kind === 'match') return `<p class="diff-line diff-match">"${escapeHtml(row.spoken)}"</p>`;
+                  if (row.kind === 'paraphrase') return `<p class="diff-line diff-paraphrase">"${escapeHtml(row.spoken)}" <span class="meta">— written: "${escapeHtml(row.written)}"</span></p>`;
+                  if (row.kind === 'skipped') return `<p class="diff-line diff-skipped">"${escapeHtml(row.written)}"</p>`;
+                  if (row.kind === 'improv') return `<p class="diff-line diff-improv">+ "${escapeHtml(row.spoken)}"</p>`;
+                  return '';
+                }).join('')}
+              </div>
+              <div class="mt-7 flex gap-2 flex-wrap">
+                <span class="badge pill-soft"><span class="dot"></span>${diff.rows.filter(r => r.kind==='match').length} matched</span>
+                <span class="badge pill-gold"><span class="dot"></span>${diff.rows.filter(r => r.kind==='paraphrase').length} paraphrased</span>
+                <span class="badge pill-red"><span class="dot"></span>${diff.rows.filter(r => r.kind==='skipped').length} skipped</span>
+                <span class="badge pill-blue"><span class="dot"></span>${diff.rows.filter(r => r.kind==='improv').length} ad-lib</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ Coach ============ -->
+          <section class="mt-14">
+            <h2 class="text-heading">Coach</h2>
+            <div class="card mt-5" style="padding: 28px; max-width: 760px;">
+              <p class="text-body" style="font-family: 'Iowan Old Style', Georgia, serif; font-size: 17px; line-height: 1.65;">
+                ${escapeHtml(diff.coachNote)}
+              </p>
+              <div class="mt-6 flex gap-2 flex-wrap">
+                <button class="btn-light" data-suggest="cut-detour">Cut "the gas station detour"</button>
+                <button class="btn-light" data-suggest="adopt-improv">Adopt "I think that's when I knew"</button>
+                <button class="btn-light" data-suggest="rephrase-final">Rephrase "He told me to keep her" → "He just said, finally"</button>
+              </div>
+            </div>
+          </section>
+
+          ${sess.tags && sess.tags.length ? `
+          <section class="mt-14">
+            <h2 class="text-heading">Live notes you flagged</h2>
+            <div class="card mt-5" style="padding: 24px; max-width: 760px;">
+              ${sess.tags.map(t => `
+                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-top: 1px solid rgba(17,17,17,0.06);">
+                  <span class="text-body-sm">${escapeHtml(t.label)}</span>
+                  <span class="text-caption num" style="color: var(--color-muted-ash);">${fmtTime(t.atSec)}</span>
+                </div>
+              `).join('')}
+            </div>
+          </section>` : ''}
+        `;
+
+        // Suggestions: clicking one stages a script change.
+        let staged = [];
+        root.querySelectorAll('[data-suggest]').forEach(b => {
+          b.addEventListener('click', () => {
+            const k = b.getAttribute('data-suggest');
+            if (staged.includes(k)) return;
+            staged.push(k);
+            b.style.opacity = 0.45;
+            b.style.pointerEvents = 'none';
+            b.insertAdjacentHTML('beforeend', ' <span style="color: var(--color-deliver-green);">staged</span>');
+            toast('Staged. Apply to commit.');
+          });
+        });
+
+        $('#apply-suggestion').addEventListener('click', () => {
+          if (staged.length === 0) {
+            toast('Pick at least one suggestion above first.');
+            return;
+          }
+          const newV = sp.currentVersion + 1;
+          sp.currentVersion = newV;
+          sp.versions.push({
+            v: newV,
+            createdAt: new Date().toISOString(),
+            summary: 'Applied ' + staged.length + ' suggestion' + (staged.length > 1 ? 's' : '') + ' from session report'
+          });
+          // Naive script edit: append a marker so the user sees something changed.
+          // A real version would do structured edits. For demo, this is enough.
+          const trip = sp.sections.find(s => s.id === 'roadtrip');
+          if (trip && staged.includes('cut-detour')) {
+            trip.body = trip.body.replace(/We stopped at a gas station near Coalinga\./, '').trim();
+          }
+          if (trip && staged.includes('adopt-improv')) {
+            trip.body += " I think that's when I knew.";
+          }
+          if (trip && staged.includes('rephrase-final')) {
+            trip.body = trip.body.replace(/He told me to keep her\./, "He just said, 'finally.'");
+          }
+          toast(`Saved as v${newV}.`);
+          navigate(`/speeches/${sp.id}`);
+        });
+      }
+
+      // Fallback diff for non-demo sessions: marks every section as "match"
+      // — placeholder until we wire a real alignment.
+      function derivedDiff(sp, sess) {
+        const sec = sp.sections[Math.floor(sp.sections.length / 2)] || sp.sections[0];
+        const sentences = (sec.body.match(/[^.!?]+[.!?]+/g) || [sec.body]).map(s => s.trim());
+        return {
+          sectionId: sec.id,
+          rows: sentences.slice(0, 4).map(s => ({ kind: 'match', spoken: s, written: s })),
+          coachNote: 'A real session would surface a specific note here. The pacing graph above is the most useful artifact for now.'
+        };
+      }
+
+      // ============================================================
+      //   VIEW: Versions
+      // ============================================================
+      function viewVersions(root, speechId) {
+        const sp = STATE.speeches.find(x => x.id === speechId);
+        if (!sp) return notFound(root);
+
+        root.innerHTML = `
+          <a href="#/speeches/${sp.id}" class="text-body-sm" style="color: var(--color-muted-ash);">← Back to ${escapeHtml(sp.title)}</a>
+          <h1 class="text-heading-lg mt-3">Version history</h1>
+          <p class="text-body mt-3" style="color: var(--color-muted-ash);">Every save makes a new version. Roll back if a change made things worse.</p>
+
+          <div class="card mt-8" style="padding: 8px 24px;">
+            ${sp.versions.slice().reverse().map(v => `
+              <div class="version-row">
+                <span class="version-tag">v${v.v}</span>
+                <div>
+                  <div class="text-body-sm" style="font-weight: 500;">${escapeHtml(v.summary)}</div>
+                  <div class="text-caption mt-1" style="color: var(--color-muted-ash);">${fmtRel(v.createdAt)}</div>
+                </div>
+                <div class="flex gap-2">
+                  ${v.v === sp.currentVersion
+                    ? `<span class="badge pill-mint"><span class="dot"></span>Current</span>`
+                    : `<button class="btn-light" data-revert="${v.v}">Roll back</button>`}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+
+        root.querySelectorAll('[data-revert]').forEach(b => {
+          b.addEventListener('click', () => {
+            const v = Number(b.getAttribute('data-revert'));
+            // Demo: just stamp a new version that 'reverts' to the prior one.
+            sp.currentVersion = sp.versions.length + 1;
+            sp.versions.push({
+              v: sp.currentVersion,
+              createdAt: new Date().toISOString(),
+              summary: `Rolled back to v${v}`
+            });
+            toast(`Rolled back to v${v}. Saved as v${sp.currentVersion}.`);
+            render();
+          });
+        });
+      }
+
+      // ============================================================
+      //   VIEW: Library — all sessions across all speeches
+      // ============================================================
+      function viewLibrary(root) {
+        const all = STATE.speeches.flatMap(sp => sp.sessions.map(s => ({ sp, s })));
+        all.sort((a, b) => new Date(b.s.date) - new Date(a.s.date));
+
+        root.innerHTML = `
+          <h1 class="text-heading-lg">All sessions</h1>
+          <p class="text-body mt-3" style="color: var(--color-muted-ash);">Every recording, across every speech.</p>
+
+          ${all.length === 0 ? `
+            <div class="empty-state mt-8">
+              <p class="text-subheading">No sessions yet.</p>
+              <p class="text-body mt-3" style="color: var(--color-muted-ash);">Start a speech and hit record.</p>
+            </div>
+          ` : `
+            <div class="card mt-8" style="overflow: hidden;">
+              ${all.map(({sp, s}) => {
+                const targetTotal = sp.sections.reduce((a,x)=>a+x.targetSec, 0);
+                const actualTotal = s.sectionStats.reduce((a,x)=>a+x.actual, 0);
+                const delta = actualTotal - targetTotal;
+                const color = Math.abs(delta) <= 5 ? 'var(--color-deliver-green)' : delta > 0 ? 'var(--color-leadgen-red)' : 'var(--color-engagement-gold)';
+                return `
+                  <div class="clickable-row" data-href="/speeches/${sp.id}/sessions/${s.id}">
+                    <div>
+                      <div class="text-subheading">${escapeHtml(sp.title)}</div>
+                      <div class="text-caption mt-1" style="color: var(--color-muted-ash);">${s.mode === 'with-script' ? 'Teleprompter' : 'Freestyle'} · v${s.versionAtTime}</div>
+                    </div>
+                    <div class="text-body-sm" style="color: var(--color-muted-ash);">${fmtRel(s.date)}</div>
+                    <div class="text-body-sm num">${fmtTime(actualTotal)}</div>
+                    <div class="text-body-sm num" style="color: ${color}; text-align: right;">${signTime(delta)}</div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+        `;
+
+        root.querySelectorAll('[data-href]').forEach(el => {
+          el.addEventListener('click', () => navigate(el.getAttribute('data-href')));
+        });
+      }
+
+      // ============================================================
+      //   VIEW: Trends (longitudinal)
+      // ============================================================
+      function viewTrends(root) {
+        const sp = STATE.speeches.find(s => s.sessions.length >= 2);
+        if (!sp) {
+          root.innerHTML = `
+            <h1 class="text-heading-lg">Trends</h1>
+            <p class="text-body mt-3" style="color: var(--color-muted-ash);">Once you have more than one session on a speech, you'll see how your pacing changes over time.</p>
+            <div class="empty-state mt-8">
+              <p class="text-subheading">Not enough data yet.</p>
+              <p class="text-body mt-3" style="color: var(--color-muted-ash);">Record two or more sessions on the same speech to unlock trends.</p>
+            </div>
+          `;
+          return;
+        }
+
+        const targetTotal = sp.sections.reduce((a, s) => a + s.targetSec, 0);
+        root.innerHTML = `
+          <h1 class="text-heading-lg">Trends</h1>
+          <p class="text-body mt-3" style="color: var(--color-muted-ash);">Watching ${escapeHtml(sp.title)} converge.</p>
+
+          <div class="card mt-8" style="padding: 28px;">
+            <div class="text-caption" style="color: var(--color-muted-ash);">Total length, by session</div>
+            <div style="display: flex; align-items: end; gap: 16px; height: 200px; margin-top: 24px;">
+              ${sp.sessions.map((s, i) => {
+                const total = s.sectionStats.reduce((a,x)=>a+x.actual, 0);
+                const heightPct = Math.min(100, (total / (targetTotal * 1.5)) * 100);
+                const delta = total - targetTotal;
+                const color = Math.abs(delta) <= 5 ? 'var(--color-deliver-green)' : delta > 0 ? 'var(--color-leadgen-red)' : 'var(--color-engagement-gold)';
+                return `
+                  <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                    <span class="text-caption num" style="color: ${color};">${fmtTime(total)}</span>
+                    <div style="width: 100%; height: ${heightPct}%; background: ${color}; border-radius: 6px;"></div>
+                    <span class="text-caption" style="color: var(--color-muted-ash);">Session ${i+1}</span>
+                  </div>
+                `;
+              }).join('')}
+              <!-- target line -->
+              <div style="position: relative; flex: 0 0 0;"></div>
+            </div>
+            <div class="text-caption mt-6" style="color: var(--color-muted-ash);">Target ${fmtTime(targetTotal)}</div>
+          </div>
+        `;
+      }
+
+      // ============================================================
+      //   VIEW: Settings
+      // ============================================================
+      function viewSettings(root) {
+        root.innerHTML = `
+          <h1 class="text-heading-lg">Settings</h1>
+          <div class="grid lg:grid-cols-2 gap-6 mt-10">
+            <div class="card" style="padding: 28px;">
+              <h3 class="text-heading-sm">Privacy</h3>
+              <p class="text-body mt-3" style="color: var(--color-muted-ash);">
+                Your recordings are encrypted at rest. We don't use them for training. Default retention is ninety days; change it any time.
+              </p>
+              <div class="mt-6">
+                <label class="text-caption" style="color: var(--color-muted-ash);">Retention</label>
+                <select class="input mt-2">
+                  <option>30 days</option>
+                  <option selected>90 days</option>
+                  <option>1 year</option>
+                  <option>Until I delete</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="card" style="padding: 28px;">
+              <h3 class="text-heading-sm">Recording</h3>
+              <p class="text-body mt-3" style="color: var(--color-muted-ash);">
+                Tune what happens when you press record.
+              </p>
+              <div class="mt-6 flex items-center justify-between">
+                <span class="text-body-sm">Auto-pause after 3s of silence</span>
+                <input type="checkbox" checked />
+              </div>
+              <div class="mt-4 flex items-center justify-between">
+                <span class="text-body-sm">Show waveform during recording</span>
+                <input type="checkbox" checked />
+              </div>
+              <div class="mt-4 flex items-center justify-between">
+                <span class="text-body-sm">Save raw audio</span>
+                <input type="checkbox" checked />
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // ============================================================
+      //   VIEW: Billing
+      // ============================================================
+      function viewBilling(root) {
+        const left = Math.max(0, STATE.user.sessionsLimit - STATE.user.sessionsUsed);
+        root.innerHTML = `
+          <h1 class="text-heading-lg">Billing</h1>
+          <p class="text-body mt-3" style="color: var(--color-muted-ash);">You're on the Free plan. ${left} session${left===1?'':'s'} left.</p>
+
+          <div class="grid lg:grid-cols-3 gap-5 mt-10">
+            <div class="card" style="padding: 28px;">
+              <h3 class="text-heading-sm">Free</h3>
+              <p class="text-caption mt-2" style="color: var(--color-muted-ash);">Current plan</p>
+              <div class="mt-6" style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 56px; line-height: 1;">$0</div>
+              <p class="text-body-sm mt-2" style="color: var(--color-muted-ash);">Three sessions, on the house</p>
+            </div>
+            <div class="card" style="padding: 28px; background: var(--color-midnight-ink); color: var(--color-canvas-white);">
+              <h3 class="text-heading-sm">Practiced</h3>
+              <p class="text-caption mt-2" style="opacity: 0.6;">Unlimited</p>
+              <div class="mt-6" style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 56px; line-height: 1;">$12<span style="font-size: 16px; opacity: 0.6;"> / mo</span></div>
+              <p class="text-body-sm mt-2" style="opacity: 0.6;">Or $96 a year — two months free</p>
+              <button class="btn-light mt-6" style="background: var(--color-canvas-white); color: var(--color-midnight-ink);">Subscribe</button>
+            </div>
+            <div class="card" style="padding: 28px;">
+              <h3 class="text-heading-sm">Single speech</h3>
+              <p class="text-caption mt-2" style="color: var(--color-muted-ash);">One-time</p>
+              <div class="mt-6" style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 56px; line-height: 1;">$19</div>
+              <p class="text-body-sm mt-2" style="color: var(--color-muted-ash);">Seven days, one speech, no card after</p>
+              <button class="btn-light mt-6">Buy the pass</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function notFound(root) {
+        root.innerHTML = `
+          <div class="empty-state" style="margin: 60px auto; max-width: 480px;">
+            <h2 class="text-heading-sm">We don't have that one.</h2>
+            <p class="text-body mt-3" style="color: var(--color-muted-ash);">The speech might've been deleted, or this link is stale.</p>
+            <a href="#/" class="btn-primary mt-6">Back to speeches</a>
+          </div>
+        `;
+      }
+
+      // ---------- Boot ----------
+      if (!location.hash) location.hash = '/';
+      render();
+    })();
+    </script>
+
+  </body>
+</html>
