@@ -113,9 +113,6 @@ export default async function AppLayout({
               Workspace
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/" className="btn-ghost">
-                Marketing site
-              </Link>
               <Link href="/app/speeches/new" className="btn-primary">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19" />

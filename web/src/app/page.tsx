@@ -40,7 +40,6 @@ export default function LandingPage() {
             <a href="#pricing" className="nav-link">Pricing</a>
           </nav>
           <div className="flex items-center gap-2">
-            <Link href="/login" className="btn-ghost hidden sm:inline-flex">Open app</Link>
             <Link href="/login" className="btn-primary">Begin</Link>
           </div>
         </div>
