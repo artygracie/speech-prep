@@ -40,6 +40,27 @@ type SuggestedEdit = {
   reason: string;
 };
 
+// Cheap urgency heuristic. A section gets the loud "Drill this
+// section →" button when the coach's prose flags a real problem
+// (the section wasn't delivered, was rushed, the speaker blanked,
+// etc) rather than the quiet underlined link. We check the
+// headline and the work-on text; what-landed is excluded because
+// "the speaker recovered from a blank" shouldn't trigger urgency.
+const URGENT_KEYWORDS = [
+  "skip", "skipped",
+  "miss", "missed",
+  "never delivered", "never reached",
+  "blank", "blanked", "lost",
+  "rushed", "racing",
+  "ran out of time", "ran over",
+  "stumbled", "froze",
+  "abandoned", "cut short",
+];
+function isUrgent(note: { headline: string; what_to_work_on: string }): boolean {
+  const haystack = `${note.headline} ${note.what_to_work_on}`.toLowerCase();
+  return URGENT_KEYWORDS.some((kw) => haystack.includes(kw));
+}
+
 export function CoachCard({
   speechId,
   sessionId,
@@ -185,11 +206,30 @@ export function CoachCard({
           text-decoration-thickness: 1px;
           white-space: nowrap;
           flex-shrink: 0;
-          transition: color 120ms ease, text-decoration-color 120ms ease;
+          transition: color 120ms ease, text-decoration-color 120ms ease,
+                      background 120ms ease, transform 120ms ease;
         }
         .coach-note-practice:hover {
           color: var(--color-midnight-ink);
           text-decoration-color: var(--color-midnight-ink);
+        }
+        /* Urgent variant: when a section was skipped, missed, blanked,
+           or rushed, the drill link upgrades to a filled black button.
+           The headline already tells the user something went wrong;
+           the action should match. */
+        .coach-note-practice.is-urgent {
+          background: var(--color-midnight-ink);
+          color: var(--color-canvas-white);
+          padding: 7px 12px;
+          border-radius: 8px;
+          text-decoration: none;
+          box-shadow: 0 1px 2px rgba(17,17,17,0.12), 0 4px 10px rgba(17,17,17,0.08);
+        }
+        .coach-note-practice.is-urgent:hover {
+          color: var(--color-canvas-white);
+          text-decoration: none;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(17,17,17,0.16), 0 8px 16px rgba(17,17,17,0.10);
         }
         .coach-note-paragraph {
           font-family: var(--font-script);
@@ -329,29 +369,38 @@ export function CoachCard({
         }
       `}</style>
 
-      {/* ===== Per-section notes — inline editorial annotations ===== */}
+      {/* ===== Per-section notes — inline editorial annotations =====
+          The "Practice this part" link escalates to a filled black
+          button when the headline or work-on text mentions an urgent
+          problem (skipped, missed, blanked, rushed, never delivered,
+          etc). The keyword check is good enough — we'd rather have a
+          minor false-positive than under-emphasise a section that
+          wasn't actually delivered. */}
       {perSection.length > 0 && (
         <div className="coach-notes">
-          {perSection.map((note) => (
-            <article key={note.section_id}>
-              <header className="coach-note-head">
-                <div>
-                  <div className="coach-note-section-name">
-                    {sectionNameById[note.section_id] ?? "Section"}
+          {perSection.map((note) => {
+            const urgent = isUrgent(note);
+            return (
+              <article key={note.section_id}>
+                <header className="coach-note-head">
+                  <div>
+                    <div className="coach-note-section-name">
+                      {sectionNameById[note.section_id] ?? "Section"}
+                    </div>
+                    <h4 className="coach-note-headline">{note.headline}</h4>
                   </div>
-                  <h4 className="coach-note-headline">{note.headline}</h4>
-                </div>
-                <Link
-                  href={`/app/speeches/${speechId}/record?section=${note.section_id}`}
-                  className="coach-note-practice"
-                >
-                  Practice this part →
-                </Link>
-              </header>
-              <p className="coach-note-paragraph">{note.what_landed}</p>
-              <p className="coach-note-paragraph is-workon">{note.what_to_work_on}</p>
-            </article>
-          ))}
+                  <Link
+                    href={`/app/speeches/${speechId}/record?section=${note.section_id}`}
+                    className={`coach-note-practice ${urgent ? "is-urgent" : ""}`}
+                  >
+                    {urgent ? "Drill this section →" : "Practice this part →"}
+                  </Link>
+                </header>
+                <p className="coach-note-paragraph">{note.what_landed}</p>
+                <p className="coach-note-paragraph is-workon">{note.what_to_work_on}</p>
+              </article>
+            );
+          })}
         </div>
       )}
 

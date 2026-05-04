@@ -156,7 +156,10 @@ export function DiffDocument({ diff, sections, transcriptText, scriptBodies }: P
           text-decoration-thickness: 1.5px;
         }
         .ed-paraphrase {
-          background: rgba(251,199,104,0.22);
+          /* Bumped from 0.22 to 0.34 alpha for both visibility and
+             WCAG contrast — the previous tint was too thin to read
+             as "highlighted" against the white page. */
+          background: rgba(251,199,104,0.34);
           border-radius: 3px;
           padding: 0 3px;
         }

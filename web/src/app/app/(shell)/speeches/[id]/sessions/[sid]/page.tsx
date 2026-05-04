@@ -24,6 +24,7 @@ import { getPlaybackUrl } from "@/app/app/sessions-actions";
 import { buildDiff, coalesceDiff } from "@/lib/alignment";
 import type { TranscriptWord, ScriptSection } from "@/lib/alignment";
 import { CoachCard } from "./coach-card";
+import { CoachRail } from "./coach-rail";
 import { AutoRefresh } from "./auto-refresh";
 import { DiffDocument } from "./diff-document";
 
@@ -123,6 +124,22 @@ export default async function SessionReportPage({
   // Pipeline state derivations.
   const hasTranscript = !!transcript?.words && Array.isArray(transcript.words);
   const hasCoach = !!aiReport;
+
+  // The rail surfaces the coach summary + the single highest-priority
+  // suggested edit (if any). The coach already orders edits by impact
+  // when it returns them, so just take the first.
+  type SuggestedEditShape = {
+    id: string;
+    kind: "cut" | "adopt" | "rephrase";
+    section_id: string;
+    before?: string;
+    after?: string;
+    reason: string;
+  };
+  const railEdits = (Array.isArray(aiReport?.suggested_edits)
+    ? aiReport.suggested_edits
+    : []) as unknown as SuggestedEditShape[];
+  const topEdit: SuggestedEditShape | null = railEdits[0] ?? null;
   // The whole pipeline is "done" when both transcript AND coach landed —
   // those are the two server-side jobs that happen post-stop.
   const pipelineDone = hasTranscript && hasCoach;
@@ -194,6 +211,30 @@ export default async function SessionReportPage({
         }
       `}</style>
 
+      {/* Two-column body. Main content (recording, diff, coach, pacing,
+          tags) flows in column 1. The CoachRail pins to column 2 on
+          desktop so the answer is always one glance away. The grid
+          collapses to a single column on mobile, where the rail is
+          hidden because the page is already a single scroll. */}
+      <style>{`
+        .report-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 32px;
+          margin-top: 8px;
+        }
+        @media (min-width: 1100px) {
+          .report-grid {
+            grid-template-columns: minmax(0, 1fr) 320px;
+            gap: 40px;
+          }
+        }
+        @media (max-width: 1099px) {
+          .report-rail-col { display: none; }
+        }
+      `}</style>
+      <div className="report-grid">
+       <div>
       {/* ===== 1. RECORDING =====
           Bare audio element on the page surface — no card, no inner box.
           The native player chrome already reads as a contained widget;
@@ -258,6 +299,7 @@ export default async function SessionReportPage({
       </section>
 
       {/* ===== 3. COACH ===== */}
+      <div id="coach" style={{ scrollMarginTop: 24 }}>
       {hasCoach && aiReport ? (
         <CoachCard
           speechId={speechId}
@@ -298,6 +340,7 @@ export default async function SessionReportPage({
           </div>
         </section>
       )}
+      </div>
 
       {/* ===== 4. PACING (below the fold — useful but not the headline) ===== */}
       {metrics.length > 0 && (
@@ -390,6 +433,20 @@ export default async function SessionReportPage({
           </div>
         </section>
       )}
+       </div>{/* /column 1 */}
+
+       <div className="report-rail-col">
+         {hasCoach && aiReport && (
+           <CoachRail
+             speechId={speechId}
+             sessionId={sessionId}
+             summary={aiReport.summary ?? ""}
+             topEdit={topEdit}
+             sectionNameById={Object.fromEntries(sectionNameById)}
+           />
+         )}
+       </div>
+      </div>{/* /report-grid */}
     </div>
   );
 }
