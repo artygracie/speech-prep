@@ -113,16 +113,16 @@ export function useStreamingTranscription(opts: Opts): Hook {
   }, []);
 
   // ----- Websocket setup -----
-  // Deepgram websocket auth: pass the token as a URL query param. The
-  // alternative — Sec-WebSocket-Protocol via `["token", jwt]` — appears
-  // in some Deepgram examples but rejects on real connections; the
-  // documented stable path is `?access_token=...`.
+  // Deepgram browser auth, take three:
+  //   - `["token", apiKey]` works for long-lived API keys
+  //   - `?access_token=…` only works on /v1/auth/grant, not /v1/listen
+  //   - `["bearer", jwt]` is the documented path for short-lived
+  //     access tokens minted via /auth/grant. We're on the third.
   const openSocket = useCallback(async (): Promise<WebSocket> => {
     const token = await fetchToken();
-    const urlWithAuth = `${DG_URL}&access_token=${encodeURIComponent(token)}`;
 
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(urlWithAuth);
+      const ws = new WebSocket(DG_URL, ["bearer", token]);
       ws.binaryType = "arraybuffer";
 
       const openTimeout = setTimeout(() => {
