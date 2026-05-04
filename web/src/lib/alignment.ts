@@ -60,7 +60,7 @@ function normaliseToken(raw: string): string {
     .replace(/[^a-z0-9]+/g, "");            // strip punctuation
 }
 
-export type ScriptToken = { sectionId: string; position: number; token: string };
+export type ScriptToken = { sectionId: string; position: number; token: string; raw: string };
 
 export function tokeniseScript(sections: ScriptSection[]): ScriptToken[] {
   const out: ScriptToken[] = [];
@@ -69,7 +69,10 @@ export function tokeniseScript(sections: ScriptSection[]): ScriptToken[] {
     for (const raw of s.body.split(/\s+/)) {
       const token = normaliseToken(raw);
       if (!token) continue;
-      out.push({ sectionId: s.id, position: s.position, token });
+      // Preserve the raw word (with punctuation + case) so the diff
+      // renderer can show the user's actual text instead of normalised
+      // tokens like "name" instead of "[Name]".
+      out.push({ sectionId: s.id, position: s.position, token, raw });
     }
   }
   return out;
@@ -317,12 +320,13 @@ export function buildDiff(
       // matched (could still be a paraphrase if surface text differs)
       const sec = scriptTokens[p.s].sectionId;
       if (runKind !== "match" || runSection !== sec) { flush(); runKind = "match"; runSection = sec; }
-      runScript.push(transcriptWords[transcriptTokens[p.t].idx]?.word ? scriptTokens[p.s].token : scriptTokens[p.s].token);
+      // Use the raw script word — preserves [Name], punctuation, case.
+      runScript.push(scriptTokens[p.s].raw);
       runSpoken.push(transcriptWords[transcriptTokens[p.t].idx]?.word ?? transcriptTokens[p.t].token);
     } else if (p.s !== null && p.t === null) {
       const sec = scriptTokens[p.s].sectionId;
       if (runKind !== "skipped" || runSection !== sec) { flush(); runKind = "skipped"; runSection = sec; }
-      runScript.push(scriptTokens[p.s].token);
+      runScript.push(scriptTokens[p.s].raw);
     } else if (p.s === null && p.t !== null) {
       // improv — assigned to whatever section is currently the run's section
       if (runKind !== "improv") {
@@ -334,6 +338,95 @@ export function buildDiff(
   }
   flush();
   return out;
+}
+
+// ---------- Diff coalescing for the document-style report ----------
+//
+// `buildDiff` produces a row whenever the alignment kind changes. That's
+// faithful to the alignment but visually noisy: a single misheard word
+// becomes its own card, and articles like "I" / "the" / "a" that
+// Deepgram inserts or drops show up as standalone "ad-lib" or "skipped"
+// events that aren't useful to the user.
+//
+// `coalesceDiff` post-processes the row list for human readability:
+//
+//   1. Drop "noise" skips/improvs — runs of 1–2 stop words only.
+//      These are almost always alignment artefacts, not real changes.
+//   2. Merge consecutive rows of the same kind in the same section.
+//   3. Trim leading/trailing whitespace defensively.
+//
+// The output is the right granularity for the document view: meaningful
+// chunks, not single-word fragments.
+
+const STOP_WORDS = new Set([
+  "i", "a", "an", "the", "and", "or", "but", "of", "to", "is", "it", "in",
+  "on", "at", "for", "with", "as", "be", "so", "if", "that", "this",
+  "uh", "um", "umm", "uhh", "er", "erm", "ah", "oh", "you", "we",
+]);
+
+function isStopwordOnly(text: string): boolean {
+  const tokens = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return true;
+  if (tokens.length > 2) return false;
+  return tokens.every((t) => STOP_WORDS.has(t));
+}
+
+export function coalesceDiff(rows: DiffRow[]): DiffRow[] {
+  // 1. Filter out stop-word noise on skips and improvs only.
+  //    We never drop a paraphrase or match — those are anchors.
+  const filtered = rows.filter((r) => {
+    if (r.kind === "skipped") return !isStopwordOnly(r.written);
+    if (r.kind === "improv")  return !isStopwordOnly(r.spoken);
+    return true;
+  });
+
+  // 2. Merge consecutive same-kind rows in the same section.
+  const merged: DiffRow[] = [];
+  for (const r of filtered) {
+    const last = merged[merged.length - 1];
+    if (
+      last &&
+      last.kind === r.kind &&
+      ((last.kind !== "improv" && r.kind !== "improv" &&
+        // Both rows have a sectionId we can compare.
+        (last as { sectionId: string }).sectionId === (r as { sectionId: string }).sectionId) ||
+       (last.kind === "improv" && r.kind === "improv" &&
+        (last as { sectionId: string | null }).sectionId === (r as { sectionId: string | null }).sectionId))
+    ) {
+      // Merge by appending the spoken/written strings.
+      if (r.kind === "match" || r.kind === "paraphrase") {
+        const lastTyped = last as Extract<DiffRow, { kind: "match" | "paraphrase" }>;
+        const rowTyped = r as Extract<DiffRow, { kind: "match" | "paraphrase" }>;
+        lastTyped.written = `${lastTyped.written} ${rowTyped.written}`.trim();
+        lastTyped.spoken  = `${lastTyped.spoken} ${rowTyped.spoken}`.trim();
+        // If a merged "match" run now contains differing surface text,
+        // promote it to "paraphrase".
+        if (
+          lastTyped.kind === "match" &&
+          lastTyped.written.toLowerCase() !== lastTyped.spoken.toLowerCase()
+        ) {
+          (lastTyped as DiffRow).kind = "paraphrase";
+        }
+      } else if (r.kind === "skipped") {
+        const lastTyped = last as Extract<DiffRow, { kind: "skipped" }>;
+        const rowTyped = r as Extract<DiffRow, { kind: "skipped" }>;
+        lastTyped.written = `${lastTyped.written} ${rowTyped.written}`.trim();
+      } else if (r.kind === "improv") {
+        const lastTyped = last as Extract<DiffRow, { kind: "improv" }>;
+        const rowTyped = r as Extract<DiffRow, { kind: "improv" }>;
+        lastTyped.spoken = `${lastTyped.spoken} ${rowTyped.spoken}`.trim();
+      }
+    } else {
+      merged.push({ ...r });
+    }
+  }
+
+  return merged;
 }
 
 // ---------- Convenience wrapper ----------

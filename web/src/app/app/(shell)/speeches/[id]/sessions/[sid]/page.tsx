@@ -21,10 +21,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPlaybackUrl } from "@/app/app/sessions-actions";
-import { buildDiff } from "@/lib/alignment";
+import { buildDiff, coalesceDiff } from "@/lib/alignment";
 import type { TranscriptWord, ScriptSection } from "@/lib/alignment";
 import { CoachCard } from "./coach-card";
 import { AutoRefresh } from "./auto-refresh";
+import { DiffDocument } from "./diff-document";
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -103,10 +104,21 @@ export default async function SessionReportPage({
   const playbackUrl = session.audio_path ? await getPlaybackUrl(session.audio_path) : null;
 
   // Diff: only if transcript has words.
+  // We coalesce after building so the document view gets meaningful
+  // chunks (sentence-ish), not single-token noise.
   let diff: ReturnType<typeof buildDiff> = [];
   if (transcript?.words && Array.isArray(transcript.words) && sections.length > 0) {
-    diff = buildDiff(sections, transcript.words as TranscriptWord[]);
+    diff = coalesceDiff(buildDiff(sections, transcript.words as TranscriptWord[]));
   }
+  // Plain transcript text + script bodies for the Transcript / Script tabs.
+  const transcriptText = (transcript?.text as string | undefined) ?? "";
+  const scriptBodies: Record<string, string> = Object.fromEntries(
+    (secRows ?? []).map((s) => [s.id, s.body ?? ""]),
+  );
+  const sectionListForDoc = sections.map((s) => ({
+    id: s.id,
+    name: sectionNameById.get(s.id) ?? "Section",
+  }));
 
   // Pipeline state derivations.
   const hasTranscript = !!transcript?.words && Array.isArray(transcript.words);
@@ -202,57 +214,43 @@ export default async function SessionReportPage({
         </section>
       )}
 
-      {/* ===== 2. SAID vs. WRITTEN ===== */}
+      {/* ===== 2. SAID vs. WRITTEN =====
+          Document-style view with three tabs:
+            Diff (default)  — script with track-changes inline
+            Transcript      — clean rendering of what you said
+            Script          — clean rendering of what you wrote
+       */}
       <section className="mt-12">
         <h2 className="text-heading">What you said vs. what you wrote</h2>
-        {diff.length > 0 ? (
-          <div className="card-elevated mt-5" style={{ padding: 28 }}>
-            <div style={{ display: "grid", gap: 6 }}>
-              {diff.map((row, i) => {
-                if (row.kind === "match") return <p key={i} className="diff-line diff-match">&ldquo;{row.spoken}&rdquo;</p>;
-                if (row.kind === "paraphrase")
-                  return (
-                    <p key={i} className="diff-line diff-paraphrase">
-                      &ldquo;{row.spoken}&rdquo;{" "}
-                      <span style={{ color: "var(--color-muted-ash)", fontStyle: "italic", fontSize: 13 }}>
-                        — written: &ldquo;{row.written}&rdquo;
-                      </span>
-                    </p>
-                  );
-                if (row.kind === "skipped") return <p key={i} className="diff-line diff-skipped">&ldquo;{row.written}&rdquo;</p>;
-                return <p key={i} className="diff-line diff-improv">+ &ldquo;{row.spoken}&rdquo;</p>;
-              })}
+        <p
+          className="text-body-sm mt-2"
+          style={{ color: "var(--color-muted-ash)", maxWidth: 580 }}
+        >
+          Edits show inline like track-changes — strikethroughs are skipped lines,
+          gold highlights are paraphrases, italic blue is what you ad-libbed.
+        </p>
+        <div className="mt-5">
+          {diff.length > 0 ? (
+            <DiffDocument
+              diff={diff}
+              sections={sectionListForDoc}
+              transcriptText={transcriptText}
+              scriptBodies={scriptBodies}
+            />
+          ) : (
+            <div className="empty-state">
+              <p className="text-subheading">
+                Lining up your transcript against the script…
+              </p>
+              <p
+                className="text-body mt-3"
+                style={{ color: "var(--color-muted-ash)" }}
+              >
+                This page refreshes itself — you don&rsquo;t need to do anything.
+              </p>
             </div>
-
-            <div className="mt-7 flex gap-2 flex-wrap">
-              <span className="badge pill-soft">
-                <span className="dot" />
-                {diff.filter((r) => r.kind === "match").length} matched
-              </span>
-              <span className="badge pill-gold">
-                <span className="dot" />
-                {diff.filter((r) => r.kind === "paraphrase").length} paraphrased
-              </span>
-              <span className="badge pill-red">
-                <span className="dot" />
-                {diff.filter((r) => r.kind === "skipped").length} skipped
-              </span>
-              <span className="badge pill-blue">
-                <span className="dot" />
-                {diff.filter((r) => r.kind === "improv").length} ad-lib
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="empty-state mt-5">
-            <p className="text-subheading">
-              Lining up your transcript against the script…
-            </p>
-            <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-              This page refreshes itself — you don&rsquo;t need to do anything.
-            </p>
-          </div>
-        )}
+          )}
+        </div>
       </section>
 
       {/* ===== 3. COACH ===== */}
