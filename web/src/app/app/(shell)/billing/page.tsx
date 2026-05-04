@@ -10,6 +10,8 @@ import {
   startOneShotCheckout,
   openCustomerPortal,
 } from "@/app/app/billing-actions";
+import { stripe } from "@/lib/stripe";
+import { ConversionPixel } from "./conversion-pixel";
 
 export const metadata = { title: "Billing — SpeechPrep" };
 
@@ -22,8 +24,30 @@ export default async function BillingPage({
 }) {
   const params = await searchParams;
   const status = typeof params.status === "string" ? params.status : null;
+  const sessionId = typeof params.session_id === "string" ? params.session_id : null;
   const fromRecordSpeechId =
     params.from === "record" && typeof params.speech_id === "string" ? params.speech_id : null;
+
+  // After a successful checkout, look up the Stripe session so we can
+  // fire the Google Ads conversion pixel with the real charged amount.
+  // We use amount_total (in cents) because it accounts for promo codes
+  // and currency without re-deriving from price IDs.
+  let conversion: { transactionId: string; value: number; currency: string } | null = null;
+  if (status === "success" && sessionId) {
+    try {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (session.amount_total && session.currency) {
+        conversion = {
+          transactionId: session.id,
+          value: session.amount_total / 100,
+          currency: session.currency.toUpperCase(),
+        };
+      }
+    } catch {
+      // Don't break the success page if Stripe lookup fails — the
+      // webhook is the source of truth for entitlements anyway.
+    }
+  }
 
   const supabase = await createClient();
   const {
@@ -44,6 +68,14 @@ export default async function BillingPage({
   return (
     <div style={{ maxWidth: 880 }}>
       <h1 className="text-heading-lg">Billing</h1>
+
+      {conversion && (
+        <ConversionPixel
+          transactionId={conversion.transactionId}
+          value={conversion.value}
+          currency={conversion.currency}
+        />
+      )}
 
       {/* Status banners */}
       {status === "success" && (
