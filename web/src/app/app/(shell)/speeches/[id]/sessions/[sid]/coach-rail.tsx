@@ -82,7 +82,8 @@ export function CoachRail({
       <style>{`
         .coach-rail {
           position: sticky;
-          top: 24px;
+          /* 52px top bar + 16px breathing room */
+          top: 68px;
           padding: 22px 22px 20px;
           background: var(--color-canvas-white);
           border: 1px solid rgba(17,17,17,0.08);
