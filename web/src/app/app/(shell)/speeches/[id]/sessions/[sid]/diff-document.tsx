@@ -25,7 +25,7 @@
 // stacked event cards.
 
 import { useState } from "react";
-import type { DiffRow } from "@/lib/alignment";
+import type { DiffRow, WordOp } from "@/lib/alignment";
 
 type Section = { id: string; name: string };
 
@@ -68,9 +68,8 @@ export function DiffDocument({ diff, sections, transcriptText, scriptBodies }: P
     if (rows.length === 0) return "";
     return rows
       .map((r) => {
-        if (r.kind === "match" || r.kind === "paraphrase" || r.kind === "improv") {
-          return r.spoken;
-        }
+        if (r.kind === "match" || r.kind === "improv") return r.spoken;
+        if (r.kind === "paraphrase") return spokenFromOps(r.ops);
         return ""; // skipped rows have no spoken text
       })
       .filter(Boolean)
@@ -305,6 +304,19 @@ export function DiffDocument({ diff, sections, transcriptText, scriptBodies }: P
   );
 }
 
+// Reconstruct what the speaker actually said from a paraphrase row's
+// ops list — used for the Transcript tab.
+function spokenFromOps(ops: WordOp[]): string {
+  return ops
+    .map((o) => {
+      if (o.kind === "equal") return o.text;
+      if (o.kind === "sub" || o.kind === "ins") return o.spoken;
+      return ""; // del — nothing was said
+    })
+    .filter(Boolean)
+    .join(" ");
+}
+
 // One span per diff row, rendered inline so the surrounding paragraph
 // flows as continuous prose.
 function DiffSpan({ row }: { row: DiffRow }) {
@@ -312,11 +324,15 @@ function DiffSpan({ row }: { row: DiffRow }) {
     return <span>{row.spoken} </span>;
   }
   if (row.kind === "paraphrase") {
+    // Render each op as its own inline mark so only the actually-changed
+    // words are highlighted/struck — the unchanged words flow as normal
+    // body text.
     return (
-      <span className="ed-paraphrase">
-        <del>{row.written}</del>
-        {row.spoken}{" "}
-      </span>
+      <>
+        {row.ops.map((op, i) => (
+          <OpSpan key={i} op={op} />
+        ))}
+      </>
     );
   }
   if (row.kind === "skipped") {
@@ -324,6 +340,33 @@ function DiffSpan({ row }: { row: DiffRow }) {
   }
   // improv
   return <span className="ed-improv">{row.spoken} </span>;
+}
+
+function OpSpan({ op }: { op: WordOp }) {
+  if (op.kind === "equal") return <span>{op.text} </span>;
+  if (op.kind === "del") {
+    return (
+      <>
+        <span className="ed-skipped">{op.written}</span>{" "}
+      </>
+    );
+  }
+  if (op.kind === "ins") {
+    return (
+      <>
+        <span className="ed-paraphrase">{op.spoken}</span>{" "}
+      </>
+    );
+  }
+  // sub
+  return (
+    <>
+      <span className="ed-paraphrase">
+        <del>{op.written}</del>
+        {op.spoken}
+      </span>{" "}
+    </>
+  );
 }
 
 function DiffCounts({ diff }: { diff: DiffRow[] }) {

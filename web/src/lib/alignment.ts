@@ -270,11 +270,29 @@ export function computeSectionMetrics(
 // Given the same alignment, produce the row list the report's diff view
 // wants: matched | paraphrase | skipped | improv.
 
+// Word-level edit op inside a paraphrase row.
+//   equal — word said as written
+//   sub   — word said with different surface (case/contraction/synonym)
+//   del   — word in the script the speaker dropped
+//   ins   — word the speaker added that wasn't in the script
+export type WordOp =
+  | { kind: "equal"; text: string }
+  | { kind: "sub"; written: string; spoken: string }
+  | { kind: "del"; written: string }
+  | { kind: "ins"; spoken: string };
+
 export type DiffRow =
   | { kind: "match"; spoken: string; written: string; sectionId: string }
-  | { kind: "paraphrase"; spoken: string; written: string; sectionId: string }
+  | { kind: "paraphrase"; ops: WordOp[]; sectionId: string }
   | { kind: "skipped"; written: string; sectionId: string }
   | { kind: "improv"; spoken: string; sectionId: string | null };
+
+// Strip non-letter/digit characters and lowercase for surface-equality
+// checks on a single word. "everyone." vs "everyone" should be equal so
+// trailing-period differences don't promote a match into a paraphrase.
+function surfaceCore(s: string): string {
+  return s.toLowerCase().replace(/[^\p{L}\p{N}']+/gu, "");
+}
 
 export function buildDiff(
   sections: ScriptSection[],
@@ -284,10 +302,13 @@ export function buildDiff(
   const transcriptTokens = tokeniseTranscript(transcriptWords);
   const pairs = alignNeedlemanWunsch(scriptTokens, transcriptTokens);
 
-  // Walk the alignment, accumulating spans of consecutive pairs of the
-  // same kind. We yield one DiffRow per span.
+  // Walk the alignment, accumulating spans of consecutive pairs in the
+  // same section. Match-runs accumulate word-level ops so the renderer
+  // can show only the actually-changed words rather than striking the
+  // whole sentence.
   const out: DiffRow[] = [];
   let runKind: "match" | "skipped" | "improv" | null = null;
+  let runOps: WordOp[] = [];
   let runScript: string[] = [];
   let runSpoken: string[] = [];
   let runSection: string | null = null;
@@ -295,22 +316,22 @@ export function buildDiff(
   function flush() {
     if (!runKind) return;
     if (runKind === "match") {
-      // Distinguish between exact match and paraphrase: if any script-aligned
-      // pair within the run had differing surface text, mark it paraphrase.
-      const written = runScript.join(" ");
-      const spoken = runSpoken.join(" ");
-      out.push({
-        kind: written.toLowerCase() === spoken.toLowerCase() ? "match" : "paraphrase",
-        spoken,
-        written,
-        sectionId: runSection ?? "",
-      });
+      // If every op is "equal", emit a clean match row. Otherwise it's
+      // a paraphrase carrying a per-word op list.
+      const allEqual = runOps.every((o) => o.kind === "equal");
+      if (allEqual) {
+        const text = runOps.map((o) => (o as { kind: "equal"; text: string }).text).join(" ");
+        out.push({ kind: "match", spoken: text, written: text, sectionId: runSection ?? "" });
+      } else {
+        out.push({ kind: "paraphrase", ops: runOps, sectionId: runSection ?? "" });
+      }
     } else if (runKind === "skipped") {
       out.push({ kind: "skipped", written: runScript.join(" "), sectionId: runSection ?? "" });
     } else if (runKind === "improv") {
       out.push({ kind: "improv", spoken: runSpoken.join(" "), sectionId: runSection });
     }
     runKind = null;
+    runOps = [];
     runScript = [];
     runSpoken = [];
   }
@@ -320,20 +341,44 @@ export function buildDiff(
       // matched (could still be a paraphrase if surface text differs)
       const sec = scriptTokens[p.s].sectionId;
       if (runKind !== "match" || runSection !== sec) { flush(); runKind = "match"; runSection = sec; }
-      // Use the raw script word — preserves [Name], punctuation, case.
-      runScript.push(scriptTokens[p.s].raw);
-      runSpoken.push(transcriptWords[transcriptTokens[p.t].idx]?.word ?? transcriptTokens[p.t].token);
+      const written = scriptTokens[p.s].raw;
+      const spoken = transcriptWords[transcriptTokens[p.t].idx]?.word ?? transcriptTokens[p.t].token;
+      if (surfaceCore(written) === surfaceCore(spoken)) {
+        // Same word — keep the spoken surface so casing/punctuation
+        // tracks what was actually said.
+        runOps.push({ kind: "equal", text: spoken });
+      } else {
+        runOps.push({ kind: "sub", written, spoken });
+      }
     } else if (p.s !== null && p.t === null) {
       const sec = scriptTokens[p.s].sectionId;
+      const written = scriptTokens[p.s].raw;
+      // A dropped word inside the same section as an active match run
+      // stays inside that run as a "del" op so it renders inline in the
+      // surrounding sentence rather than splitting into a separate
+      // skipped block.
+      if (runKind === "match" && runSection === sec) {
+        runOps.push({ kind: "del", written });
+        continue;
+      }
       if (runKind !== "skipped" || runSection !== sec) { flush(); runKind = "skipped"; runSection = sec; }
-      runScript.push(scriptTokens[p.s].raw);
+      runScript.push(written);
     } else if (p.s === null && p.t !== null) {
+      const spoken = transcriptWords[transcriptTokens[p.t].idx]?.word ?? transcriptTokens[p.t].token;
+      // An inserted word inside an active match run becomes an "ins" op
+      // so it appears inline (e.g. spoken "really" inserted in the
+      // middle of a paraphrased sentence) rather than as a separate
+      // ad-lib block.
+      if (runKind === "match") {
+        runOps.push({ kind: "ins", spoken });
+        continue;
+      }
       // improv — assigned to whatever section is currently the run's section
       if (runKind !== "improv") {
         flush();
         runKind = "improv";
       }
-      runSpoken.push(transcriptWords[transcriptTokens[p.t].idx]?.word ?? transcriptTokens[p.t].token);
+      runSpoken.push(spoken);
     }
   }
   flush();
@@ -376,53 +421,67 @@ function isStopwordOnly(text: string): boolean {
   return tokens.every((t) => STOP_WORDS.has(t));
 }
 
+// Inside a paraphrase row, a single dropped/inserted stopword ("the",
+// "and", "a") is almost always an alignment artefact, not something
+// the user did wrong. Drop it from the ops list so it doesn't render
+// as a strikethrough or insertion mark. We don't touch "sub" — a real
+// word swap is meaningful even if the swap involves a stopword.
+function stripStopwordNoise(ops: WordOp[]): WordOp[] {
+  return ops.filter((o) => {
+    if (o.kind === "del") return !STOP_WORDS.has(surfaceCore(o.written));
+    if (o.kind === "ins") return !STOP_WORDS.has(surfaceCore(o.spoken));
+    return true;
+  });
+}
+
 export function coalesceDiff(rows: DiffRow[]): DiffRow[] {
   // 1. Filter out stop-word noise on skips and improvs only.
   //    We never drop a paraphrase or match — those are anchors.
-  const filtered = rows.filter((r) => {
-    if (r.kind === "skipped") return !isStopwordOnly(r.written);
-    if (r.kind === "improv")  return !isStopwordOnly(r.spoken);
-    return true;
-  });
+  const filtered = rows
+    .map((r) => {
+      if (r.kind === "paraphrase") {
+        const cleaned = stripStopwordNoise(r.ops);
+        // If cleaning leaves only equal ops, demote to a clean match row.
+        if (cleaned.every((o) => o.kind === "equal")) {
+          const text = cleaned.map((o) => (o as { kind: "equal"; text: string }).text).join(" ");
+          return { kind: "match", spoken: text, written: text, sectionId: r.sectionId } as DiffRow;
+        }
+        return { ...r, ops: cleaned } as DiffRow;
+      }
+      return r;
+    })
+    .filter((r) => {
+      if (r.kind === "skipped") return !isStopwordOnly(r.written);
+      if (r.kind === "improv")  return !isStopwordOnly(r.spoken);
+      return true;
+    });
 
   // 2. Merge consecutive same-kind rows in the same section.
   const merged: DiffRow[] = [];
   for (const r of filtered) {
     const last = merged[merged.length - 1];
-    if (
+    const sameSection =
       last &&
       last.kind === r.kind &&
       ((last.kind !== "improv" && r.kind !== "improv" &&
-        // Both rows have a sectionId we can compare.
         (last as { sectionId: string }).sectionId === (r as { sectionId: string }).sectionId) ||
        (last.kind === "improv" && r.kind === "improv" &&
-        (last as { sectionId: string | null }).sectionId === (r as { sectionId: string | null }).sectionId))
-    ) {
-      // Merge by appending the spoken/written strings.
-      if (r.kind === "match" || r.kind === "paraphrase") {
-        const lastTyped = last as Extract<DiffRow, { kind: "match" | "paraphrase" }>;
-        const rowTyped = r as Extract<DiffRow, { kind: "match" | "paraphrase" }>;
-        lastTyped.written = `${lastTyped.written} ${rowTyped.written}`.trim();
-        lastTyped.spoken  = `${lastTyped.spoken} ${rowTyped.spoken}`.trim();
-        // If a merged "match" run now contains differing surface text,
-        // promote it to "paraphrase".
-        if (
-          lastTyped.kind === "match" &&
-          lastTyped.written.toLowerCase() !== lastTyped.spoken.toLowerCase()
-        ) {
-          (lastTyped as DiffRow).kind = "paraphrase";
-        }
-      } else if (r.kind === "skipped") {
-        const lastTyped = last as Extract<DiffRow, { kind: "skipped" }>;
-        const rowTyped = r as Extract<DiffRow, { kind: "skipped" }>;
-        lastTyped.written = `${lastTyped.written} ${rowTyped.written}`.trim();
-      } else if (r.kind === "improv") {
-        const lastTyped = last as Extract<DiffRow, { kind: "improv" }>;
-        const rowTyped = r as Extract<DiffRow, { kind: "improv" }>;
-        lastTyped.spoken = `${lastTyped.spoken} ${rowTyped.spoken}`.trim();
+        (last as { sectionId: string | null }).sectionId === (r as { sectionId: string | null }).sectionId));
+
+    if (sameSection && last) {
+      if (last.kind === "match" && r.kind === "match") {
+        last.written = `${last.written} ${r.written}`.trim();
+        last.spoken = `${last.spoken} ${r.spoken}`.trim();
+      } else if (last.kind === "paraphrase" && r.kind === "paraphrase") {
+        last.ops = last.ops.concat(r.ops);
+      } else if (last.kind === "skipped" && r.kind === "skipped") {
+        last.written = `${last.written} ${r.written}`.trim();
+      } else if (last.kind === "improv" && r.kind === "improv") {
+        last.spoken = `${last.spoken} ${r.spoken}`.trim();
       }
     } else {
-      merged.push({ ...r });
+      // Shallow clone so callers can't mutate the original rows.
+      merged.push(r.kind === "paraphrase" ? { ...r, ops: [...r.ops] } : { ...r });
     }
   }
 
