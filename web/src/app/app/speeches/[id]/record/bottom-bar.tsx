@@ -128,12 +128,17 @@ export function BottomBar({
   return (
     <>
       <style>{`
+        /* The sidenav in the app shell is 240px wide on desktop and
+           hidden under 880px. We anchor the bar to the right of it
+           rather than centering on the viewport so the bar doesn't
+           overlap the sidebar at any width. */
         .bb-shell {
           position: fixed;
-          left: 50%;
+          left: calc(240px + 24px);
+          right: 24px;
           bottom: 24px;
-          transform: translate(-50%, 0);
-          width: min(calc(100vw - 32px), 1080px);
+          margin: 0 auto;
+          max-width: 1080px;
           z-index: 60;
           background: rgba(255, 255, 255, 0.92);
           backdrop-filter: saturate(180%) blur(20px);
@@ -141,8 +146,12 @@ export function BottomBar({
           border: 1px solid rgba(17,17,17,0.06);
           border-radius: 16px;
           box-shadow: 0 12px 36px rgba(17,17,17,0.10), 0 1px 0 rgba(255,255,255,0.6) inset;
-          transition: transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
           padding: 14px 16px 12px 18px;
+        }
+        @media (max-width: 880px) {
+          /* Sidenav is hidden under 880px — bar gets the full width
+             minus the page gutter. */
+          .bb-shell { left: 16px; right: 16px; }
         }
 
         /* Two-row grid:
@@ -382,7 +391,9 @@ export function BottomBar({
         }
 
         @media (max-width: 720px) {
-          .bb-shell { width: calc(100vw - 16px); bottom: 12px; padding: 12px 14px 10px; }
+          /* left/right gutter already set by the 880px breakpoint —
+             we only need to tweak inner spacing + the timer size. */
+          .bb-shell { bottom: 12px; padding: 12px 14px 10px; }
           .bb-time { font-size: 22px; }
           .bb-pacing { grid-column: 1 / -1; }
         }
