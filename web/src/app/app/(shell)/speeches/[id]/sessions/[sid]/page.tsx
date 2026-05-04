@@ -1,17 +1,20 @@
 // Session report.
 //
-// Layout, in priority order — these are the three things the user
-// actually came here to see, in this order:
+// Layout, in priority order:
 //
-//   1. Their recording      — listen back to themselves
-//   2. Said vs. written     — the diff between their script and what
+//   1. Said vs. written     — the diff between their script and what
 //                             they actually said (the differentiating
 //                             screen of the whole product)
-//   3. Coach feedback       — the AI summary + suggested edits
+//   2. Coach feedback       — the AI summary + suggested edits
 //
 // Below the fold (still useful, but not the headline):
-//   4. Per-section pacing graph
-//   5. Live notes the user flagged during recording
+//   3. Per-section pacing graph
+//   4. Live notes the user flagged during recording
+//
+// Audio playback lives in a "Listen back" pill in the header that, on
+// click, docks a persistent mini-player at the bottom of the viewport.
+// This trades a wide audio block above the diff for a non-blocking
+// footer that lets you scrub while reading.
 //
 // While the transcript and coach are still landing, an inline
 // AutoRefresh component re-fetches the page every 3s and (if the
@@ -27,6 +30,7 @@ import { CoachCard } from "./coach-card";
 import { CoachRail } from "./coach-rail";
 import { AutoRefresh } from "./auto-refresh";
 import { DiffDocument } from "./diff-document";
+import { PlaybackDock } from "./playback-dock";
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -194,7 +198,17 @@ export default async function SessionReportPage({
             )}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {playbackUrl && (
+            <PlaybackDock
+              src={playbackUrl}
+              durationSeconds={
+                session.duration_ms != null
+                  ? Math.round(session.duration_ms / 1000)
+                  : null
+              }
+            />
+          )}
           <Link href={`/app/speeches/${speechId}/record`} className="btn-light">Record again</Link>
         </div>
       </div>
@@ -235,31 +249,7 @@ export default async function SessionReportPage({
       `}</style>
       <div className="report-grid">
        <div>
-      {/* ===== 1. RECORDING =====
-          Bare audio element on the page surface — no card, no inner box.
-          The native player chrome already reads as a contained widget;
-          wrapping it in a card was visual padding for nothing. */}
-      {playbackUrl && (
-        <section className="mt-10">
-          <div className="flex items-baseline justify-between" style={{ gap: 16 }}>
-            <h2 className="text-heading">Your recording</h2>
-            {session.duration_ms != null && (
-              <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-                {fmtTime(Math.round(session.duration_ms / 1000))} total
-              </span>
-            )}
-          </div>
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <audio
-            controls
-            preload="metadata"
-            src={playbackUrl}
-            style={{ width: "100%", marginTop: 16, display: "block" }}
-          />
-        </section>
-      )}
-
-      {/* ===== 2. SAID vs. WRITTEN =====
+      {/* ===== 1. SAID vs. WRITTEN =====
           Document-style view with three tabs:
             Diff (default)  — script with track-changes inline
             Transcript      — clean rendering of what you said
@@ -298,7 +288,7 @@ export default async function SessionReportPage({
         </div>
       </section>
 
-      {/* ===== 3. COACH ===== */}
+      {/* ===== 2. COACH ===== */}
       <div id="coach" style={{ scrollMarginTop: 24 }}>
       {hasCoach && aiReport ? (
         <CoachCard
@@ -342,7 +332,7 @@ export default async function SessionReportPage({
       )}
       </div>
 
-      {/* ===== 4. PACING (below the fold — useful but not the headline) ===== */}
+      {/* ===== 3. PACING (below the fold — useful but not the headline) ===== */}
       {metrics.length > 0 && (
         <section className="mt-14">
           <div className="flex items-baseline justify-between">
@@ -409,7 +399,7 @@ export default async function SessionReportPage({
         </section>
       )}
 
-      {/* ===== 5. LIVE TAGS ===== */}
+      {/* ===== 4. LIVE TAGS ===== */}
       {Array.isArray(session.tags) && session.tags.length > 0 && (
         <section className="mt-14">
           <h2 className="text-heading">Live notes you flagged</h2>
