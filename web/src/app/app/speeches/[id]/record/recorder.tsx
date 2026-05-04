@@ -340,12 +340,119 @@ export function Recorder({
           color: rgba(17,17,17,0.32);
         }
 
-        /* Freestyle pane */
+        /* ===== Freestyle pane =====
+           Same shape as the teleprompter script panel so the mode toggle
+           feels like a real switch rather than two unrelated screens. We
+           keep the section headings and target times; the bodies become
+           a single faint dash line that reads as "speak from memory."
+           A soft hero-style gradient sits behind everything to give the
+           freestyle screen its own atmosphere. */
         .rec-freestyle {
-          background: var(--color-whisper-gray);
-          border: 1px dashed rgba(17,17,17,0.14);
+          position: relative;
+          background: var(--color-canvas-white);
+          border: 1px solid rgba(17,17,17,0.06);
           border-radius: 14px;
-          padding: 64px 48px;
+          padding: 40px 48px 56px;
+          min-height: 520px;
+          overflow: hidden;
+        }
+        @media (max-width: 1100px) { .rec-freestyle { padding: 28px 24px 36px; min-height: 0; } }
+
+        .rec-freestyle::before,
+        .rec-freestyle::after {
+          content: "";
+          position: absolute;
+          pointer-events: none;
+          z-index: 0;
+          border-radius: 50%;
+          filter: blur(80px);
+        }
+        .rec-freestyle::before {
+          top: -20%; left: -10%; width: 70%; height: 80%;
+          background: radial-gradient(closest-side,
+            rgba(232, 64, 13, 0.18) 0%,
+            rgba(255, 238, 216, 0.18) 35%,
+            rgba(208, 178, 255, 0.10) 80%);
+          opacity: 0.85;
+        }
+        .rec-freestyle::after {
+          bottom: -30%; right: -15%; width: 70%; height: 80%;
+          background: radial-gradient(closest-side,
+            rgba(208, 178, 255, 0.15) 0%,
+            rgba(198, 236, 233, 0.15) 40%,
+            rgba(153, 255, 249, 0.10) 85%);
+          opacity: 0.75;
+        }
+
+        .rec-freestyle > * { position: relative; z-index: 1; }
+
+        .rec-freestyle-badge {
+          display: inline-flex; align-items: center; gap: 6px;
+          background: rgba(255,255,255,0.7);
+          backdrop-filter: saturate(160%) blur(8px);
+          -webkit-backdrop-filter: saturate(160%) blur(8px);
+          border: 1px solid rgba(17,17,17,0.06);
+          border-radius: 999px;
+          padding: 5px 10px 5px 8px;
+          font-size: 10px;
+          font-weight: 500;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--color-midnight-ink);
+          margin-bottom: 28px;
+        }
+        .rec-freestyle-badge::before {
+          content: "";
+          width: 5px; height: 5px; border-radius: 999px;
+          background: var(--color-phoenix-orange);
+          display: inline-block;
+        }
+
+        /* Sections inside freestyle — same layout as teleprompter, but the
+           body is replaced by a row of em-dashes that sit at the same
+           height/rhythm as a paragraph would. */
+        .rec-freestyle-section {
+          padding: 18px 0;
+        }
+        .rec-freestyle-section:first-of-type { padding-top: 0; }
+        .rec-freestyle-section:not(:first-of-type) {
+          border-top: 1px solid rgba(17,17,17,0.06);
+        }
+        .rec-freestyle-section.is-active .rec-freestyle-head h3 {
+          color: var(--color-midnight-ink);
+        }
+        .rec-freestyle-section.is-active .rec-current-marker {
+          opacity: 1; transform: scale(1);
+        }
+        .rec-freestyle-head {
+          display: flex; align-items: baseline; gap: 12px;
+          margin-bottom: 14px;
+        }
+        .rec-freestyle-head h3 {
+          font-size: 11px;
+          font-weight: 500;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--color-muted-ash);
+          transition: color 240ms ease;
+        }
+        .rec-freestyle-dashes {
+          font-family: var(--font-script);
+          font-size: 19px;
+          line-height: 1.75;
+          letter-spacing: 0.2em;
+          color: rgba(17,17,17,0.22);
+          user-select: none;
+        }
+        .rec-grid.is-live .rec-freestyle-section:not(.is-active) .rec-freestyle-dashes {
+          color: rgba(17,17,17,0.14);
+        }
+
+        /* Switch-to-teleprompter footer */
+        .rec-freestyle-footer {
+          margin-top: 32px;
+          padding-top: 24px;
+          border-top: 1px solid rgba(17,17,17,0.06);
           text-align: center;
         }
 
@@ -583,14 +690,48 @@ export function Recorder({
           </div>
         ) : (
           <div className="rec-freestyle">
-            <p className="text-subheading" style={{ color: "var(--color-midnight-ink)" }}>
-              Freestyle mode
-            </p>
-            <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)", maxWidth: 460, marginInline: "auto" }}>
-              Script hidden. Speak the speech from memory. We&rsquo;ll diff what you said against
-              what you wrote when you stop.
-            </p>
-            <div className="mt-6">
+            {/* Mode marker so it's unmistakable what you're looking at,
+                even when scrolled or screenshotted. */}
+            <span className="rec-freestyle-badge">From memory</span>
+
+            {/* Same section structure as teleprompter — only the bodies
+                are missing. The user keeps their navigational map: which
+                section comes next, how long it should take. */}
+            {sections.map((s, i) => (
+              <section
+                key={s.id}
+                className={`rec-freestyle-section ${
+                  isLive && i === currentSectionIdx ? "is-active" : ""
+                }`}
+              >
+                <header className="rec-freestyle-head">
+                  <span className="rec-current-marker" aria-hidden="true" />
+                  <h3>{s.name}</h3>
+                  <span
+                    className="text-caption"
+                    style={{ color: "var(--color-muted-ash)", marginLeft: "auto" }}
+                  >
+                    Target {fmtTime(s.targetSec * 1000)}
+                  </span>
+                </header>
+                {/* Word count of the original body, expressed as a count of
+                    em-dash placeholders. Caps at ~24 so a long section
+                    doesn't span six lines of dashes. */}
+                <div className="rec-freestyle-dashes" aria-hidden="true">
+                  {Array.from(
+                    {
+                      length: Math.min(
+                        24,
+                        Math.max(8, Math.round(s.body.split(/\s+/).filter(Boolean).length / 6)),
+                      ),
+                    },
+                    (_, idx) => "—",
+                  ).join(" ")}
+                </div>
+              </section>
+            ))}
+
+            <div className="rec-freestyle-footer">
               <button
                 onClick={() => state === "idle" && setMode("with-script")}
                 disabled={state !== "idle"}
@@ -601,12 +742,12 @@ export function Recorder({
                   color: "var(--color-midnight-ink)",
                   textDecoration: "underline",
                   textUnderlineOffset: 4,
-                  textDecorationColor: "rgba(17,17,17,0.18)",
+                  textDecorationColor: "rgba(17,17,17,0.2)",
                   cursor: state === "idle" ? "pointer" : "not-allowed",
                   opacity: state === "idle" ? 1 : 0.4,
                 }}
               >
-                Switch to teleprompter
+                Bring back the script
               </button>
             </div>
           </div>
