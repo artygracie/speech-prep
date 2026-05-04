@@ -140,6 +140,34 @@ export function Recorder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Tab-close protection. If the user closes the tab while recording,
+  // we (1) ask the browser to confirm and (2) fire a beacon to mark
+  // the session as failed so it doesn't sit forever in 'recording'.
+  // The reaper would catch it eventually, but the beacon makes it
+  // immediate so the dashboard never shows phantom in-progress rows.
+  useEffect(() => {
+    function onBeforeUnload(ev: BeforeUnloadEvent) {
+      if (state !== "recording" && state !== "paused") return;
+      const sid = sessionIdRef.current;
+      if (sid) {
+        // Best-effort beacon. We can't await; we can't log; we hope.
+        try {
+          const payload = JSON.stringify({ session_id: sid });
+          const blob = new Blob([payload], { type: "application/json" });
+          navigator.sendBeacon("/api/sessions/abandon", blob);
+        } catch {
+          // beacons swallow errors; nothing to do
+        }
+      }
+      ev.preventDefault();
+      // Modern browsers ignore the returnValue string but require it
+      // be set non-empty for the prompt to appear.
+      ev.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [state]);
+
   // Keyboard tags
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

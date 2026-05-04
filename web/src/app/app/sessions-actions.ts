@@ -21,6 +21,24 @@ import { createClient } from "@/lib/supabase/server";
 
 const BUCKET = "recordings";
 
+// Mark a session as failed without uploading audio. Called when the
+// user navigates away mid-recording (the beforeunload handler in the
+// recorder fires this via /api/sessions/abandon — beacons can't call
+// server actions directly). Idempotent.
+export async function abandonSession(sessionId: string): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return; // logged out; nothing to do
+  await supabase
+    .from("sessions")
+    .update({ status: "failed" })
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .eq("status", "recording"); // only flip from 'recording'; don't clobber an in-progress upload
+}
+
 function extFor(mime: string): string {
   if (mime.includes("webm")) return "webm";
   if (mime.includes("mp4")) return "m4a";
@@ -50,6 +68,24 @@ export async function createSession(
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) redirect("/login");
+
+    // ---------- Profile guarantee ----------
+    // The auth → profile trigger should run at signup, but if it ever
+    // fails or there's a race, the entitlements view returns nothing
+    // and we'd false-paywall a brand-new user. Lazy-create here.
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!existingProfile) {
+      await supabase.from("profiles").insert({
+        id: user.id,
+        email: user.email ?? `unknown-${user.id}@speechprep.local`,
+        plan: "free",
+        sessions_used: 0,
+      });
+    }
 
     // ---------- Entitlement check ----------
     // Use maybeSingle so a missing row doesn't throw — it returns null
