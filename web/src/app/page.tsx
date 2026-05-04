@@ -12,7 +12,18 @@ export default function LandingPage() {
   return (
     <>
       {/* ===== Sticky nav ===== */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-[rgba(255,255,255,0.78)] border-b border-[rgba(17,17,17,0.06)]">
+      <header
+        className="sticky top-0 z-50"
+        style={{
+          // Glassy: low opacity, strong blur + saturation, hairline shadow.
+          // The translucent bg + saturate boost lets the gradient bleed through.
+          background: "rgba(255, 255, 255, 0.55)",
+          backdropFilter: "saturate(180%) blur(18px)",
+          WebkitBackdropFilter: "saturate(180%) blur(18px)",
+          borderBottom: "1px solid rgba(17, 17, 17, 0.04)",
+          boxShadow: "0 1px 0 rgba(255, 255, 255, 0.5) inset",
+        }}
+      >
         <div className="container-x flex items-center justify-between py-3.5">
           <Link href="/" aria-label="SpeechPrep — home" className="flex items-center">
             <Image
@@ -40,14 +51,58 @@ export default function LandingPage() {
         <div className="hero-bg" aria-hidden="true" />
         <div className="container-x relative z-10 pt-24 pb-24 md:pt-32 md:pb-28">
           <div className="max-w-4xl">
-            <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+            {/* Eyebrow as a soft pill — sits a touch off the page so the
+                eye lands on it before the headline. */}
+            <span
+              className="text-caption"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                background: "rgba(255, 255, 255, 0.65)",
+                backdropFilter: "saturate(160%) blur(8px)",
+                WebkitBackdropFilter: "saturate(160%) blur(8px)",
+                border: "1px solid rgba(17, 17, 17, 0.06)",
+                color: "var(--color-midnight-ink)",
+                padding: "6px 12px",
+                borderRadius: 999,
+                boxShadow: "0 1px 2px rgba(17, 17, 17, 0.04)",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 999,
+                  background: "var(--color-phoenix-orange)",
+                  display: "inline-block",
+                }}
+              />
               Practice your speech before you give it
             </span>
             <h1 className="text-display mt-7">
               The room before
               <br />
-              <span style={{ fontWeight: 900, fontStyle: "italic", letterSpacing: "-0.05em" }}>
-                THE
+              {/* "THE" set in italic Instrument Serif — same accent face the
+                  rest of the page uses. Larger, with a wavy underline tying
+                  it to the manifesto's "measurable" treatment. */}
+              <span
+                className="serif"
+                style={{
+                  fontStyle: "italic",
+                  fontWeight: 400,
+                  fontSize: "1.15em",
+                  letterSpacing: "-0.04em",
+                  textDecoration: "underline",
+                  textDecorationStyle: "wavy",
+                  textDecorationColor: "var(--color-phoenix-orange)",
+                  textDecorationThickness: "2px",
+                  textUnderlineOffset: "0.18em",
+                  marginRight: "0.06em",
+                }}
+              >
+                the
               </span>{" "}
               room.
             </h1>
