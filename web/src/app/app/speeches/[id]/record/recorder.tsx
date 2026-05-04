@@ -13,10 +13,19 @@
 // Same MediaRecorder + Storage upload + finalizeSession flow as before.
 // The data flow didn't change — only the layout.
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import { createSession, finalizeSession } from "@/app/app/sessions-actions";
+import { useStreamingTranscription } from "@/lib/use-streaming-transcription";
+import {
+  emptyState as emptyAlignState,
+  ingestWord,
+  recentSpoken as recentSpokenWords,
+  tokeniseScript,
+  type LiveState,
+} from "@/lib/live-align";
+import { BottomBar, type BottomBarNudge } from "./bottom-bar";
 
 type Section = { id: string; position: number; name: string; targetSec: number; body: string };
 type Tag = { kind: "landed" | "flat" | "lost" | "callback"; atMs: number; label: string };
@@ -63,6 +72,18 @@ export function Recorder({
   const [tags, setTags] = useState<Tag[]>([]);
   const [, startTransition] = useTransition();
 
+  // Section practice mode: when set, the recorder only sees this one
+  // section. The script panel hides everything else, the alignment
+  // tokens come from this section only, and the bottom bar's pacing
+  // shows just this section's target.
+  const [practicingSectionId, setPracticingSectionId] = useState<string | null>(null);
+
+  // Live alignment state. Refs (mutable) drive the work; we mirror onto
+  // state every ~150ms so React re-renders the bottom bar without us
+  // setting state on every word arrival (which would thrash).
+  const liveStateRef = useRef<LiveState | null>(null);
+  const [liveTick, setLiveTick] = useState(0);
+
   const sessionIdRef = useRef<string | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -70,6 +91,45 @@ export function Recorder({
   const startedAtRef = useRef<number>(0);
   const tickHandleRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mimeRef = useRef<{ mime: string; ext: string }>({ mime: "audio/webm", ext: "webm" });
+
+  // ---------- Sections in scope ----------
+  // When practicing a single section, the rest of the speech is hidden
+  // from every downstream calculation (script panel, alignment tokens,
+  // pacing, sections rail).
+  const sectionsInScope = useMemo(
+    () =>
+      practicingSectionId
+        ? sections.filter((s) => s.id === practicingSectionId)
+        : sections,
+    [sections, practicingSectionId],
+  );
+
+  const scriptTokens = useMemo(
+    () => tokeniseScript(sectionsInScope.map((s) => ({ id: s.id, position: s.position, body: s.body }))),
+    [sectionsInScope],
+  );
+
+  // ---------- Live transcription ----------
+  const onWord = useCallback(
+    (w: { word: string; startMs: number; endMs: number }) => {
+      if (!liveStateRef.current) return;
+      liveStateRef.current = ingestWord(liveStateRef.current, scriptTokens, {
+        word: w.word,
+        startMs: w.startMs,
+        endMs: w.endMs,
+      });
+    },
+    [scriptTokens],
+  );
+
+  const streaming = useStreamingTranscription({
+    onWord,
+    onConnectionLost: () => {
+      // Recording continues locally — the post-stop pipeline will produce
+      // the canonical transcript even if the live feed dropped. No need
+      // to interrupt the speaker.
+    },
+  });
 
   // ---------- Lifecycle ----------
   useEffect(() => {
@@ -102,8 +162,12 @@ export function Recorder({
 
   function startTicker() {
     stopTicker();
+    // Tick at 5Hz: cheap enough, smooth enough for a live timer.
+    // We also bump liveTick here so the bottom bar re-reads the
+    // alignment ref. Coalescing both updates avoids two renders per tick.
     tickHandleRef.current = setInterval(() => {
       setElapsedMs(nowElapsed());
+      setLiveTick((t) => t + 1);
     }, 200);
   }
   function stopTicker() {
@@ -144,8 +208,20 @@ export function Recorder({
       startedAtRef.current = Date.now();
       setElapsedMs(0);
       setTags([]);
+      // Reset alignment state. We ignore failures of the streaming
+      // pipe — if Deepgram isn't reachable, the recording still
+      // captures locally and the canonical transcript runs server-side
+      // post-stop.
+      liveStateRef.current = emptyAlignState(scriptTokens);
+      setLiveTick(0);
       startTicker();
       setState("recording");
+      // Start streaming AFTER we set state so the bottom bar mounts
+      // before words arrive. If this throws we just don't get live
+      // alignment — the recording continues.
+      void streaming.start(stream).catch((err) => {
+        console.warn("[recorder] streaming pipe failed:", err);
+      });
     } catch (err) {
       console.error(err);
       setErrorMsg(
@@ -179,6 +255,7 @@ export function Recorder({
     if (!recorderRef.current || !sessionIdRef.current) return;
     setState("stopping");
     stopTicker();
+    streaming.stop();
     const sessionId = sessionIdRef.current;
     const captured = elapsedMs || nowElapsed();
 
@@ -249,29 +326,107 @@ export function Recorder({
   }
 
   // ---------- Derived values ----------
-
-  // Heuristic: which section are we "in" right now? Walk the elapsed time
-  // through each section's target. Used purely for visual hinting, not
-  // for the alignment that runs server-side post-stop.
+  //
+  // Priority for "which section are we in right now?":
+  //   1. The live alignment cursor (when streaming is producing words)
+  //   2. The clock heuristic (when not — e.g. user paused, mic glitched)
+  //
+  // The alignment cursor is honest because it reads from what the
+  // speaker is actually saying. The clock heuristic is a fallback.
   const currentSectionIdx = useMemo(() => {
-    if (sections.length === 0) return 0;
+    void liveTick; // re-evaluate when liveTick changes
+    if (sectionsInScope.length === 0) return 0;
+
+    // 1. Alignment-based.
+    const live = liveStateRef.current;
+    if (live && live.currentSectionId) {
+      const idx = sectionsInScope.findIndex((s) => s.id === live.currentSectionId);
+      if (idx >= 0) return idx;
+    }
+
+    // 2. Clock-based fallback.
     let runningMs = 0;
-    for (let i = 0; i < sections.length; i++) {
-      runningMs += sections[i].targetSec * 1000;
+    for (let i = 0; i < sectionsInScope.length; i++) {
+      runningMs += sectionsInScope[i].targetSec * 1000;
       if (elapsedMs <= runningMs) return i;
     }
-    return sections.length - 1;
-  }, [elapsedMs, sections]);
+    return sectionsInScope.length - 1;
+  }, [elapsedMs, sectionsInScope, liveTick]);
 
-  const currentSection = sections[currentSectionIdx];
+  const currentSection = sectionsInScope[currentSectionIdx];
+
+  // Section elapsed time. We want the time spent *in this section*, not
+  // the wall-clock difference. We compute it as elapsedMs minus the
+  // running-target offset of all previous sections, then clamp.
   const sectionElapsedMs = useMemo(() => {
     let running = 0;
-    for (let i = 0; i < currentSectionIdx; i++) running += sections[i].targetSec * 1000;
+    for (let i = 0; i < currentSectionIdx; i++) running += sectionsInScope[i].targetSec * 1000;
     return Math.max(0, elapsedMs - running);
-  }, [elapsedMs, sections, currentSectionIdx]);
+  }, [elapsedMs, sectionsInScope, currentSectionIdx]);
+
+  // Live nudge for the bottom bar. Computed from alignment + clock state,
+  // recomputed on every liveTick. We only show one at a time, with this
+  // priority: skipped > over-target > too-fast > too-slow.
+  const nudge = useMemo<BottomBarNudge>(() => {
+    void liveTick; // re-evaluate
+    if (state !== "recording") return null;
+    if (!currentSection) return null;
+
+    const live = liveStateRef.current;
+
+    // 1. Did we just blow past 4+ script tokens? (Alignment proxy for
+    //    "you skipped a line.")
+    if (live) {
+      const lastEvents = live.events.slice(-1);
+      const last = lastEvents[0];
+      if (last && last.kind === "skipped") {
+        const wordsSkipped = last.written.split(/\s+/).filter(Boolean).length;
+        if (wordsSkipped >= 4) {
+          return {
+            kind: "skipped",
+            message: `Skipped a line in ${currentSection.name}`,
+          };
+        }
+      }
+    }
+
+    // 2. Are we over the section target?
+    if (sectionElapsedMs > currentSection.targetSec * 1000) {
+      const overSec = Math.round((sectionElapsedMs - currentSection.targetSec * 1000) / 1000);
+      return {
+        kind: "over-target",
+        message: `${overSec}s over on ${currentSection.name}`,
+      };
+    }
+
+    // 3. WPM out of band. We need at least ~4s of speech and at least 8
+    //    matched words for the WPM read to be meaningful.
+    if (live && (live.matched + live.paraphrased) >= 8 && elapsedMs > 4000) {
+      const totalSpoken = live.matched + live.paraphrased + live.improv;
+      const wpm = (totalSpoken / (elapsedMs / 1000)) * 60;
+      if (wpm > 175) {
+        return { kind: "fast", message: "Slow down" };
+      }
+      if (wpm < 100) {
+        return { kind: "slow", message: "Pick up the pace" };
+      }
+    }
+
+    return null;
+  }, [state, currentSection, sectionElapsedMs, elapsedMs, liveTick]);
+
+  // The transcript window the bottom bar shows.
+  const recentSpoken = useMemo(() => {
+    void liveTick;
+    return liveStateRef.current ? recentSpokenWords(liveStateRef.current, 8) : "";
+  }, [liveTick]);
 
   const isLive = state === "recording" || state === "paused";
   const isWorking = state === "stopping" || state === "uploading";
+
+  const practicingSection = practicingSectionId
+    ? sections.find((s) => s.id === practicingSectionId) ?? null
+    : null;
 
   return (
     <>
@@ -612,6 +767,34 @@ export function Recorder({
           font-size: 11px; opacity: 0.7;
           font-variant-numeric: tabular-nums;
         }
+        /* Hover-revealed Practice button per rail row. */
+        .rec-rail-item-row { position: relative; }
+        .rec-rail-item-row:hover { background: var(--color-whisper-gray); }
+        .rec-rail-name { flex: 1; min-width: 0; }
+        .rec-rail-time { margin-right: 6px; }
+        .rec-rail-practice {
+          opacity: 0;
+          background: var(--color-midnight-ink);
+          color: var(--color-canvas-white);
+          border: 0; border-radius: 6px;
+          padding: 3px 8px;
+          font-size: 11px; font-weight: 500;
+          letter-spacing: 0.04em;
+          cursor: pointer;
+          transition: opacity 120ms ease, background 120ms ease;
+        }
+        .rec-rail-item-row:hover .rec-rail-practice,
+        .rec-rail-item-row .rec-rail-practice:focus {
+          opacity: 1;
+        }
+        /* When this row is the one already being practiced, the badge
+           stays visible and shows the active state. */
+        .rec-rail-item-row.is-current .rec-rail-practice {
+          opacity: 1;
+          background: rgba(50,142,250,0.14);
+          color: var(--color-deep-indigo);
+        }
+        .rec-rail-item-row.is-locked .rec-rail-practice { display: none; }
 
         /* Action area at the bottom of the sidebar */
         .rec-actions { padding: 14px 16px; }
@@ -680,11 +863,50 @@ export function Recorder({
         .rec-status-msg.is-error { color: var(--color-leadgen-red); }
       `}</style>
 
+      {/* Practice mode banner — only when scoped to a single section. */}
+      {practicingSection && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "10px 14px",
+            marginBottom: 16,
+            background: "rgba(50,142,250,0.08)",
+            border: "1px solid rgba(50,142,250,0.18)",
+            borderRadius: 10,
+            color: "var(--color-deep-indigo)",
+            fontSize: 13,
+          }}
+        >
+          <span>
+            Practicing just <strong>{practicingSection.name}</strong> · target{" "}
+            {fmtTime(practicingSection.targetSec * 1000)}
+          </span>
+          <button
+            onClick={() => state === "idle" && setPracticingSectionId(null)}
+            disabled={state !== "idle"}
+            style={{
+              background: "transparent",
+              border: 0,
+              color: "var(--color-deep-indigo)",
+              textDecoration: "underline",
+              textUnderlineOffset: 4,
+              cursor: state === "idle" ? "pointer" : "not-allowed",
+              opacity: state === "idle" ? 1 : 0.5,
+              fontSize: 13,
+            }}
+          >
+            Practice the whole speech instead
+          </button>
+        </div>
+      )}
+
       <div className={`rec-grid ${isLive ? "is-live" : ""}`}>
         {/* ============ LEFT: SCRIPT (or freestyle placeholder) ============ */}
         {mode === "with-script" ? (
           <div className="rec-script">
-            {sections.map((s, i) => (
+            {sectionsInScope.map((s, i) => (
               <section
                 key={s.id}
                 className={`rec-script-section ${
@@ -714,7 +936,7 @@ export function Recorder({
             {/* Same section structure as teleprompter — only the bodies
                 are missing. The user keeps their navigational map: which
                 section comes next, how long it should take. */}
-            {sections.map((s, i) => (
+            {sectionsInScope.map((s, i) => (
               <section
                 key={s.id}
                 className={`rec-freestyle-section ${
@@ -810,55 +1032,57 @@ export function Recorder({
                 : "Ready"}
             </div>
             <div className="rec-time">{fmtTime(elapsedMs)}</div>
-
-            {/* Per-current-section pacing bar — only when recording or paused */}
-            {isLive && currentSection && (
-              <div className="rec-pace">
-                <div className="rec-pace-label">
-                  <span>{currentSection.name}</span>
-                  <span
-                    className="num"
-                    style={{
-                      color:
-                        sectionElapsedMs > currentSection.targetSec * 1000
-                          ? "var(--color-leadgen-red)"
-                          : "var(--color-muted-ash)",
-                    }}
-                  >
-                    {fmtTime(sectionElapsedMs)} / {fmtTime(currentSection.targetSec * 1000)}
-                  </span>
-                </div>
-                <div className="rec-pace-bar">
-                  <span
-                    style={{
-                      width: `${Math.min(100, (sectionElapsedMs / (currentSection.targetSec * 1000)) * 100)}%`,
-                      background:
-                        sectionElapsedMs > currentSection.targetSec * 1000
-                          ? "var(--color-leadgen-red)"
-                          : "var(--color-midnight-ink)",
-                    }}
-                  />
-                </div>
-              </div>
-            )}
+            {/* Per-section pacing lives in the floating bottom bar
+                while recording — no need to duplicate it here. */}
           </div>
 
-          {/* Sections rail */}
+          {/* Sections rail.
+              When idle, every row reveals a "Practice" button on hover
+              that scopes the recorder to just that section. When live,
+              the rail shows the active section.
+              When practicing, only the practice section is in
+              sectionsInScope, but the rail still surfaces ALL sections
+              so the user can switch what they're practicing. */}
           {sections.length > 0 && (
             <div className="rec-side-card rec-rail">
-              <div className="rec-rail-title">Sections</div>
+              <div className="rec-rail-title">
+                {practicingSectionId ? "Switch practice" : "Sections"}
+              </div>
               <div className="rec-rail-list">
-                {sections.map((s, i) => (
-                  <div
-                    key={s.id}
-                    className={`rec-rail-item ${
-                      isLive && i === currentSectionIdx ? "is-current" : ""
-                    }`}
-                  >
-                    <span>{s.name}</span>
-                    <span className="num">{fmtTime(s.targetSec * 1000)}</span>
-                  </div>
-                ))}
+                {sections.map((s) => {
+                  // "Current" indicator: in normal mode, follows the
+                  // alignment cursor; in practice mode, the practiced
+                  // section is always current.
+                  const isThisSection = practicingSectionId
+                    ? s.id === practicingSectionId
+                    : isLive && currentSection?.id === s.id;
+                  return (
+                    <div
+                      key={s.id}
+                      className={`rec-rail-item rec-rail-item-row ${
+                        isThisSection ? "is-current" : ""
+                      } ${state !== "idle" ? "is-locked" : ""}`}
+                    >
+                      <span className="rec-rail-name">{s.name}</span>
+                      <span className="num rec-rail-time">{fmtTime(s.targetSec * 1000)}</span>
+                      {state === "idle" && (
+                        <button
+                          className="rec-rail-practice"
+                          onClick={() =>
+                            setPracticingSectionId((cur) => (cur === s.id ? null : s.id))
+                          }
+                          title={
+                            practicingSectionId === s.id
+                              ? "Stop practicing this section"
+                              : `Practice just "${s.name}"`
+                          }
+                        >
+                          {practicingSectionId === s.id ? "Practicing" : "Practice"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -975,6 +1199,21 @@ export function Recorder({
           </div>
         </aside>
       </div>
+
+      {/* Floating bottom bar — shows while recording or paused. Carries
+          the timer, the live transcript window, the current section's
+          pacing bar, and any active nudge. */}
+      <BottomBar
+        visible={isLive}
+        paused={state === "paused"}
+        elapsedMs={elapsedMs}
+        recentSpoken={recentSpoken}
+        currentSectionName={currentSection?.name ?? ""}
+        currentSectionElapsedMs={sectionElapsedMs}
+        currentSectionTargetMs={(currentSection?.targetSec ?? 0) * 1000}
+        nudge={nudge}
+        recentTags={tags}
+      />
     </>
   );
 }
