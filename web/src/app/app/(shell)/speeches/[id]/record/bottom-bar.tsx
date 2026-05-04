@@ -108,7 +108,7 @@ export function BottomBar({
     <style>{`
       .bb-shell {
         position: fixed;
-        left: calc(240px + 24px);
+        left: 24px;
         right: 24px;
         bottom: 24px;
         margin: 0 auto;
