@@ -146,7 +146,7 @@ export function BottomBar({
           border: 1px solid rgba(17,17,17,0.06);
           border-radius: 16px;
           box-shadow: 0 12px 36px rgba(17,17,17,0.10), 0 1px 0 rgba(255,255,255,0.6) inset;
-          padding: 14px 16px 12px 18px;
+          padding: 18px 18px 14px 22px;
         }
         @media (max-width: 880px) {
           /* Sidenav is hidden under 880px — bar gets the full width
@@ -196,9 +196,9 @@ export function BottomBar({
         .bb-time {
           font-family: var(--font-serif);
           font-style: italic;
-          font-size: 28px;
+          font-size: 36px;
           line-height: 1;
-          letter-spacing: -0.01em;
+          letter-spacing: -0.015em;
           color: var(--color-midnight-ink);
         }
         .bb-status-text {
@@ -237,39 +237,54 @@ export function BottomBar({
           color: var(--color-muted-ash);
         }
 
-        /* ===== controls cluster ===== */
-        .bb-controls { display: flex; align-items: center; gap: 8px; }
+        /* ===== controls cluster =====
+           The primary action gets real visual weight — it's the most
+           important button on the page when idle, and the difference
+           between continuing and stopping when recording. Pause stays
+           secondary so it doesn't compete. */
+        .bb-controls { display: flex; align-items: center; gap: 10px; }
         .bb-btn {
           appearance: none;
           border: 0;
-          padding: 11px 18px;
-          border-radius: 10px;
+          padding: 16px 24px;
+          border-radius: 12px;
           font-weight: 500;
-          font-size: 14px;
+          font-size: 15px;
           line-height: 1;
           cursor: pointer;
-          display: inline-flex; align-items: center; gap: 8px;
-          transition: opacity 120ms ease, transform 120ms ease, background 120ms ease;
+          display: inline-flex; align-items: center; gap: 10px;
+          transition: opacity 120ms ease, transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
         }
         .bb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .bb-btn-primary {
           background: var(--color-midnight-ink);
           color: var(--color-canvas-white);
+          box-shadow: 0 1px 2px rgba(17,17,17,0.16), 0 6px 14px rgba(17,17,17,0.12);
         }
-        .bb-btn-primary:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
+        .bb-btn-primary:hover:not(:disabled) {
+          opacity: 0.94;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(17,17,17,0.18), 0 10px 20px rgba(17,17,17,0.14);
+        }
         .bb-btn-stop {
           background: var(--color-leadgen-red);
           color: var(--color-canvas-white);
+          box-shadow: 0 1px 2px rgba(225,101,64,0.24), 0 6px 14px rgba(225,101,64,0.20);
         }
-        .bb-btn-stop:hover:not(:disabled) { opacity: 0.92; }
+        .bb-btn-stop:hover:not(:disabled) {
+          opacity: 0.94;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(225,101,64,0.28), 0 10px 20px rgba(225,101,64,0.22);
+        }
         .bb-btn-ghost {
           background: transparent;
           color: var(--color-muted-ash);
-          padding: 8px 12px;
+          padding: 10px 14px;
+          font-size: 14px;
         }
         .bb-btn-ghost:hover { color: var(--color-midnight-ink); }
         .bb-btn-icon {
-          width: 14px; height: 14px;
+          width: 16px; height: 16px;
           fill: currentColor;
         }
 
@@ -393,8 +408,9 @@ export function BottomBar({
         @media (max-width: 720px) {
           /* left/right gutter already set by the 880px breakpoint —
              we only need to tweak inner spacing + the timer size. */
-          .bb-shell { bottom: 12px; padding: 12px 14px 10px; }
-          .bb-time { font-size: 22px; }
+          .bb-shell { bottom: 12px; padding: 14px 14px 12px; }
+          .bb-time { font-size: 26px; }
+          .bb-btn { padding: 13px 18px; font-size: 14px; }
           .bb-pacing { grid-column: 1 / -1; }
         }
 

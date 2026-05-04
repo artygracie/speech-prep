@@ -112,15 +112,9 @@ export default async function AppLayout({
             <div className="text-body-sm" style={{ color: "var(--color-muted-ash)" }} id="topbar-context">
               Workspace
             </div>
-            <div className="flex items-center gap-2">
-              <Link href="/app/speeches/new" className="btn-primary">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                New speech
-              </Link>
-            </div>
+            {/* Right side intentionally empty. Users typically focus on
+                one speech at a time, so a global "New speech" CTA was
+                noise. The dashboard surfaces it where it belongs. */}
           </div>
           <div className="app-main-pad">{children}</div>
         </main>

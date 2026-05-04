@@ -25,13 +25,26 @@ export default async function SpeechesDashboard() {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 16 }}>
+      <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
           <h1 className="text-display">Your speeches</h1>
           <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)", maxWidth: 540 }}>
             The room before the room. Pick up where you left off, or start something new.
           </p>
         </div>
+        {/* Show the 'New speech' affordance only on the dashboard,
+            and only when speeches exist (the empty state has its own
+            CTA). Users typically focus on one speech at a time, so we
+            don't want this nagging in the global topbar. */}
+        {list.length > 0 && (
+          <Link href="/app/speeches/new" className="btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New speech
+          </Link>
+        )}
       </div>
 
       {list.length === 0 ? (

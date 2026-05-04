@@ -1141,9 +1141,9 @@ export function Recorder({
 
       {/* Spacer so the script + sidebar can scroll past the bottom of
           the viewport without the floating bar covering content. The
-          bar is ~100–110px tall in idle and grows in tall states; we
-          reserve 140px to be generous. */}
-      <div style={{ height: 140 }} aria-hidden="true" />
+          bar is ~130–150px tall after the controls were upsized; we
+          reserve 180px to be generous. */}
+      <div style={{ height: 180 }} aria-hidden="true" />
 
       {/* Floating bottom bar — always visible. Owns the record control
           (Start / Stop / Pause / Resume) and shows the live timer,
