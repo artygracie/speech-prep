@@ -1,37 +1,61 @@
 "use client";
 
-// The bottom bar — a sticky two-line dashboard that sits over the
-// page while recording. It shows the things the speaker should know
-// while talking:
+// The bottom bar — the persistent rehearsal dashboard. Always visible
+// on the recording page; appearance and contents shift with state.
 //
-//   Top line:   timer (large) · live transcript window (last 8 words)
-//   Bottom row: per-section pacing bar · pacing nudge · tag-key reminders
-//                                          (controls live in sidebar)
+// idle         → big black "Start recording" button on the right.
+//                Pacing bar is dim placeholder. Transcript area says
+//                "Press start to begin."
+// recording    → red rec-dot pulsing + ticking timer; live transcript
+//                window scrolls; per-section pacing bar fills; nudge
+//                or tag flashes on the right; Stop button replaces
+//                Start. A discrete Pause sits next to it.
+// paused       → amber dot, frozen timer, Resume + Stop.
+// stopping/    → disabled state with status message.
+// uploading
+// error        → "Try again" button.
 //
-// The bar appears only when state is recording or paused. It animates
-// up from the bottom when recording starts.
+// Owning the record controls here means the user starts and stops in
+// the same place. The sidebar's old action card becomes redundant.
 
 import { useEffect, useRef, useState } from "react";
 
 type Tag = { kind: "landed" | "flat" | "lost" | "callback"; atMs: number };
+
 export type BottomBarNudge = {
   kind: "over-target" | "fast" | "slow" | "skipped";
   message: string;
-  // Auto-dismiss after this long. null = persists until the underlying
-  // condition no longer holds (caller controls).
-  ttlMs?: number;
 } | null;
 
+export type BottomBarState =
+  | "idle"
+  | "starting"
+  | "recording"
+  | "paused"
+  | "stopping"
+  | "uploading"
+  | "error";
+
 type Props = {
-  visible: boolean;
-  paused: boolean;
+  state: BottomBarState;
+  errorMsg?: string | null;
+
   elapsedMs: number;
   recentSpoken: string;
+
   currentSectionName: string;
   currentSectionElapsedMs: number;
   currentSectionTargetMs: number;
+
   nudge: BottomBarNudge;
   recentTags: Tag[];
+
+  // Controls
+  onStart: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onStop: () => void;
+  onRetry: () => void;
 };
 
 const KEY_HINTS: { key: string; label: string }[] = [
@@ -47,8 +71,8 @@ function fmt(ms: number) {
 }
 
 export function BottomBar({
-  visible,
-  paused,
+  state,
+  errorMsg,
   elapsedMs,
   recentSpoken,
   currentSectionName,
@@ -56,11 +80,18 @@ export function BottomBar({
   currentSectionTargetMs,
   nudge,
   recentTags,
+  onStart,
+  onPause,
+  onResume,
+  onStop,
+  onRetry,
 }: Props) {
   const [tagFlash, setTagFlash] = useState<Tag | null>(null);
   const lastTagSeenRef = useRef<number>(0);
 
-  // When a new tag arrives, flash it briefly.
+  const isLive = state === "recording" || state === "paused";
+  const paused = state === "paused";
+
   useEffect(() => {
     const last = recentTags[recentTags.length - 1];
     if (!last) return;
@@ -82,6 +113,18 @@ export function BottomBar({
     ? "var(--color-engagement-gold)"
     : "var(--color-midnight-ink)";
 
+  // ---------- Status indicator ----------
+  // Color, dot animation, and status text vary by state.
+  const status = (() => {
+    if (state === "recording") return { dotClass: "rec", text: null };
+    if (state === "paused")    return { dotClass: "paused", text: "Paused" };
+    if (state === "starting")  return { dotClass: "muted", text: "Starting…" };
+    if (state === "stopping")  return { dotClass: "muted", text: "Stopping…" };
+    if (state === "uploading") return { dotClass: "muted", text: "Uploading…" };
+    if (state === "error")     return { dotClass: "error", text: "Error" };
+    return                            { dotClass: "muted", text: "Ready" };
+  })();
+
   return (
     <>
       <style>{`
@@ -89,8 +132,8 @@ export function BottomBar({
           position: fixed;
           left: 50%;
           bottom: 24px;
-          transform: translate(-50%, ${visible ? "0" : "calc(100% + 32px)"});
-          width: min(calc(100vw - 32px), 980px);
+          transform: translate(-50%, 0);
+          width: min(calc(100vw - 32px), 1080px);
           z-index: 60;
           background: rgba(255, 255, 255, 0.92);
           backdrop-filter: saturate(180%) blur(20px);
@@ -98,27 +141,44 @@ export function BottomBar({
           border: 1px solid rgba(17,17,17,0.06);
           border-radius: 16px;
           box-shadow: 0 12px 36px rgba(17,17,17,0.10), 0 1px 0 rgba(255,255,255,0.6) inset;
-          transition: transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 240ms ease;
-          opacity: ${visible ? 1 : 0};
-          padding: 14px 18px 12px;
+          transition: transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
+          padding: 14px 16px 12px 18px;
         }
-        .bb-row1 {
+
+        /* Two-row grid:
+           Row 1: status/timer | transcript | controls
+           Row 2: pacing                    | nudges/keys
+           In idle, the transcript area shows a hint and the pacing
+           bar collapses to a dim placeholder. */
+        .bb-grid {
           display: grid;
-          grid-template-columns: auto 1fr;
-          gap: 18px;
+          grid-template-columns: minmax(160px, auto) minmax(0, 1fr) auto;
+          column-gap: 18px;
+          row-gap: 10px;
           align-items: center;
           min-width: 0;
         }
+        @media (max-width: 720px) {
+          .bb-grid { grid-template-columns: minmax(0, 1fr) auto; column-gap: 10px; }
+          .bb-tape, .bb-keys { display: none; }
+        }
+
+        /* ===== status + timer cluster ===== */
         .bb-timer {
           display: flex; align-items: center; gap: 10px;
           font-variant-numeric: tabular-nums;
         }
-        .bb-rec-dot {
-          width: 8px; height: 8px; border-radius: 999px;
-          background: ${paused ? "var(--color-engagement-gold)" : "var(--color-leadgen-red)"};
-          box-shadow: 0 0 0 0 ${paused ? "transparent" : "rgba(225, 101, 64, 0.55)"};
-          animation: ${paused ? "none" : "bb-pulse 1.4s ease-out infinite"};
+        .bb-status-dot {
+          width: 9px; height: 9px; border-radius: 999px;
         }
+        .bb-status-dot.rec {
+          background: var(--color-leadgen-red);
+          box-shadow: 0 0 0 0 rgba(225, 101, 64, 0.55);
+          animation: bb-pulse 1.4s ease-out infinite;
+        }
+        .bb-status-dot.paused { background: var(--color-engagement-gold); }
+        .bb-status-dot.muted  { background: rgba(17,17,17,0.18); }
+        .bb-status-dot.error  { background: var(--color-leadgen-red); }
         @keyframes bb-pulse {
           0%   { box-shadow: 0 0 0 0 rgba(225, 101, 64, 0.5); }
           70%  { box-shadow: 0 0 0 8px rgba(225, 101, 64, 0); }
@@ -130,10 +190,20 @@ export function BottomBar({
           font-size: 28px;
           line-height: 1;
           letter-spacing: -0.01em;
+          color: var(--color-midnight-ink);
         }
+        .bb-status-text {
+          font-size: 11px;
+          font-weight: 500;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--color-muted-ash);
+          white-space: nowrap;
+        }
+        .bb-status-text.error { color: var(--color-leadgen-red); }
+
+        /* ===== transcript tape ===== */
         .bb-tape {
-          /* Live transcript window: fades on the left so old words
-             slide out without a hard cut. */
           font-family: var(--font-script);
           font-size: 14.5px;
           line-height: 1.45;
@@ -144,23 +214,62 @@ export function BottomBar({
           mask-image: linear-gradient(90deg, transparent, #000 40px, #000);
           -webkit-mask-image: linear-gradient(90deg, transparent, #000 40px, #000);
           padding-left: 16px;
-          opacity: 0.8;
+          opacity: 0.85;
           min-width: 0;
         }
         .bb-tape em {
           font-style: italic;
           color: var(--color-deep-indigo);
         }
-
-        .bb-row2 {
-          display: grid;
-          grid-template-columns: 1fr auto;
-          gap: 18px;
-          align-items: center;
-          margin-top: 10px;
-          min-height: 28px;
+        .bb-tape.is-hint {
+          font-style: normal;
+          font-family: var(--font-sans);
+          font-size: 13px;
+          color: var(--color-muted-ash);
         }
-        .bb-pacing { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+        /* ===== controls cluster ===== */
+        .bb-controls { display: flex; align-items: center; gap: 8px; }
+        .bb-btn {
+          appearance: none;
+          border: 0;
+          padding: 11px 18px;
+          border-radius: 10px;
+          font-weight: 500;
+          font-size: 14px;
+          line-height: 1;
+          cursor: pointer;
+          display: inline-flex; align-items: center; gap: 8px;
+          transition: opacity 120ms ease, transform 120ms ease, background 120ms ease;
+        }
+        .bb-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .bb-btn-primary {
+          background: var(--color-midnight-ink);
+          color: var(--color-canvas-white);
+        }
+        .bb-btn-primary:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
+        .bb-btn-stop {
+          background: var(--color-leadgen-red);
+          color: var(--color-canvas-white);
+        }
+        .bb-btn-stop:hover:not(:disabled) { opacity: 0.92; }
+        .bb-btn-ghost {
+          background: transparent;
+          color: var(--color-muted-ash);
+          padding: 8px 12px;
+        }
+        .bb-btn-ghost:hover { color: var(--color-midnight-ink); }
+        .bb-btn-icon {
+          width: 14px; height: 14px;
+          fill: currentColor;
+        }
+
+        /* ===== pacing row ===== */
+        .bb-pacing {
+          grid-column: 1 / 3;
+          display: flex; align-items: center; gap: 12px;
+          min-width: 0;
+        }
         .bb-pacing-label {
           display: inline-flex; align-items: baseline; gap: 8px;
           font-size: 11px;
@@ -199,8 +308,12 @@ export function BottomBar({
         .bb-pacing-num.is-warn { color: var(--color-engagement-gold); }
         .bb-pacing-num.is-over { color: var(--color-leadgen-red); }
 
-        /* Nudge sits on the right side of row 2; replaces tag hints
-           when active. */
+        /* In idle, the pacing row is dimmer — it's just showing scope. */
+        .bb-pacing.is-idle .bb-pacing-bar { opacity: 0.6; }
+
+        /* ===== nudges + tag hints ===== */
+        .bb-aside { grid-column: 3 / 4; display: flex; align-items: center; gap: 12px; }
+        @media (max-width: 720px) { .bb-aside { grid-column: 2 / 3; } }
         .bb-nudge {
           display: inline-flex; align-items: center; gap: 6px;
           font-size: 12px;
@@ -223,11 +336,7 @@ export function BottomBar({
           from { opacity: 0; transform: translateY(4px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-
-        .bb-keys {
-          display: flex; align-items: center; gap: 8px;
-          flex-shrink: 0;
-        }
+        .bb-keys { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
         .bb-key {
           display: inline-flex; align-items: center; gap: 6px;
           font-size: 11px;
@@ -243,8 +352,6 @@ export function BottomBar({
           border: 1px solid rgba(17,17,17,0.08);
           color: var(--color-midnight-ink);
         }
-
-        /* Tag flash — large pill that briefly takes over the right side */
         .bb-tag-flash {
           display: inline-flex; align-items: center; gap: 6px;
           font-size: 11px;
@@ -267,62 +374,124 @@ export function BottomBar({
           100% { opacity: 0; transform: scale(0.95); }
         }
 
+        .bb-error {
+          font-size: 12px; color: var(--color-leadgen-red);
+          margin-left: 8px;
+          max-width: 360px;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
         @media (max-width: 720px) {
-          .bb-shell { width: calc(100vw - 16px); bottom: 12px; padding: 10px 12px; }
+          .bb-shell { width: calc(100vw - 16px); bottom: 12px; padding: 12px 14px 10px; }
           .bb-time { font-size: 22px; }
-          .bb-tape { display: none; }
-          .bb-keys { display: none; }
+          .bb-pacing { grid-column: 1 / -1; }
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .bb-rec-dot, .bb-nudge, .bb-tag-flash {
+          .bb-status-dot.rec, .bb-nudge, .bb-tag-flash {
             animation: none !important;
           }
         }
       `}</style>
 
       <div className="bb-shell" role="status" aria-live="polite">
-        <div className="bb-row1">
+        <div className="bb-grid">
+          {/* ===== Cell: timer + status ===== */}
           <div className="bb-timer">
-            <span className="bb-rec-dot" aria-hidden="true" />
-            <span className="bb-time">{fmt(elapsedMs)}</span>
-          </div>
-          <div className="bb-tape">
-            {recentSpoken ? (
-              <em>"{recentSpoken}"</em>
+            <span className={`bb-status-dot ${status.dotClass}`} aria-hidden="true" />
+            {isLive ? (
+              <span className="bb-time">{fmt(elapsedMs)}</span>
             ) : (
-              <span style={{ color: "var(--color-muted-ash)" }}>Listening…</span>
+              <span className="bb-status-text">{status.text}</span>
             )}
           </div>
-        </div>
 
-        <div className="bb-row2">
-          <div className="bb-pacing">
+          {/* ===== Cell: transcript tape (or hint when idle) ===== */}
+          <div className={`bb-tape ${!isLive && state !== "starting" ? "is-hint" : ""}`}>
+            {isLive ? (
+              recentSpoken ? (
+                <em>&ldquo;{recentSpoken}&rdquo;</em>
+              ) : (
+                <span style={{ color: "var(--color-muted-ash)" }}>Listening…</span>
+              )
+            ) : state === "starting" ? (
+              <span style={{ color: "var(--color-muted-ash)" }}>Asking for the microphone…</span>
+            ) : state === "uploading" ? (
+              <span>Uploading your recording…</span>
+            ) : state === "stopping" ? (
+              <span>Wrapping up…</span>
+            ) : state === "error" ? (
+              <span className="bb-error">{errorMsg ?? "Something went wrong."}</span>
+            ) : (
+              <span>Press start when you&rsquo;re ready. We&rsquo;ll listen and time you.</span>
+            )}
+          </div>
+
+          {/* ===== Cell: controls ===== */}
+          <div className="bb-controls">
+            {state === "idle" && (
+              <button onClick={onStart} className="bb-btn bb-btn-primary">
+                <svg className="bb-btn-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" /></svg>
+                Start recording
+              </button>
+            )}
+            {state === "starting" && (
+              <button className="bb-btn bb-btn-primary" disabled>Starting…</button>
+            )}
+            {state === "recording" && (
+              <>
+                <button onClick={onStop} className="bb-btn bb-btn-stop">
+                  <svg className="bb-btn-icon" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>
+                  Stop
+                </button>
+                <button onClick={onPause} className="bb-btn bb-btn-ghost" title="Pause">Pause</button>
+              </>
+            )}
+            {state === "paused" && (
+              <>
+                <button onClick={onResume} className="bb-btn bb-btn-primary">Resume</button>
+                <button onClick={onStop} className="bb-btn bb-btn-ghost" style={{ color: "var(--color-leadgen-red)" }}>
+                  Stop
+                </button>
+              </>
+            )}
+            {state === "stopping" && (
+              <button className="bb-btn bb-btn-stop" disabled>Stopping…</button>
+            )}
+            {state === "uploading" && (
+              <button className="bb-btn bb-btn-primary" disabled>Uploading…</button>
+            )}
+            {state === "error" && (
+              <button onClick={onRetry} className="bb-btn bb-btn-primary">Try again</button>
+            )}
+          </div>
+
+          {/* ===== Row 2: pacing ===== */}
+          <div className={`bb-pacing ${!isLive ? "is-idle" : ""}`}>
             <span className="bb-pacing-label">
               <strong>{currentSectionName || "—"}</strong>
             </span>
             <div className="bb-pacing-bar">
               <span
                 style={{
-                  width: `${sectionPct}%`,
+                  width: `${isLive ? sectionPct : 0}%`,
                   background: barColor,
                 }}
               />
             </div>
             <span
               className={`bb-pacing-num ${
-                overTarget ? "is-over" : nearTarget ? "is-warn" : ""
+                isLive && overTarget ? "is-over" : isLive && nearTarget ? "is-warn" : ""
               }`}
             >
               {fmt(currentSectionElapsedMs)} / {fmt(currentSectionTargetMs)}
             </span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* ===== Row 2: aside (nudges / tag hints) ===== */}
+          <div className="bb-aside">
             {tagFlash ? (
-              <span className={`bb-tag-flash tag-${tagFlash.kind}`}>
-                {tagFlash.kind}
-              </span>
+              <span className={`bb-tag-flash tag-${tagFlash.kind}`}>{tagFlash.kind}</span>
             ) : nudge ? (
               <span
                 className={`bb-nudge ${
@@ -331,7 +500,7 @@ export function BottomBar({
               >
                 {nudge.message}
               </span>
-            ) : (
+            ) : isLive ? (
               <div className="bb-keys" aria-hidden="true">
                 {KEY_HINTS.map((h) => (
                   <span key={h.key} className="bb-key">
@@ -340,6 +509,11 @@ export function BottomBar({
                   </span>
                 ))}
               </div>
+            ) : (
+              <span style={{ fontSize: 11, color: "var(--color-muted-ash)", letterSpacing: "0.04em" }}>
+                {/* Empty in idle — keeps the row visually balanced without extra noise. */}
+                &nbsp;
+              </span>
             )}
           </div>
         </div>

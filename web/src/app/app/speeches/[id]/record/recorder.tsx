@@ -1132,80 +1132,25 @@ export function Recorder({
             )}
           </div>
 
-          {/* Actions */}
-          <div className="rec-side-card rec-actions">
-            {state === "idle" && (
-              <button onClick={start} className="rec-cta rec-cta-start">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="12" r="6" />
-                </svg>
-                Start recording
-              </button>
-            )}
-            {state === "starting" && (
-              <button className="rec-cta rec-cta-start" disabled>
-                Starting…
-              </button>
-            )}
-            {state === "recording" && (
-              <>
-                <button onClick={stop} className="rec-cta rec-cta-stop">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="6" y="6" width="12" height="12" rx="1" />
-                  </svg>
-                  Stop recording
-                </button>
-                <button onClick={pause} className="rec-secondary">
-                  Pause
-                </button>
-              </>
-            )}
-            {state === "paused" && (
-              <>
-                <button onClick={resume} className="rec-cta rec-cta-start">
-                  Resume
-                </button>
-                <button onClick={stop} className="rec-secondary" style={{ color: "var(--color-leadgen-red)" }}>
-                  Stop
-                </button>
-              </>
-            )}
-            {state === "stopping" && (
-              <button className="rec-cta rec-cta-start" disabled>
-                Stopping…
-              </button>
-            )}
-            {state === "uploading" && (
-              <button className="rec-cta rec-cta-start" disabled>
-                Uploading…
-              </button>
-            )}
-            {state === "error" && (
-              <button
-                onClick={() => {
-                  setState("idle");
-                  setErrorMsg(null);
-                }}
-                className="rec-cta rec-cta-start"
-              >
-                Try again
-              </button>
-            )}
-            {errorMsg && (
-              <p className="rec-status-msg is-error" style={{ marginTop: 10 }}>
-                {errorMsg}
-              </p>
-            )}
-          </div>
+          {/* The record controls live in the floating bottom bar so
+              start and stop happen in the same place. The sidebar
+              keeps the contextual chrome (mode, timer, sections,
+              live notes) and stays out of the action layer. */}
         </aside>
       </div>
 
-      {/* Floating bottom bar — shows while recording or paused. Carries
-          the timer, the live transcript window, the current section's
-          pacing bar, and any active nudge. */}
+      {/* Spacer so the script + sidebar can scroll past the bottom of
+          the viewport without the floating bar covering content. The
+          bar is ~100–110px tall in idle and grows in tall states; we
+          reserve 140px to be generous. */}
+      <div style={{ height: 140 }} aria-hidden="true" />
+
+      {/* Floating bottom bar — always visible. Owns the record control
+          (Start / Stop / Pause / Resume) and shows the live timer,
+          transcript window, per-section pacing, and any active nudge. */}
       <BottomBar
-        visible={isLive}
-        paused={state === "paused"}
+        state={state}
+        errorMsg={errorMsg}
         elapsedMs={elapsedMs}
         recentSpoken={recentSpoken}
         currentSectionName={currentSection?.name ?? ""}
@@ -1213,6 +1158,14 @@ export function Recorder({
         currentSectionTargetMs={(currentSection?.targetSec ?? 0) * 1000}
         nudge={nudge}
         recentTags={tags}
+        onStart={start}
+        onPause={pause}
+        onResume={resume}
+        onStop={stop}
+        onRetry={() => {
+          setState("idle");
+          setErrorMsg(null);
+        }}
       />
     </>
   );

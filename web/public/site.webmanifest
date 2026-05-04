@@ -1,0 +1,17 @@
+{
+  "name": "SpeechPrep",
+  "short_name": "SpeechPrep",
+  "description": "Practice your speech before you give it.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fef3e8",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "/assets/Logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
