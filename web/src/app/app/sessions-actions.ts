@@ -21,10 +21,6 @@ import { createClient } from "@/lib/supabase/server";
 
 const BUCKET = "recordings";
 
-// Paywall prefix lives in lib/paywall.ts because "use server" modules
-// can only export async functions. Import it where we need to throw.
-import { PAYWALL_PREFIX } from "@/lib/paywall";
-
 function extFor(mime: string): string {
   if (mime.includes("webm")) return "webm";
   if (mime.includes("mp4")) return "m4a";
@@ -34,72 +30,106 @@ function extFor(mime: string): string {
   return "bin";
 }
 
+// Discriminated result so the client can branch cleanly. Server actions
+// in Next 16 surface uncaught throws as opaque 500s; returning a result
+// lets the recorder show a paywall CTA without seeing a server error.
+export type CreateSessionResult =
+  | { ok: true; sessionId: string; uploadPathPrefix: string }
+  | { ok: false; reason: "paywall_no_sessions"; message: string }
+  | { ok: false; reason: "paywall_wrong_speech"; message: string }
+  | { ok: false; reason: "speech_not_found"; message: string }
+  | { ok: false; reason: "internal"; message: string };
+
 export async function createSession(
   speechId: string,
   mode: "with-script" | "freestyle",
-): Promise<{ sessionId: string; uploadPathPrefix: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+): Promise<CreateSessionResult> {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
 
-  // ---------- Entitlement check ----------
-  // Read the entitlements view (computed in SQL — see migration
-  // `phase_5_billing_columns`). If the user isn't entitled at all,
-  // throw the paywall error. If they're entitled via single_speech but
-  // for a different speech, also paywall.
-  const { data: ent } = await supabase
-    .from("entitlements")
-    .select("plan, is_entitled, free_sessions_remaining, one_shot_speech_id")
-    .eq("user_id", user.id)
-    .single();
-  if (!ent || ent.is_entitled === false) {
-    throw new Error(
-      `${PAYWALL_PREFIX}out_of_free_sessions:You're out of free sessions. Subscribe to keep practicing, or buy a $19 pass for this speech.`,
-    );
+    // ---------- Entitlement check ----------
+    // Use maybeSingle so a missing row doesn't throw — it returns null
+    // and we treat that the same as "not entitled".
+    const { data: ent } = await supabase
+      .from("entitlements")
+      .select("plan, is_entitled, free_sessions_remaining, one_shot_speech_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!ent || ent.is_entitled === false) {
+      return {
+        ok: false,
+        reason: "paywall_no_sessions",
+        message:
+          "You're out of free sessions. Subscribe to keep practicing, or buy a $19 pass for this speech.",
+      };
+    }
+    if (
+      ent.plan === "single_speech" &&
+      ent.one_shot_speech_id &&
+      ent.one_shot_speech_id !== speechId
+    ) {
+      return {
+        ok: false,
+        reason: "paywall_wrong_speech",
+        message:
+          "Your $19 pass is for a different speech. Subscribe to record any speech.",
+      };
+    }
+
+    // Find the speech and its current version.
+    const { data: speech, error } = await supabase
+      .from("speeches")
+      .select("id, current_version")
+      .eq("id", speechId)
+      .maybeSingle();
+    if (error || !speech) {
+      return { ok: false, reason: "speech_not_found", message: "Speech not found." };
+    }
+
+    // Resolve the script_version_id for the current_version.
+    const { data: ver, error: verErr } = await supabase
+      .from("script_versions")
+      .select("id")
+      .eq("speech_id", speechId)
+      .eq("v", speech.current_version)
+      .maybeSingle();
+    if (verErr || !ver) {
+      return { ok: false, reason: "internal", message: "Couldn't load script version." };
+    }
+
+    const { data: session, error: sessErr } = await supabase
+      .from("sessions")
+      .insert({
+        speech_id: speechId,
+        script_version_id: ver.id,
+        user_id: user.id,
+        mode,
+        status: "recording",
+        tags: [],
+      })
+      .select("id")
+      .single();
+    if (sessErr || !session) {
+      return { ok: false, reason: "internal", message: "Couldn't create the session row." };
+    }
+
+    return {
+      ok: true,
+      sessionId: session.id,
+      uploadPathPrefix: `${user.id}/`,
+    };
+  } catch (err) {
+    console.error("[createSession] threw", err);
+    return {
+      ok: false,
+      reason: "internal",
+      message: err instanceof Error ? err.message : "Unknown server error.",
+    };
   }
-  if (ent.plan === "single_speech" && ent.one_shot_speech_id && ent.one_shot_speech_id !== speechId) {
-    throw new Error(
-      `${PAYWALL_PREFIX}wrong_one_shot_speech:Your $19 pass is for a different speech. Subscribe to record any speech.`,
-    );
-  }
-
-  // Find the speech and its current version.
-  const { data: speech, error } = await supabase
-    .from("speeches")
-    .select("id, current_version")
-    .eq("id", speechId)
-    .single();
-  if (error || !speech) throw error ?? new Error("Speech not found");
-
-  // Resolve the script_version_id for the current_version.
-  const { data: ver, error: verErr } = await supabase
-    .from("script_versions")
-    .select("id")
-    .eq("speech_id", speechId)
-    .eq("v", speech.current_version)
-    .single();
-  if (verErr || !ver) throw verErr ?? new Error("Version not found");
-
-  const { data: session, error: sessErr } = await supabase
-    .from("sessions")
-    .insert({
-      speech_id: speechId,
-      script_version_id: ver.id,
-      user_id: user.id,
-      mode,
-      status: "recording",
-      tags: [],
-    })
-    .select("id")
-    .single();
-  if (sessErr || !session) throw sessErr ?? new Error("Failed to create session");
-
-  return {
-    sessionId: session.id,
-    uploadPathPrefix: `${user.id}/`,
-  };
 }
 
 export async function finalizeSession(args: {
