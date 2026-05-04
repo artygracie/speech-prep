@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPlaybackUrl } from "@/app/app/sessions-actions";
 import { buildDiff } from "@/lib/alignment";
 import type { TranscriptWord, ScriptSection } from "@/lib/alignment";
+import { CoachCard } from "./coach-card";
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -76,6 +77,13 @@ export default async function SessionReportPage({
   const { data: transcript } = await supabase
     .from("transcripts")
     .select("text, words")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+
+  // Coach report (if it exists).
+  const { data: aiReport } = await supabase
+    .from("ai_reports")
+    .select("summary, per_section, suggested_edits")
     .eq("session_id", sessionId)
     .maybeSingle();
 
@@ -261,6 +269,34 @@ export default async function SessionReportPage({
             </div>
           </div>
         </section>
+      )}
+
+      {/* ===== Coach (AI report) ===== */}
+      {aiReport && (
+        <CoachCard
+          speechId={speechId}
+          sessionId={sessionId}
+          summary={aiReport.summary ?? ""}
+          perSection={
+            (Array.isArray(aiReport.per_section) ? aiReport.per_section : []) as unknown as {
+              section_id: string;
+              headline: string;
+              what_landed: string;
+              what_to_work_on: string;
+            }[]
+          }
+          suggestedEdits={
+            (Array.isArray(aiReport.suggested_edits) ? aiReport.suggested_edits : []) as unknown as {
+              id: string;
+              kind: "cut" | "adopt" | "rephrase";
+              section_id: string;
+              before?: string;
+              after?: string;
+              reason: string;
+            }[]
+          }
+          sectionNameById={Object.fromEntries(sectionNameById)}
+        />
       )}
 
       {/* ===== Live tags ===== */}

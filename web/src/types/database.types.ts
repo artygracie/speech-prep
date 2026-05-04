@@ -16,6 +16,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_reports: {
+        Row: {
+          cached_input_tokens: number | null
+          created_at: string
+          id: string
+          input_tokens: number | null
+          model: string | null
+          output_tokens: number | null
+          per_section: Json
+          prompt_version: number
+          provider: string
+          raw: Json | null
+          session_id: string
+          suggested_edits: Json
+          summary: string
+          user_id: string
+        }
+        Insert: {
+          cached_input_tokens?: number | null
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          model?: string | null
+          output_tokens?: number | null
+          per_section?: Json
+          prompt_version?: number
+          provider?: string
+          raw?: Json | null
+          session_id: string
+          suggested_edits?: Json
+          summary?: string
+          user_id: string
+        }
+        Update: {
+          cached_input_tokens?: number | null
+          created_at?: string
+          id?: string
+          input_tokens?: number | null
+          model?: string | null
+          output_tokens?: number | null
+          per_section?: Json
+          prompt_version?: number
+          provider?: string
+          raw?: Json | null
+          session_id?: string
+          suggested_edits?: Json
+          summary?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
