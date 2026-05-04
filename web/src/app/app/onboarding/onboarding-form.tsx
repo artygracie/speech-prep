@@ -19,17 +19,40 @@ export function OnboardingForm({
   const [title, setTitle] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
+  const [extracting, setExtracting] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
 
-  function handleFile(file: File) {
-    // .txt only for v1. Larger formats (.docx, .pdf) need server-side
-    // parsing — Phase 2.
-    if (!file.name.toLowerCase().endsWith(".txt")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = String(reader.result ?? "");
-      setBody((prev) => (prev ? prev + "\n\n" + text : text));
-    };
-    reader.readAsText(file);
+  async function handleFile(file: File) {
+    setFileError(null);
+    const lower = file.name.toLowerCase();
+    const ok = [".txt", ".docx", ".pdf"].some((e) => lower.endsWith(e));
+    if (!ok) {
+      setFileError("Try a .txt, .docx, or .pdf file — or paste the text below.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setFileError("File is over 10MB. Try pasting the text instead.");
+      return;
+    }
+    setExtracting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/extract-text", { method: "POST", body: fd });
+      const data = (await res.json().catch(() => ({}))) as {
+        text?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.text) {
+        setFileError(data.error ?? "Couldn't read that file. Try pasting the text instead.");
+        return;
+      }
+      setBody((prev) => (prev ? prev + "\n\n" + data.text : data.text!));
+    } catch {
+      setFileError("Upload failed. Try again, or paste the text instead.");
+    } finally {
+      setExtracting(false);
+    }
   }
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -91,6 +114,7 @@ export function OnboardingForm({
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
+            disabled={extracting}
             className="text-caption"
             style={{
               color: "var(--color-muted-ash)",
@@ -100,18 +124,19 @@ export function OnboardingForm({
               background: "transparent",
               border: 0,
               padding: 0,
-              cursor: "pointer",
+              cursor: extracting ? "default" : "pointer",
+              opacity: extracting ? 0.6 : 1,
             }}
           >
-            Or upload a .txt
+            {extracting ? "Reading…" : "Or upload a file"}
           </button>
           <input
             ref={fileRef}
             type="file"
-            accept=".txt,text/plain"
+            accept=".txt,.docx,.pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
             onChange={(e) => {
               const f = e.target.files?.[0];
-              if (f) handleFile(f);
+              if (f) void handleFile(f);
               e.target.value = "";
             }}
             style={{ display: "none" }}
@@ -131,12 +156,21 @@ export function OnboardingForm({
             lineHeight: 1.65,
           }}
         />
-        <p
-          className="text-caption mt-2"
-          style={{ color: "var(--color-muted-ash)" }}
-        >
-          We&rsquo;ll suggest section breaks for you. You can change them anytime.
-        </p>
+        {fileError ? (
+          <p
+            className="text-caption mt-2"
+            style={{ color: "var(--color-phoenix-orange)" }}
+          >
+            {fileError}
+          </p>
+        ) : (
+          <p
+            className="text-caption mt-2"
+            style={{ color: "var(--color-muted-ash)" }}
+          >
+            We&rsquo;ll suggest section breaks for you. You can change them anytime.
+          </p>
+        )}
       </div>
 
       <div>
