@@ -141,3 +141,45 @@ export async function applySuggestions(
   revalidatePath(`/app/speeches/${speech.id}/sessions/${sessionId}`);
   return { newVersion: newV };
 }
+
+// Apply suggestions and immediately redirect into the recorder for
+// the next take. Optional `practicingSectionId` query param scopes the
+// next recording to a single section if the coach card called this
+// from a per-section "Practice this section" link.
+export async function applySuggestionsAndRecord(
+  sessionId: string,
+  acceptedIds: string[],
+  practicingSectionId?: string,
+): Promise<never> {
+  const { newVersion } = await applySuggestions(sessionId, acceptedIds);
+  // Re-resolve the speech id so we know where to redirect.
+  const supabase = await createClient();
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("speech_id")
+    .eq("id", sessionId)
+    .single();
+  if (!session) throw new Error("Session not found");
+  const params = new URLSearchParams();
+  params.set("from_v", String(newVersion));
+  if (practicingSectionId) params.set("section", practicingSectionId);
+  redirect(`/app/speeches/${session.speech_id}/record?${params.toString()}`);
+}
+
+// Practice just one section without applying any edits — for the
+// per-section "Practice this part" link in the coach card.
+export async function practiceSection(
+  sessionId: string,
+  sectionId: string,
+): Promise<never> {
+  const supabase = await createClient();
+  const { data: session } = await supabase
+    .from("sessions")
+    .select("speech_id, user_id")
+    .eq("id", sessionId)
+    .single();
+  if (!session) throw new Error("Session not found");
+  // Note: ownership is enforced by RLS; the .single() would have
+  // returned null if this user doesn't own the session.
+  redirect(`/app/speeches/${session.speech_id}/record?section=${sectionId}`);
+}

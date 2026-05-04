@@ -1,12 +1,29 @@
 "use client";
 
-// Coach card on the session report: shows the AI summary, per-section
-// notes, and a list of suggested edits the user can stage. Clicking
-// "Apply" calls the coach-actions server action.
+// Coach card on the session report.
+//
+// Layout, in priority order:
+//   1. Summary             — the headline takeaway, in serif body
+//   2. Per-section notes   — what landed / what to work on for each section,
+//                            with a "Practice just this section" link
+//   3. Suggested edits     — toggleable cards the user stages
+//   4. Action footer       — two CTAs:
+//        primary  → Apply staged edits AND start recording the next take
+//        secondary → Apply to script (no recording)
+//
+// The point of this redesign is to make the convergence loop obvious.
+// The whole product story is: rehearse → see notes → apply changes →
+// rehearse again. Right now the user sees notes but nothing pulls them
+// to the next iteration. The "Apply & record again" button is the
+// single most important affordance on this page.
 
-import { useState, useTransition } from "react";
+import Link from "next/link";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { applySuggestions } from "@/app/app/coach-actions";
+import {
+  applySuggestions,
+  applySuggestionsAndRecord,
+} from "@/app/app/coach-actions";
 
 type PerSectionNote = {
   section_id: string;
@@ -52,7 +69,7 @@ export function CoachCard({
     });
   }
 
-  function apply() {
+  function applyOnly() {
     if (staged.size === 0) return;
     setError(null);
     startTransition(async () => {
@@ -65,10 +82,39 @@ export function CoachCard({
     });
   }
 
+  function applyAndRecord() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        if (staged.size > 0) {
+          // Action redirects on success.
+          await applySuggestionsAndRecord(sessionId, Array.from(staged));
+        } else {
+          // No edits — just go to the recorder.
+          router.push(`/app/speeches/${speechId}/record`);
+        }
+      } catch (err) {
+        // redirect() throws NEXT_REDIRECT — that's expected, not an error.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("NEXT_REDIRECT")) return;
+        setError(msg);
+      }
+    });
+  }
+
   const kindLabel = (k: SuggestedEdit["kind"]) =>
     ({ cut: "Cut", adopt: "Adopt", rephrase: "Rephrase" }[k]);
   const kindPill = (k: SuggestedEdit["kind"]) =>
     ({ cut: "pill-red", adopt: "pill-blue", rephrase: "pill-gold" }[k]);
+
+  // Summary copy on the primary CTA changes with state so the user
+  // always sees what's about to happen.
+  const primaryLabel = useMemo(() => {
+    if (pending) return "Working…";
+    if (staged.size === 0) return "Record again →";
+    if (staged.size === 1) return "Apply 1 change & record →";
+    return `Apply ${staged.size} changes & record →`;
+  }, [staged.size, pending]);
 
   return (
     <section className="mt-14">
@@ -82,7 +128,7 @@ export function CoachCard({
         )}
       </div>
 
-      {/* Summary */}
+      {/* ===== Summary ===== */}
       {summary && (
         <div className="card-bordered mt-5" style={{ padding: 28, maxWidth: 760 }}>
           <p
@@ -99,18 +145,37 @@ export function CoachCard({
         </div>
       )}
 
-      {/* Per-section notes */}
+      {/* ===== Per-section notes ===== */}
       {perSection.length > 0 && (
         <div className="mt-6" style={{ display: "grid", gap: 12, maxWidth: 760 }}>
           {perSection.map((note) => (
             <div key={note.section_id} className="card-bordered" style={{ padding: 20 }}>
-              <div
-                className="text-caption"
-                style={{ color: "var(--color-muted-ash)", marginBottom: 6 }}
-              >
-                {sectionNameById[note.section_id] ?? "Section"}
+              <div className="flex items-baseline justify-between" style={{ gap: 12 }}>
+                <div>
+                  <div
+                    className="text-caption"
+                    style={{ color: "var(--color-muted-ash)", marginBottom: 6 }}
+                  >
+                    {sectionNameById[note.section_id] ?? "Section"}
+                  </div>
+                  <h4 className="text-subheading">{note.headline}</h4>
+                </div>
+                {/* Per-section drill link — pre-fills the recorder
+                    with this section in scope so the user can rehearse
+                    just this part instead of the whole speech. */}
+                <Link
+                  href={`/app/speeches/${speechId}/record?section=${note.section_id}`}
+                  className="text-caption"
+                  style={{
+                    color: "var(--color-deep-indigo)",
+                    textDecoration: "underline",
+                    textUnderlineOffset: 4,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Practice this part →
+                </Link>
               </div>
-              <h4 className="text-subheading">{note.headline}</h4>
               <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                 <p className="text-body-sm">
                   <span
@@ -138,12 +203,12 @@ export function CoachCard({
         </div>
       )}
 
-      {/* Suggested edits */}
+      {/* ===== Suggested edits ===== */}
       {suggestedEdits.length > 0 && (
         <div className="mt-8" style={{ maxWidth: 760 }}>
           <h3 className="text-subheading">Suggested edits</h3>
           <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
-            Stage the ones you want, then apply. We&rsquo;ll save them as a new version of your script.
+            Tap to stage the ones you want. Apply them and record your next take.
           </p>
 
           <div className="mt-5" style={{ display: "grid", gap: 10 }}>
@@ -215,27 +280,51 @@ export function CoachCard({
               );
             })}
           </div>
-
-          <div className="mt-6 flex items-center gap-3">
-            <button
-              onClick={apply}
-              disabled={staged.size === 0 || pending}
-              className="btn-primary"
-            >
-              {pending
-                ? "Applying…"
-                : staged.size === 0
-                ? "Stage some suggestions to apply"
-                : `Apply ${staged.size} to script`}
-            </button>
-            {error && (
-              <span className="text-body-sm" style={{ color: "var(--color-leadgen-red)" }}>
-                {error}
-              </span>
-            )}
-          </div>
         </div>
       )}
+
+      {/* ===== Footer CTAs =====
+          Primary action — Apply + record again — is shown even if no
+          suggestions exist, because re-recording is the natural next
+          step regardless of whether the coach proposed edits. The
+          secondary "Apply to script" only renders when something is
+          staged. */}
+      <div
+        className="mt-8"
+        style={{
+          display: "flex",
+          gap: 12,
+          flexWrap: "wrap",
+          alignItems: "center",
+          maxWidth: 760,
+        }}
+      >
+        <button
+          onClick={applyAndRecord}
+          disabled={pending}
+          className="btn-primary"
+          style={{
+            padding: "13px 22px",
+            fontSize: 15,
+          }}
+        >
+          {primaryLabel}
+        </button>
+        {staged.size > 0 && (
+          <button
+            onClick={applyOnly}
+            disabled={pending}
+            className="btn-light"
+          >
+            Apply to script only
+          </button>
+        )}
+        {error && (
+          <span className="text-body-sm" style={{ color: "var(--color-leadgen-red)" }}>
+            {error}
+          </span>
+        )}
+      </div>
     </section>
   );
 }
