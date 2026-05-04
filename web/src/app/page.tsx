@@ -115,11 +115,20 @@ export default function LandingPage() {
               moments were better than what you wrote down.
             </p>
 
-            <div className="mt-10 flex flex-col sm:flex-row gap-3 max-w-lg">
+            <div className="mt-10 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-5 max-w-lg">
               <Link href="/login" className="btn-primary">
-                Begin &rarr;
+                Start practicing &rarr;
               </Link>
-              <Link href="#how" className="btn-light">
+              <Link
+                href="#how"
+                className="text-body-sm"
+                style={{
+                  color: "var(--color-muted-ash)",
+                  textDecoration: "underline",
+                  textUnderlineOffset: 4,
+                  textDecorationColor: "rgba(17,17,17,0.18)",
+                }}
+              >
                 How it works
               </Link>
             </div>
