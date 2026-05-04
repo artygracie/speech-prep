@@ -57,18 +57,37 @@ export function DiffDocument({ diff, sections, transcriptText, scriptBodies }: P
     rowsBySection.get(sid)!.push(row);
   }
 
-  // For the Transcript tab, build the spoken text either from the
-  // passed full text or by walking the diff and stitching match +
-  // paraphrase + improv rows back together.
-  const spokenText =
-    transcriptText && transcriptText.trim().length > 0
+  // For the Transcript tab, derive the spoken text per section from
+  // the same bucketed diff rows used by the Diff tab. This way the
+  // Transcript tab gets the same section structure (heading + body)
+  // as Diff and Script, instead of a single dump of prose. The
+  // `transcriptText` prop is still accepted but is only used as a
+  // fallback if we have no diff rows at all.
+  function spokenForSection(sectionId: string): string {
+    const rows = rowsBySection.get(sectionId) ?? [];
+    if (rows.length === 0) return "";
+    return rows
+      .map((r) => {
+        if (r.kind === "match" || r.kind === "paraphrase" || r.kind === "improv") {
+          return r.spoken;
+        }
+        return ""; // skipped rows have no spoken text
+      })
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  }
+  const totalSpoken = sections
+    .map((s) => spokenForSection(s.id))
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  // Fallback for the rare case where the diff is empty but we have a
+  // raw transcript string from the DB.
+  const fallbackTranscript =
+    !totalSpoken && transcriptText && transcriptText.trim().length > 0
       ? transcriptText
-      : diff
-          .filter((r) => r.kind === "match" || r.kind === "paraphrase" || r.kind === "improv")
-          .map((r) =>
-            r.kind === "match" || r.kind === "paraphrase" ? r.spoken : r.spoken,
-          )
-          .join(" ");
+      : null;
 
   return (
     <>
@@ -239,14 +258,31 @@ export function DiffDocument({ diff, sections, transcriptText, scriptBodies }: P
         </article>
       ) : tab === "transcript" ? (
         <article className="diff-doc">
-          <section className="diff-section">
-            <h3 className="diff-section-name">What you actually said</h3>
-            <p className="doc-prose-clean">
-              {spokenText.trim() || (
-                <span className="diff-empty">— no transcript yet —</span>
-              )}
-            </p>
-          </section>
+          {fallbackTranscript ? (
+            // Edge case: no diff rows but we have a raw transcript
+            // from the DB. Fall through to a single block so the user
+            // still sees something.
+            <section className="diff-section">
+              <h3 className="diff-section-name">What you said</h3>
+              <p className="doc-prose-clean">{fallbackTranscript}</p>
+            </section>
+          ) : (
+            sections.map((sec) => {
+              const spoken = spokenForSection(sec.id);
+              return (
+                <section key={sec.id} className="diff-section">
+                  <h3 className="diff-section-name">{sec.name}</h3>
+                  <p className="doc-prose-clean">
+                    {spoken || (
+                      <span className="diff-empty">
+                        — this section wasn&rsquo;t reached —
+                      </span>
+                    )}
+                  </p>
+                </section>
+              );
+            })
+          )}
         </article>
       ) : (
         <article className="diff-doc">
