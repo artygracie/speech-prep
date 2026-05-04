@@ -194,23 +194,27 @@ export default async function SessionReportPage({
         }
       `}</style>
 
-      {/* ===== 1. RECORDING ===== */}
+      {/* ===== 1. RECORDING =====
+          Bare audio element on the page surface — no card, no inner box.
+          The native player chrome already reads as a contained widget;
+          wrapping it in a card was visual padding for nothing. */}
       {playbackUrl && (
         <section className="mt-10">
-          <h2 className="text-heading">Your recording</h2>
-          <div className="card-bordered mt-5" style={{ padding: 24 }}>
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <audio controls preload="metadata" src={playbackUrl} style={{ width: "100%" }} />
+          <div className="flex items-baseline justify-between" style={{ gap: 16 }}>
+            <h2 className="text-heading">Your recording</h2>
             {session.duration_ms != null && (
-              <p
-                className="text-caption mt-3"
-                style={{ color: "var(--color-muted-ash)" }}
-              >
+              <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
                 {fmtTime(Math.round(session.duration_ms / 1000))} total
-                {session.audio_mime ? ` · ${session.audio_mime.split(";")[0]}` : ""}
-              </p>
+              </span>
             )}
           </div>
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <audio
+            controls
+            preload="metadata"
+            src={playbackUrl}
+            style={{ width: "100%", marginTop: 16, display: "block" }}
+          />
         </section>
       )}
 
