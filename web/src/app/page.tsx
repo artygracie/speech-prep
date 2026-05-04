@@ -84,9 +84,9 @@ export default function LandingPage() {
             <h1 className="text-display mt-7">
               The room before
               <br />
-              {/* "THE" set in italic Instrument Serif — same accent face the
-                  rest of the page uses. Larger, with a wavy underline tying
-                  it to the manifesto's "measurable" treatment. */}
+              {/* "the" set in italic Instrument Serif — the page's accent
+                  face. The italic alone carries the emphasis; underline
+                  treatment was overkill. */}
               <span
                 className="serif"
                 style={{
@@ -94,11 +94,6 @@ export default function LandingPage() {
                   fontWeight: 400,
                   fontSize: "1.15em",
                   letterSpacing: "-0.04em",
-                  textDecoration: "underline",
-                  textDecorationStyle: "wavy",
-                  textDecorationColor: "var(--color-phoenix-orange)",
-                  textDecorationThickness: "2px",
-                  textUnderlineOffset: "0.18em",
                   marginRight: "0.06em",
                 }}
               >
