@@ -13,13 +13,13 @@ export default function NewSpeechPage() {
       <Link href="/app" className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
         ← Back to speeches
       </Link>
-      <h1 className="text-heading-lg mt-4">A new speech.</h1>
-      <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
+      <h1 className="text-heading-lg mt-3">A new speech.</h1>
+      <p className="text-body mt-2" style={{ color: "var(--color-muted-ash)" }}>
         Drop your script in or paste it below. We&rsquo;ll suggest section breaks once
         you&rsquo;re in the editor.
       </p>
 
-      <div className="mt-8">
+      <div className="mt-5">
         <NewSpeechForm action={createSpeech} />
       </div>
     </div>

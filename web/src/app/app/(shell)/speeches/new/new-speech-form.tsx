@@ -92,7 +92,29 @@ export function NewSpeechForm({
   const dropDisabled = extracting || hasFile;
 
   return (
-    <form onSubmit={onSubmit} style={{ display: "grid", gap: 24 }}>
+    <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
+      {/* Title first — it's the speech's identifier, and the cheapest thing
+          to fill in. Asking for it after a long paste feels like a gotcha. */}
+      <div>
+        <label
+          htmlFor="ns-title"
+          className="text-caption"
+          style={{ color: "var(--color-muted-ash)" }}
+        >
+          Title
+        </label>
+        <input
+          id="ns-title"
+          name="title"
+          required
+          autoComplete="off"
+          placeholder="e.g. Best-man speech for Tom"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="input input-lg mt-2"
+        />
+      </div>
+
       {/* Drop zone — visually equal-weight to the paste box. */}
       <div>
         <label className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
@@ -128,7 +150,7 @@ export function NewSpeechForm({
             }`,
             background: dragOver ? "rgba(17,17,17,0.03)" : "var(--color-canvas-white)",
             borderRadius: 12,
-            padding: hasFile || extracting ? "16px 20px" : "32px 20px",
+            padding: hasFile || extracting ? "12px 20px" : "20px 20px",
             textAlign: "center",
             cursor: dropDisabled ? "default" : "pointer",
             transition: "border-color 120ms ease, background 120ms ease, padding 120ms ease",
@@ -288,7 +310,7 @@ export function NewSpeechForm({
         <textarea
           id="ns-body"
           name="body"
-          rows={12}
+          rows={5}
           placeholder="Paste it here. A rough draft is fine — even bullet points work."
           value={body}
           onChange={(e) => {
@@ -303,27 +325,6 @@ export function NewSpeechForm({
             fontSize: 16,
             lineHeight: 1.65,
           }}
-        />
-      </div>
-
-      {/* Title — required, but secondary to the script itself. */}
-      <div>
-        <label
-          htmlFor="ns-title"
-          className="text-caption"
-          style={{ color: "var(--color-muted-ash)" }}
-        >
-          Title
-        </label>
-        <input
-          id="ns-title"
-          name="title"
-          required
-          autoComplete="off"
-          placeholder="e.g. Best-man speech for Tom"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="input input-lg mt-2"
         />
       </div>
 
