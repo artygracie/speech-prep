@@ -25,11 +25,9 @@ import {
   promoteParaphrases,
   mergeSuggestedEdits,
 } from "@/lib/paraphrase-suggestions";
-import { AutoDraftButton } from "./auto-draft-button";
 import { AutoRefresh } from "./auto-refresh";
 import { PlaybackDock } from "./playback-dock";
 import { ManuscriptScript, type SuggestedEdit } from "./manuscript-script";
-import { CoachMarginNote } from "./coach-margin-note";
 import { UpgradeCard } from "@/components/upgrade-card";
 import { resolveMode, MODE_LABEL } from "@/lib/modes";
 
@@ -54,13 +52,6 @@ function firstSentence(s: string): string {
   const slice = candidate.slice(0, 90);
   const lastSpace = slice.lastIndexOf(" ");
   return lastSpace > 50 ? slice.slice(0, lastSpace).trim() : slice.trim();
-}
-
-function fmtShortDate(d: Date): string {
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
-  const yr = d.getFullYear() % 100;
-  return `${m}/${day}/${String(yr).padStart(2, "0")}`;
 }
 
 export default async function SessionReportPage({
@@ -283,11 +274,6 @@ export default async function SessionReportPage({
               }
             />
           )}
-          <AutoDraftButton
-            sessionId={sessionId}
-            speechId={speechId}
-            enabled={hasTranscript && (hasCoach || promoted.length > 0)}
-          />
           <Link href={`/app/speeches/${speechId}/record`} className="btn-light">
             Record again
           </Link>
@@ -306,15 +292,50 @@ export default async function SessionReportPage({
         }
       `}</style>
 
-      {/* ===== Coach margin note ===== */}
-      {hasCoach && headline && (
-        <div className="mt-8">
-          <CoachMarginNote
-            headline={headline}
-            summary={summary}
-            date={fmtShortDate(sessionDate)}
-          />
-        </div>
+      {/* ===== Coach feedback section =====
+          Real h2, prose underneath. The headline is a serif pull-quote
+          immediately below the heading; the supporting summary follows
+          as paragraphs. No gold-rule box, no margin-note treatment —
+          just a clean section the eye reads top-to-bottom. */}
+      {hasCoach && (headline || summary) && (
+        <section className="mt-10" style={{ maxWidth: 780 }}>
+          <h2 className="text-heading">Coach feedback</h2>
+          {headline && (
+            <p
+              className="mt-4"
+              style={{
+                fontFamily: "var(--font-script)",
+                fontSize: 24,
+                fontWeight: 500,
+                lineHeight: 1.28,
+                letterSpacing: "-0.012em",
+                color: "var(--color-midnight-ink)",
+                margin: "16px 0 0",
+              }}
+            >
+              {headline}
+            </p>
+          )}
+          {summary && (
+            <div
+              style={{
+                marginTop: 14,
+                fontSize: 15.5,
+                lineHeight: 1.65,
+                color: "rgba(17,17,17,0.82)",
+              }}
+            >
+              {summary.split(/\n\n+/).map((para, i) => (
+                <p
+                  key={i}
+                  style={{ margin: i === 0 ? 0 : "12px 0 0" }}
+                >
+                  {para.trim()}
+                </p>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {/* ===== Pipeline still working ===== */}
@@ -336,18 +357,26 @@ export default async function SessionReportPage({
         </div>
       )}
 
-      {/* ===== The manuscript ===== */}
+      {/* ===== Your script + adjustments rail =====
+          The manuscript is the user's script with track-changes; the
+          rail to its right holds Coach's adjustments + observations on
+          what the user said. Lives under its own h2 so the page reads
+          as two clear sections: Coach feedback (prose) → Your script
+          (the document with annotations). */}
       {pipelineDone && manuscriptSections.length > 0 && (
-        <div className="mt-8">
-          <ManuscriptScript
-            speechId={speechId}
-            sessionId={sessionId}
-            mode={currentMode}
-            sections={manuscriptSections}
-            suggestedEdits={allEdits}
-            diffRows={diff}
-          />
-        </div>
+        <section className="mt-12">
+          <h2 className="text-heading">Your script</h2>
+          <div className="mt-4">
+            <ManuscriptScript
+              speechId={speechId}
+              sessionId={sessionId}
+              mode={currentMode}
+              sections={manuscriptSections}
+              suggestedEdits={allEdits}
+              diffRows={diff}
+            />
+          </div>
+        </section>
       )}
 
       {/* ===== Upgrade nudge — bottom of page, after value ===== */}
