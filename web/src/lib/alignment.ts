@@ -606,3 +606,177 @@ export function buildScriptDiff(
   }
   return buildDiff(oldSections, fakeTranscript);
 }
+
+// ---------- Diff quality classification ----------
+//
+// Same rows produce opposite "quality" reads depending on mode:
+//
+//   Script-visible mode — does the writing land out loud?
+//     match                                 → good
+//     paraphrase (meaning preserved)        → good   (mouth improved on page)
+//     paraphrase (meaning shifted)          → neutral
+//     skipped                               → bad
+//     improv (substantive)                  → good
+//     improv (filler-like)                  → neutral
+//
+//   From-memory mode — did I have this memorized?
+//     match                                 → good
+//     paraphrase (any)                      → bad    (memory was approximate)
+//     skipped                               → bad    (memory failed)
+//     improv                                → bad    (memory filled the gap)
+//
+// "Meaning preserved" is a cheap heuristic: ≥60% of the paraphrase's
+// non-equal ops are word-level subs (rephrasing) rather than insertions
+// or deletions. We don't need a semantic model for this — the alignment
+// shape itself carries enough signal.
+
+export type DiffQuality = "good" | "neutral" | "bad" | null;
+
+function paraphraseMeaningPreserved(ops: WordOp[]): boolean {
+  const subs = ops.filter((o) => o.kind === "sub").length;
+  const dels = ops.filter((o) => o.kind === "del").length;
+  const ins = ops.filter((o) => o.kind === "ins").length;
+  const total = subs + dels + ins;
+  if (total === 0) return true;
+  return subs / total >= 0.6;
+}
+
+function improvIsSubstantive(spoken: string): boolean {
+  const words = spoken.trim().split(/\s+/).filter(Boolean);
+  if (words.length < 3) return false;
+  // Almost-pure-filler check: more than half are common filler words.
+  const fillers = new Set([
+    "um", "uh", "uhh", "er", "erm", "yeah", "right", "okay", "ok", "like",
+    "you", "know", "i", "mean",
+  ]);
+  const fillerCount = words.filter((w) =>
+    fillers.has(w.toLowerCase().replace(/[^a-z]/g, "")),
+  ).length;
+  return fillerCount / words.length < 0.5;
+}
+
+export function classifyDiffQuality(
+  rows: DiffRow[],
+  mode: "with-script" | "freestyle",
+): DiffQuality[] {
+  return rows.map((row) => {
+    if (row.kind === "match") return "good";
+    if (mode === "freestyle") {
+      // From-memory: any deviation is a memory issue.
+      if (row.kind === "paraphrase") return "bad";
+      if (row.kind === "skipped") return "bad";
+      if (row.kind === "improv") return "bad";
+      return null;
+    }
+    // Script-visible mode.
+    if (row.kind === "skipped") return "bad";
+    if (row.kind === "paraphrase") {
+      return paraphraseMeaningPreserved(row.ops) ? "good" : "neutral";
+    }
+    if (row.kind === "improv") {
+      return improvIsSubstantive(row.spoken) ? "good" : "neutral";
+    }
+    return null;
+  });
+}
+
+// ---------- Memory-check scoring ----------
+//
+// Per-section recall score derived from DiffRow[]. Used by the
+// From-memory mode hero panel — answers "how well do I have this
+// memorized?" at a glance.
+//
+// Score = words remembered / words in script. Bands:
+//   word-perfect  ≥ 0.95
+//   mostly-there  0.80 – 0.95
+//   rough         0.50 – 0.80
+//   blank         < 0.50
+//   not-reached   no rows for this section (speaker never got there)
+
+export type MemoryBand =
+  | "word-perfect"
+  | "mostly-there"
+  | "rough"
+  | "blank"
+  | "not-reached";
+
+export type MemoryCheckRow = {
+  sectionId: string;
+  recall: number;            // 0..1
+  band: MemoryBand;
+  matchedWords: number;      // remembered (match rows + equal ops)
+  approximateWords: number;  // paraphrased (sub/del/ins ops)
+  skippedWords: number;      // skipped rows
+  paraphraseCount: number;   // # paraphrase rows
+  skippedRowCount: number;   // # skipped rows
+  blankedAt: string | null;  // first long-skipped phrase, used as a cue
+};
+
+function bandFor(recall: number, hasAnyRows: boolean): MemoryBand {
+  if (!hasAnyRows) return "not-reached";
+  if (recall >= 0.95) return "word-perfect";
+  if (recall >= 0.8) return "mostly-there";
+  if (recall >= 0.5) return "rough";
+  return "blank";
+}
+
+function wordCount(s: string): number {
+  if (!s) return 0;
+  return s.trim().split(/\s+/).filter(Boolean).length;
+}
+
+export function computeMemoryCheck(
+  sections: { id: string }[],
+  diff: DiffRow[],
+): MemoryCheckRow[] {
+  return sections.map((sec) => {
+    const rows = diff.filter((r) => r.sectionId === sec.id);
+    let matched = 0;
+    let approx = 0;
+    let skipped = 0;
+    let paraphraseCount = 0;
+    let skippedRowCount = 0;
+    let firstLongSkip: string | null = null;
+
+    for (const r of rows) {
+      if (r.kind === "match") {
+        matched += wordCount(r.spoken);
+      } else if (r.kind === "paraphrase") {
+        paraphraseCount += 1;
+        for (const op of r.ops) {
+          if (op.kind === "equal") matched += wordCount(op.text);
+          else if (op.kind === "sub") approx += 1;
+          else if (op.kind === "del") approx += 1;
+          // ins doesn't contribute to scripted-word recall — it's
+          // the speaker reaching for a word that wasn't there.
+        }
+      } else if (r.kind === "skipped") {
+        skippedRowCount += 1;
+        const wc = wordCount(r.written);
+        skipped += wc;
+        if (!firstLongSkip && wc >= 2) {
+          // Use the first 4 words as a cue; the panel renders this
+          // as "you blanked at '…' ".
+          firstLongSkip = r.written.trim().split(/\s+/).slice(0, 4).join(" ");
+        }
+      }
+      // improv rows have no scripted-word counterpart; ignored.
+    }
+
+    const totalScripted = matched + approx + skipped;
+    const recall = totalScripted > 0 ? matched / totalScripted : 0;
+    const hasRows = rows.length > 0;
+
+    return {
+      sectionId: sec.id,
+      recall,
+      band: bandFor(recall, hasRows),
+      matchedWords: matched,
+      approximateWords: approx,
+      skippedWords: skipped,
+      paraphraseCount,
+      skippedRowCount,
+      blankedAt: firstLongSkip,
+    };
+  });
+}

@@ -223,6 +223,7 @@ export function AutoDraftButton({
                 <DiffDocument
                   diff={diff}
                   sections={sectionList}
+                  mode="with-script"
                   scriptBodies={scriptBodies}
                 />
               </div>

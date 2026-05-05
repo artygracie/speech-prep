@@ -1,13 +1,13 @@
-// Deterministic paraphrase promotion.
+// Deterministic paraphrase promotion + suggested-edit dedupe.
 //
 // When the alignment classifies a span as a "paraphrase" — the speaker
 // said it differently than they wrote it — there's a chance the spoken
 // phrasing is *better* than the written one (more natural, tighter,
 // landed cleaner). This module emits suggested_edit rows of kind
 // "rephrase" directly from the coalesced diff, before the AI coach
-// has a chance to weigh in. The coach (T1.4) will eventually augment
-// or override these, but until it lands, this gives users the
-// "you said it better than you wrote it" moment immediately.
+// has a chance to weigh in. The coach generally beats heuristic
+// promotion in quality, so when the two sources overlap on the same
+// span, the coach's edit wins.
 //
 // We're conservative on what to promote:
 //   - Need at least one substantive `sub` op (a word swap that isn't
@@ -16,8 +16,17 @@
 //     (otherwise it's a single-word edit — too noisy).
 //   - We skip paraphrases that are mostly insertions, since those are
 //     usually filler / disfluency, not improved phrasing.
+//
+// Dedupe is interval-based: each edit's `before` (or `after` for
+// adopt) is mapped to a token range within the section body, and
+// edits with overlapping ranges collapse to one with a precedence
+// rule. This fixes the long-standing bug where the coach and the
+// paraphrase promoter both proposed an edit on the same line and the
+// user saw two cards saying nearly the same thing.
 
 import type { DiffRow, WordOp } from "./alignment";
+
+export type SuggestedEditProvenance = "coach" | "user-flag" | "alignment";
 
 export type PromotedSuggestion = {
   id: string;
@@ -27,6 +36,7 @@ export type PromotedSuggestion = {
   after: string;
   reason: string;
   source: "paraphrase";
+  provenance: SuggestedEditProvenance;
 };
 
 const STOP_WORDS = new Set([
@@ -208,28 +218,177 @@ export function promoteParaphrases(
       reason:
         "You said this differently than you wrote it — keeping the spoken phrasing.",
       source: "paraphrase",
+      provenance: "alignment",
     });
   }
   return out;
 }
 
+// ===== Interval-based dedupe =====
+//
+// The shape of the problem: an edit targets a span of words inside a
+// section's body. Two edits target the same span if their interval
+// representations overlap meaningfully. We resolve each edit's
+// "before" string to a (startToken, endToken) interval; edits without
+// a before (e.g., bare adopt) get a phantom interval at the section's
+// tail so they don't collide with anything else.
+
+type EditLike = {
+  id: string;
+  kind: string;
+  section_id: string;
+  before?: string;
+  after?: string;
+};
+
+// Tokenise the same way the alignment lib does — surfaceCore'd word
+// tokens. We don't need byte-perfect alignment, just stable spans.
+function tokenise(s: string): string[] {
+  return s
+    .split(/\s+/)
+    .map((w) => surfaceCore(w))
+    .filter((w) => w.length > 0);
+}
+
+// Find the [start, end) token-range for `needle` inside `haystack`.
+// Returns null if it doesn't occur. Case- and punctuation-insensitive,
+// matched on tokenised forms.
+function findInterval(
+  haystackTokens: string[],
+  needle: string,
+): [number, number] | null {
+  const ns = tokenise(needle);
+  if (ns.length === 0) return null;
+  outer: for (let i = 0; i + ns.length <= haystackTokens.length; i++) {
+    for (let j = 0; j < ns.length; j++) {
+      if (haystackTokens[i + j] !== ns[j]) continue outer;
+    }
+    return [i, i + ns.length];
+  }
+  return null;
+}
+
+// Overlap fraction of two intervals: |A ∩ B| / min(|A|, |B|). We use
+// min length (rather than union) so a small edit nested inside a big
+// one still reads as ~100% overlap — the small one is dominated.
+function overlapFraction(
+  a: [number, number],
+  b: [number, number],
+): number {
+  const lo = Math.max(a[0], b[0]);
+  const hi = Math.min(a[1], b[1]);
+  if (hi <= lo) return 0;
+  const inter = hi - lo;
+  const lenA = a[1] - a[0];
+  const lenB = b[1] - b[0];
+  return inter / Math.max(1, Math.min(lenA, lenB));
+}
+
+// Higher number = wins ties when intervals overlap. Tuned to match the
+// PRD's stated precedence:
+//   coach rephrase > alignment adopt > alignment rephrase > coach adopt > coach cut
+function precedence(
+  kind: string,
+  provenance: SuggestedEditProvenance | undefined,
+): number {
+  const p = provenance ?? "coach";
+  if (p === "coach" && kind === "rephrase") return 100;
+  if (p === "alignment" && kind === "adopt") return 80;
+  if (p === "alignment" && kind === "rephrase") return 60;
+  if (p === "coach" && kind === "adopt") return 50;
+  if (p === "coach" && kind === "drill") return 40;
+  if (p === "coach" && kind === "cut") return 30;
+  if (p === "user-flag") return 70;
+  return 10;
+}
+
 // Merge paraphrase-promoted suggestions with the coach's own suggested
-// edits. The coach's edits take precedence — if a coach edit already
-// targets the same section with a similar `before`, we drop the
-// paraphrase one to avoid duplication.
+// edits. Within each section, edits whose token-intervals overlap by
+// ≥50% are collapsed; the higher-precedence edit survives. Edits
+// without a resolvable interval (no before substring, or "adopt" with
+// only an after) are kept as-is.
+//
+// Section bodies must be supplied so we can resolve `before` strings
+// to token-ranges. If a body is missing, we fall back to the legacy
+// prefix-key dedupe so we never crash a render.
+const OVERLAP_THRESHOLD = 0.5;
+
 export function mergeSuggestedEdits<
-  T extends { kind: string; section_id: string; before?: string; after?: string },
+  T extends EditLike & { provenance?: SuggestedEditProvenance },
 >(
   coachEdits: T[],
   promoted: PromotedSuggestion[],
+  sectionBodyById?: Map<string, string>,
 ): (T | PromotedSuggestion)[] {
-  const seen = new Set<string>();
-  for (const e of coachEdits) {
-    if (e.before) seen.add(`${e.section_id}::${surfaceCore(e.before).slice(0, 40)}`);
+  // Stamp coach edits with provenance "coach" if missing (defensive —
+  // the coach pipeline now sets this directly, but old reports may not).
+  const stampedCoach: T[] = coachEdits.map((e) =>
+    e.provenance ? e : ({ ...e, provenance: "coach" as const } as T),
+  );
+
+  // Without bodies we can't compute intervals — fall back to the
+  // legacy prefix dedupe. The render path always supplies bodies, but
+  // tests / fallbacks may not.
+  if (!sectionBodyById) {
+    const seen = new Set<string>();
+    for (const e of stampedCoach) {
+      if (e.before) seen.add(`${e.section_id}::${surfaceCore(e.before).slice(0, 40)}`);
+    }
+    const filtered = promoted.filter((p) => {
+      const key = `${p.section_id}::${surfaceCore(p.before).slice(0, 40)}`;
+      return !seen.has(key);
+    });
+    return [...stampedCoach, ...filtered];
   }
-  const filtered = promoted.filter((p) => {
-    const key = `${p.section_id}::${surfaceCore(p.before).slice(0, 40)}`;
-    return !seen.has(key);
+
+  type Indexed = {
+    edit: T | PromotedSuggestion;
+    section: string;
+    interval: [number, number] | null;
+    score: number;
+  };
+  const tokensBySection = new Map<string, string[]>();
+  for (const [sid, body] of sectionBodyById.entries()) {
+    tokensBySection.set(sid, tokenise(body));
+  }
+
+  const all: (T | PromotedSuggestion)[] = [...stampedCoach, ...promoted];
+  const indexed: Indexed[] = all.map((e) => {
+    const tokens = tokensBySection.get(e.section_id) ?? [];
+    const probe = e.before ?? e.after ?? "";
+    const interval = probe ? findInterval(tokens, probe) : null;
+    return {
+      edit: e,
+      section: e.section_id,
+      interval,
+      score: precedence(e.kind, (e as { provenance?: SuggestedEditProvenance }).provenance),
+    };
   });
-  return [...coachEdits, ...filtered];
+
+  // Sort by score descending so the highest-precedence edit gets
+  // visited first; subsequent overlapping edits are dropped.
+  indexed.sort((a, b) => b.score - a.score);
+
+  const kept: Indexed[] = [];
+  for (const candidate of indexed) {
+    let dropped = false;
+    for (const winner of kept) {
+      if (winner.section !== candidate.section) continue;
+      if (!winner.interval || !candidate.interval) continue;
+      if (overlapFraction(winner.interval, candidate.interval) >= OVERLAP_THRESHOLD) {
+        dropped = true;
+        break;
+      }
+    }
+    if (!dropped) kept.push(candidate);
+  }
+
+  // Restore the original presentation order: coach edits first (in
+  // their input order), then promoted edits. Within each group, keep
+  // only the survivors. This stops the visual order from jumping
+  // around just because precedence reordering happened internally.
+  const survivorIds = new Set(kept.map((k) => k.edit.id));
+  const survivingCoach = stampedCoach.filter((e) => survivorIds.has(e.id));
+  const survivingPromoted = promoted.filter((e) => survivorIds.has(e.id));
+  return [...survivingCoach, ...survivingPromoted];
 }
