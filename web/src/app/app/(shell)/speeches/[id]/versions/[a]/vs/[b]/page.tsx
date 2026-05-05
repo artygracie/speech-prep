@@ -164,6 +164,7 @@ export default async function VersionDiffPage({
         <DiffDocument
           diff={diff}
           sections={sectionList}
+          mode="with-script"
           scriptBodies={scriptBodies}
         />
       </div>

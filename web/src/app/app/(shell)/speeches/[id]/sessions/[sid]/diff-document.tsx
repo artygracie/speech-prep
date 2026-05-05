@@ -24,14 +24,17 @@
 // paragraphs flow, edits sit inline like editorial marks rather than
 // stacked event cards.
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { classifyDiffQuality, type DiffQuality } from "@/lib/alignment";
 import type { DiffRow, WordOp } from "@/lib/alignment";
+import type { SessionMode } from "@/lib/modes";
 
 type Section = { id: string; name: string };
 
 type Props = {
   diff: DiffRow[];
   sections: Section[];
+  mode: SessionMode;
   // Plain-text transcript for the Transcript tab. Optional — falls back
   // to reconstructing from the diff if not passed.
   transcriptText?: string;
@@ -41,8 +44,110 @@ type Props = {
 
 type Tab = "diff" | "transcript" | "script";
 
-export function DiffDocument({ diff, sections, transcriptText, scriptBodies }: Props) {
+// Mode-specific legend copy. Both modes use the same colors — only the
+// labels change, because the same row means different things to the
+// user depending on whether they were reading or rememberening.
+const LEGEND_COPY: Record<SessionMode, {
+  match: string;
+  paraphrase: string;
+  skipped: string;
+  improv: string;
+}> = {
+  "with-script": {
+    match: "Said as written",
+    paraphrase: "You phrased it differently",
+    skipped: "Skipped a line",
+    improv: "Added live",
+  },
+  freestyle: {
+    match: "Word-perfect",
+    paraphrase: "Paraphrased (memory approximate)",
+    skipped: "Skipped / blanked",
+    improv: "Filled the gap",
+  },
+};
+
+const LEGEND_DISMISS_KEY = "sp.diffLegendDismissed.v1";
+
+export function DiffDocument({ diff, sections, mode, transcriptText, scriptBodies }: Props) {
   const [tab, setTab] = useState<Tab>("diff");
+  const [legendDismissed, setLegendDismissed] = useState(false);
+
+  // Hydrate legend dismissal from localStorage. Stored as a single
+  // boolean — once dismissed, stays dismissed across sessions until
+  // the user clears their storage. The setState is queued to a
+  // microtask so React 19's compiler doesn't complain about a
+  // synchronous render-phase update during the initial effect.
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      try {
+        if (typeof window !== "undefined" && window.localStorage.getItem(LEGEND_DISMISS_KEY) === "1") {
+          setLegendDismissed(true);
+        }
+      } catch {
+        // localStorage unavailable (private mode, etc.) — fine, just
+        // means the legend keeps showing.
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function dismissLegend() {
+    setLegendDismissed(true);
+    try {
+      window.localStorage.setItem(LEGEND_DISMISS_KEY, "1");
+    } catch {
+      // ignore
+    }
+  }
+
+  const legend = LEGEND_COPY[mode];
+
+  // Classify each diff row's "quality" through the lens of the current
+  // mode. The same paraphrase that's "good" (mouth improved on page)
+  // in Script-visible mode is "bad" (memory was approximate) in
+  // From-memory mode. We render the result as a small gutter marker
+  // beside each row.
+  const qualities: DiffQuality[] = useMemo(
+    () => classifyDiffQuality(diff, mode),
+    [diff, mode],
+  );
+  // Build a fast row→quality lookup. Reference identity is fine
+  // because rowsBySection holds the same objects we classified.
+  const qualityByRow = useMemo(() => {
+    const map = new Map<DiffRow, DiffQuality>();
+    diff.forEach((r, i) => map.set(r, qualities[i] ?? null));
+    return map;
+  }, [diff, qualities]);
+
+  function tooltipFor(row: DiffRow, quality: DiffQuality): string {
+    if (!quality) return "";
+    if (quality === "good" && row.kind === "paraphrase") {
+      return mode === "with-script"
+        ? "You said this more naturally than the script — consider adopting."
+        : "Word match.";
+    }
+    if (quality === "good" && row.kind === "improv") {
+      return "You added this on the fly. It works — fold it in?";
+    }
+    if (quality === "good") return "Said as written.";
+    if (quality === "bad" && row.kind === "skipped") {
+      return mode === "freestyle"
+        ? "You skipped this line — drill it."
+        : "You skipped this line.";
+    }
+    if (quality === "bad" && row.kind === "paraphrase") {
+      return "You phrased this slightly differently from the script — close, but not word-perfect.";
+    }
+    if (quality === "bad" && row.kind === "improv") {
+      return "Memory filled the gap with something off-script.";
+    }
+    return "";
+  }
 
   // Group diff rows by section so we can render each section as a
   // continuous prose block rather than mixing across boundaries.
@@ -207,7 +312,87 @@ export function DiffDocument({ diff, sections, transcriptText, scriptBodies }: P
           border-top: 1px solid rgba(17,17,17,0.06);
           display: flex; gap: 8px; flex-wrap: wrap;
         }
+
+        /* Legend: a one-line key for the diff marks. Mode-aware
+           copy. Dismissable, persisted per-user via localStorage. */
+        .diff-legend {
+          display: flex; align-items: center; gap: 14px;
+          flex-wrap: wrap;
+          padding: 8px 12px;
+          margin-bottom: 14px;
+          font-size: 12.5px;
+          color: var(--color-muted-ash);
+          background: rgba(17,17,17,0.025);
+          border-radius: 8px;
+        }
+        .diff-legend-item {
+          display: inline-flex; align-items: center; gap: 6px;
+          white-space: nowrap;
+        }
+        .diff-legend-swatch {
+          width: 14px; height: 14px;
+          border-radius: 3px;
+          display: inline-block;
+        }
+        .diff-legend-swatch.match {
+          background: rgba(17,17,17,0.5);
+          height: 2px;
+          align-self: center;
+        }
+        .diff-legend-swatch.paraphrase {
+          background: rgba(251,199,104,0.55);
+        }
+        .diff-legend-swatch.skipped {
+          background: rgba(225,101,64,0.5);
+          height: 2px;
+          align-self: center;
+        }
+        .diff-legend-swatch.improv {
+          background: rgba(50,142,250,0.18);
+          border: 1px solid rgba(50,142,250,0.4);
+        }
+        .diff-legend-dismiss {
+          margin-left: auto;
+          background: transparent;
+          border: 0;
+          color: var(--color-muted-ash);
+          font-size: 16px;
+          line-height: 1;
+          cursor: pointer;
+          padding: 0 4px;
+          border-radius: 4px;
+        }
+        .diff-legend-dismiss:hover {
+          background: rgba(17,17,17,0.06);
+          color: var(--color-midnight-ink);
+        }
       `}</style>
+
+      {!legendDismissed && tab === "diff" && (
+        <div className="diff-legend" role="note" aria-label="Diff legend">
+          <span className="diff-legend-item">
+            <span className="diff-legend-swatch match" /> {legend.match}
+          </span>
+          <span className="diff-legend-item">
+            <span className="diff-legend-swatch paraphrase" /> {legend.paraphrase}
+          </span>
+          <span className="diff-legend-item">
+            <span className="diff-legend-swatch skipped" /> {legend.skipped}
+          </span>
+          <span className="diff-legend-item">
+            <span className="diff-legend-swatch improv" /> {legend.improv}
+          </span>
+          <button
+            type="button"
+            className="diff-legend-dismiss"
+            onClick={dismissLegend}
+            aria-label="Dismiss legend"
+            title="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <div className="diff-tabs" role="tablist" aria-label="View">
         <button
@@ -247,9 +432,17 @@ export function DiffDocument({ diff, sections, transcriptText, scriptBodies }: P
                   {rows.length === 0 ? (
                     <span className="diff-empty">— this section wasn&rsquo;t reached —</span>
                   ) : (
-                    rows.map((row, i) => (
-                      <DiffSpan key={i} row={row} />
-                    ))
+                    rows.map((row, i) => {
+                      const quality = qualityByRow.get(row) ?? null;
+                      return (
+                        <DiffSpan
+                          key={i}
+                          row={row}
+                          quality={quality}
+                          tooltip={tooltipFor(row, quality)}
+                        />
+                      );
+                    })
                   )}
                 </p>
               </section>
@@ -318,17 +511,35 @@ function spokenFromOps(ops: WordOp[]): string {
 }
 
 // One span per diff row, rendered inline so the surrounding paragraph
-// flows as continuous prose.
-function DiffSpan({ row }: { row: DiffRow }) {
+// flows as continuous prose. `quality` is a derived classification
+// rendered as a tiny gutter mark (✓ good · △ bad) with a hover
+// tooltip explaining why. Match rows never get a mark — they're the
+// default state.
+function DiffSpan({
+  row,
+  quality,
+  tooltip,
+}: {
+  row: DiffRow;
+  quality: DiffQuality;
+  tooltip: string;
+}) {
+  const marker =
+    row.kind === "match" || !quality
+      ? null
+      : quality === "good"
+      ? <QualityMark kind="good" tooltip={tooltip} />
+      : quality === "bad"
+      ? <QualityMark kind="bad" tooltip={tooltip} />
+      : null;
+
   if (row.kind === "match") {
     return <span>{row.spoken} </span>;
   }
   if (row.kind === "paraphrase") {
-    // Render each op as its own inline mark so only the actually-changed
-    // words are highlighted/struck — the unchanged words flow as normal
-    // body text.
     return (
       <>
+        {marker}
         {row.ops.map((op, i) => (
           <OpSpan key={i} op={op} />
         ))}
@@ -336,10 +547,53 @@ function DiffSpan({ row }: { row: DiffRow }) {
     );
   }
   if (row.kind === "skipped") {
-    return <span className="ed-skipped">{row.written} </span>;
+    return (
+      <>
+        {marker}
+        <span className="ed-skipped">{row.written} </span>
+      </>
+    );
   }
   // improv
-  return <span className="ed-improv">{row.spoken} </span>;
+  return (
+    <>
+      {marker}
+      <span className="ed-improv">{row.spoken} </span>
+    </>
+  );
+}
+
+function QualityMark({
+  kind,
+  tooltip,
+}: {
+  kind: "good" | "bad";
+  tooltip: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      title={tooltip}
+      style={{
+        display: "inline-block",
+        width: "1.05em",
+        marginRight: 4,
+        marginLeft: -2,
+        textAlign: "center",
+        fontSize: "0.75em",
+        lineHeight: 1,
+        verticalAlign: "0.25em",
+        color:
+          kind === "good"
+            ? "var(--color-deliver-green, #2f9c70)"
+            : "var(--color-leadgen-red, #e16540)",
+        opacity: 0.7,
+        userSelect: "none",
+      }}
+    >
+      {kind === "good" ? "✓" : "△"}
+    </span>
+  );
 }
 
 function OpSpan({ op }: { op: WordOp }) {

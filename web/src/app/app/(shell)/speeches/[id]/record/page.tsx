@@ -10,12 +10,20 @@ import { Recorder } from "./recorder";
 import { FirstRunCoach } from "./first-run-coach";
 import { UpgradeCard } from "@/components/upgrade-card";
 
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
 export default async function RecordPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: SearchParams;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const fromSessionId = typeof sp.from_session === "string" ? sp.from_session : null;
+  const fromVersion = typeof sp.from_v === "string" ? Number(sp.from_v) : null;
+  const isDrilling = sp.drilling === "1";
   const supabase = await createClient();
 
   const { data: speech } = await supabase
@@ -110,6 +118,53 @@ export default async function RecordPage({
         />
       ) : (
         <>
+          {/* "Recording v3 — 2 edits applied since v2" banner. Shows
+              when the user just applied coach edits and was redirected
+              here for the next take. Or "Drilling weak sections" when
+              the user clicked a drill action and there's no version
+              bump. Renders inline so it doesn't push the recorder
+              down on a clean session. */}
+          {(fromSessionId || isDrilling) && (
+            <div
+              role="status"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                padding: "12px 18px",
+                marginBottom: 18,
+                borderRadius: 10,
+                background: "rgba(50,142,250,0.06)",
+                border: "1px solid rgba(50,142,250,0.18)",
+                fontSize: 13.5,
+                color: "var(--color-deep-indigo, #3a5fb1)",
+                flexWrap: "wrap",
+              }}
+            >
+              <span>
+                {isDrilling
+                  ? `Drilling weak sections from your last take.`
+                  : fromVersion != null
+                  ? `Recording v${fromVersion} — edits applied since your last take.`
+                  : `Picking up where your last take left off.`}
+              </span>
+              {fromSessionId && (
+                <Link
+                  href={`/app/speeches/${speech.id}/sessions/${fromSessionId}`}
+                  className="text-body-sm"
+                  style={{
+                    color: "var(--color-deep-indigo, #3a5fb1)",
+                    textDecoration: "underline",
+                    textUnderlineOffset: 4,
+                  }}
+                >
+                  Show what changed →
+                </Link>
+              )}
+            </div>
+          )}
+
           <Recorder
             speechId={speech.id}
             sections={sections}
