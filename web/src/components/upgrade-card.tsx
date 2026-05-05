@@ -26,6 +26,9 @@ type Props = {
    *  locks to this speech. Optional — the post-session card and detail
    *  page both have it; the recorder gate also has it. */
   speechId?: string;
+  /** Where to send the user after a successful checkout. Should be a
+   *  same-origin path. Falls back to /app/billing if omitted. */
+  returnTo?: string;
   /** Tweaks the headline copy by where the card is shown. */
   context?: "post-session" | "speech-detail" | "recorder-gate";
 };
@@ -66,6 +69,7 @@ const SUBHEADS: Record<Variant, string> = {
 export function UpgradeCard({
   freeSessionsRemaining,
   speechId,
+  returnTo,
   context = "post-session",
 }: Props) {
   const variant = pickVariant(freeSessionsRemaining);
@@ -184,6 +188,7 @@ export function UpgradeCard({
           {/* Primary: Practiced monthly. */}
           <form action={startSubscriptionCheckout}>
             <input type="hidden" name="cadence" value="monthly" />
+            {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
             <button type="submit" className="uc-btn uc-btn-primary">
               Go unlimited · $12/mo
             </button>
@@ -195,6 +200,7 @@ export function UpgradeCard({
               ensures the pass locks to *this* speech in the webhook. */}
           <form action={startOneShotCheckout}>
             {speechId && <input type="hidden" name="speech_id" value={speechId} />}
+            {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
             <button type="submit" className="uc-btn uc-btn-secondary">
               Just this speech · $19
             </button>

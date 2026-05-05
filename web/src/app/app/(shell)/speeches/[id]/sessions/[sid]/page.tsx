@@ -303,6 +303,7 @@ export default async function SessionReportPage({
           <UpgradeCard
             freeSessionsRemaining={freeSessionsRemaining}
             speechId={speechId}
+            returnTo={`/app/speeches/${speechId}/sessions/${sessionId}`}
             context="post-session"
           />
         </div>

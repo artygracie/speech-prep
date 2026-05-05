@@ -10,8 +10,6 @@ import {
   startOneShotCheckout,
   openCustomerPortal,
 } from "@/app/app/billing-actions";
-import { stripe } from "@/lib/stripe";
-import { ConversionPixel } from "./conversion-pixel";
 
 export const metadata = { title: "Billing — SpeechPrep" };
 
@@ -24,30 +22,12 @@ export default async function BillingPage({
 }) {
   const params = await searchParams;
   const status = typeof params.status === "string" ? params.status : null;
-  const sessionId = typeof params.session_id === "string" ? params.session_id : null;
   const fromRecordSpeechId =
     params.from === "record" && typeof params.speech_id === "string" ? params.speech_id : null;
-
-  // After a successful checkout, look up the Stripe session so we can
-  // fire the Google Ads conversion pixel with the real charged amount.
-  // We use amount_total (in cents) because it accounts for promo codes
-  // and currency without re-deriving from price IDs.
-  let conversion: { transactionId: string; value: number; currency: string } | null = null;
-  if (status === "success" && sessionId) {
-    try {
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
-      if (session.amount_total && session.currency) {
-        conversion = {
-          transactionId: session.id,
-          value: session.amount_total / 100,
-          currency: session.currency.toUpperCase(),
-        };
-      }
-    } catch {
-      // Don't break the success page if Stripe lookup fails — the
-      // webhook is the source of truth for entitlements anyway.
-    }
-  }
+  // Where to bounce back to after a successful checkout. Threaded into
+  // Stripe metadata so the /billing/success page can read it and
+  // redirect.
+  const returnTo = fromRecordSpeechId ? `/app/speeches/${fromRecordSpeechId}/record` : null;
 
   const supabase = await createClient();
   const {
@@ -69,31 +49,7 @@ export default async function BillingPage({
     <div style={{ maxWidth: 880 }}>
       <h1 className="text-heading-lg">Billing</h1>
 
-      {conversion && (
-        <ConversionPixel
-          transactionId={conversion.transactionId}
-          value={conversion.value}
-          currency={conversion.currency}
-        />
-      )}
-
       {/* Status banners */}
-      {status === "success" && (
-        <div
-          style={{
-            marginTop: 24,
-            padding: "12px 16px",
-            background: "rgba(71,208,150,0.12)",
-            border: "1px solid rgba(71,208,150,0.32)",
-            borderRadius: 10,
-            color: "#0d4a30",
-            fontSize: 14,
-          }}
-        >
-          Payment received. You&rsquo;re all set — head back to your speech and start
-          recording.
-        </div>
-      )}
       {status === "cancelled" && (
         <div
           style={{
@@ -207,6 +163,7 @@ export default async function BillingPage({
               </div>
               <form action={startSubscriptionCheckout} style={{ marginTop: "auto" }}>
                 <input type="hidden" name="cadence" value="monthly" />
+                {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
                 <button
                   type="submit"
                   className="btn-light"
@@ -221,6 +178,7 @@ export default async function BillingPage({
               </form>
               <form action={startSubscriptionCheckout}>
                 <input type="hidden" name="cadence" value="yearly" />
+                {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
                 <button
                   type="submit"
                   className="btn-ghost"
@@ -264,6 +222,7 @@ export default async function BillingPage({
                 {fromRecordSpeechId && (
                   <input type="hidden" name="speech_id" value={fromRecordSpeechId} />
                 )}
+                {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
                 <button type="submit" className="btn-light" style={{ width: "100%" }}>
                   {fromRecordSpeechId ? "Buy pass for this speech" : "Buy a single-speech pass"}
                 </button>
