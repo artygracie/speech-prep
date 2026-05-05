@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.93.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
+    "@vercel/analytics": "^2.0.1",
     "mammoth": "^1.12.0",
     "next": "16.2.4",
     "pdfjs-dist": "^5.7.284",
