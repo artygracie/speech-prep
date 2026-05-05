@@ -25,8 +25,15 @@ import Anthropic from "@anthropic-ai/sdk";
 const MODEL = "claude-sonnet-4-6";
 
 let _client: Anthropic | null = null;
+let _missingKeyWarned = false;
 function client(): Anthropic | null {
-  if (!process.env.ANTHROPIC_API_KEY) return null;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    if (!_missingKeyWarned) {
+      _missingKeyWarned = true;
+      console.error("[ai-coach] ANTHROPIC_API_KEY is not set — coach reports will not generate");
+    }
+    return null;
+  }
   if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   return _client;
 }
@@ -161,7 +168,7 @@ export async function generateCoachReport(
       prompt_version: PROMPT_VERSION,
     };
   } catch (err) {
-    console.warn("[ai-coach] failed", err);
+    console.error("[ai-coach] generateCoachReport failed", err);
     return null;
   }
 }
@@ -225,12 +232,30 @@ function isSuggestedEdit(
 
 function parseJson(s: string): unknown {
   let t = s.trim();
+  // Strip markdown code fences if present.
   if (t.startsWith("```")) {
-    t = t.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
+    t = t.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
   }
   try {
     return JSON.parse(t);
   } catch {
+    // Fall back: pull the largest {...} block out of the response.
+    // Models occasionally prefix prose ("Here's the JSON:") even when
+    // told not to, and we don't want one bad turn to blow the whole
+    // session away.
+    const start = t.indexOf("{");
+    const end = t.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(t.slice(start, end + 1));
+      } catch {
+        // fall through
+      }
+    }
+    console.error("[ai-coach] could not parse model response", {
+      preview: t.slice(0, 200),
+      length: t.length,
+    });
     return null;
   }
 }
