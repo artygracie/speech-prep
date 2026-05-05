@@ -13,10 +13,17 @@
 // the data lands, the parent stops rendering this component and the
 // polling stops.
 //
-// We also fire a one-time "wake up" call to /api/sessions/transcribe
-// for sessions that look stuck (uploaded for >60s with no transcript).
-// The transcribe edge function is idempotent — calling it twice on the
-// same session just re-runs the same work.
+// We also fire two kinds of wake-ups:
+//
+//   1. /api/sessions/wake when we suspect the transcribe job got lost
+//      (uploaded > 60s with no transcript).
+//   2. /api/coach/run directly when the transcript has landed but no
+//      ai_reports row exists yet. This is the path the user is on
+//      most of the time — Deepgram landed the transcript fast, and
+//      now we need the coach to write its notes. We call coach/run
+//      here rather than going through the wake handler because the
+//      wake handler used to fire-and-forget the coach inner fetch,
+//      which Vercel serverless kills when the wake handler returns.
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -28,18 +35,25 @@ type Props = {
   // True if we suspect the transcribe job got lost. Parent decides
   // — typically based on session age + status.
   suspectedStuck: boolean;
+  // True when the transcript exists but no ai_reports row does. We
+  // fire the coach route directly when this is true.
+  needsCoach: boolean;
 };
 
-export function AutoRefresh({ sessionId, done, suspectedStuck }: Props) {
+export function AutoRefresh({
+  sessionId,
+  done,
+  suspectedStuck,
+  needsCoach,
+}: Props) {
   const router = useRouter();
   const wakeUpFiredRef = useRef(false);
+  const coachFiredRef = useRef(false);
 
   useEffect(() => {
     if (done) return;
 
-    // Fire a wake-up at most once per page load if we think the
-    // pipeline got lost. Best-effort; we don't await or handle errors
-    // — the next router.refresh() will surface any progress.
+    // Arm 1: re-fire the transcribe job if it looks stuck.
     if (suspectedStuck && !wakeUpFiredRef.current) {
       wakeUpFiredRef.current = true;
       void fetch("/api/sessions/wake", {
@@ -49,11 +63,25 @@ export function AutoRefresh({ sessionId, done, suspectedStuck }: Props) {
       }).catch(() => { /* swallow — the next refresh will tell us */ });
     }
 
+    // Arm 2: fire the coach route directly. Once per page load —
+    // the route is idempotent (no-ops if a report already exists),
+    // so re-firing on subsequent mounts is harmless. We don't await
+    // because the coach call itself can take 15-30s and we don't
+    // want to block the polling.
+    if (needsCoach && !coachFiredRef.current) {
+      coachFiredRef.current = true;
+      void fetch("/api/coach/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      }).catch(() => { /* swallow — failure shows up as no report */ });
+    }
+
     const interval = setInterval(() => {
       router.refresh();
     }, 3000);
     return () => clearInterval(interval);
-  }, [done, suspectedStuck, sessionId, router]);
+  }, [done, suspectedStuck, needsCoach, sessionId, router]);
 
   return null;
 }

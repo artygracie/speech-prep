@@ -23,6 +23,11 @@ import { generateCoachReport, type CoachInput } from "@/lib/ai-coach";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Sonnet coach calls run 10-30s comfortably; the Vercel default of
+// 10s for non-paid tiers (and 15s on Hobby) silently kills them. 60s
+// is enough headroom for slow takes without holding the function open
+// when something's truly stuck.
+export const maxDuration = 60;
 
 export async function POST(req: Request): Promise<Response> {
   let sessionId: string | null = null;
@@ -66,8 +71,12 @@ export async function POST(req: Request): Promise<Response> {
     )
     .eq("id", sessionId)
     .maybeSingle();
-  if (sessErr || !session) return new Response("not found", { status: 404 });
+  if (sessErr || !session) {
+    console.error("[coach/run] session not found", { sessionId, sessErr });
+    return new Response("not found", { status: 404 });
+  }
   if (!isInternal && session.user_id !== userId) {
+    console.error("[coach/run] forbidden", { sessionId, userId, owner: session.user_id });
     return new Response("forbidden", { status: 403 });
   }
 
@@ -91,6 +100,7 @@ export async function POST(req: Request): Promise<Response> {
     !Array.isArray(transcript.words) ||
     transcript.words.length === 0
   ) {
+    console.error("[coach/run] transcript not ready", { sessionId });
     return new Response("transcript not ready", { status: 409 });
   }
 
@@ -100,6 +110,10 @@ export async function POST(req: Request): Promise<Response> {
     .eq("script_version_id", session.script_version_id)
     .order("position", { ascending: true });
   if (!secRows || secRows.length === 0) {
+    console.error("[coach/run] script has no sections", {
+      sessionId,
+      scriptVersionId: session.script_version_id,
+    });
     return new Response("script has no sections", { status: 409 });
   }
 
@@ -154,6 +168,12 @@ export async function POST(req: Request): Promise<Response> {
 
   const report = await generateCoachReport(input);
   if (!report) {
+    console.error("[coach/run] coach generation returned null", {
+      sessionId,
+      hasApiKey: !!process.env.ANTHROPIC_API_KEY,
+      sectionCount: secRows.length,
+      transcriptWords: (transcript.words as unknown[]).length,
+    });
     return new Response("coach unavailable", { status: 503 });
   }
 
@@ -185,8 +205,21 @@ export async function POST(req: Request): Promise<Response> {
     raw: { dropped_edits: report.suggested_edits.length - validEdits.length },
   });
   if (insErr) {
+    console.error("[coach/run] insert failed", {
+      sessionId,
+      error: insErr.message,
+      details: insErr.details,
+      hint: insErr.hint,
+    });
     return new Response(`insert failed: ${insErr.message}`, { status: 500 });
   }
 
+  console.log("[coach/run] success", {
+    sessionId,
+    suggestedEdits: validEdits.length,
+    droppedEdits: report.suggested_edits.length - validEdits.length,
+    inputTokens: report.input_tokens,
+    outputTokens: report.output_tokens,
+  });
   return new Response("ok");
 }

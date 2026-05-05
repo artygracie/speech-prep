@@ -12,6 +12,11 @@ import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Wake hands off to transcribe (5-10s) and/or coach (15-30s). The
+// default 10s timeout would silently kill those inner calls. 60s is
+// enough for either to complete; the client (AutoRefresh) doesn't
+// await the wake response anyway.
+export const maxDuration = 60;
 
 export async function POST(req: Request): Promise<Response> {
   let sessionId: string | null = null;
@@ -61,40 +66,50 @@ export async function POST(req: Request): Promise<Response> {
   const hasTranscript = !!transcript;
   const hasReport = !!report;
 
+  // Build origin from the host header — req.headers.get("origin") is
+  // null on same-origin POSTs in many browsers and the URL-derived
+  // fallback can be wrong behind proxies.
+  const host = req.headers.get("host");
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const origin = host ? `${proto}://${host}` : null;
+
+  // Run the work in parallel and await both. We can't fire-and-forget
+  // on serverless — the function freezes after the response, killing
+  // the inner request. The client doesn't await this wake call, so
+  // holding the connection open for 30s is fine.
+  const tasks: Promise<unknown>[] = [];
+
   if (!hasTranscript) {
-    // Forward to the transcribe edge function. Don't await — it can
-    // take 5–10s for Deepgram to round-trip, and we want wake to
-    // return quickly. The page polling will surface progress.
     const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/transcribe`;
-    void fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId }),
-    }).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error("[wake] transcribe call failed", err);
-    });
+    tasks.push(
+      fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId }),
+      }).catch((err) => {
+        console.error("[wake] transcribe call failed", err);
+      }),
+    );
   }
 
-  if (hasTranscript && !hasReport) {
-    // Coach hasn't run — fire the coach route. Pass the user's session
-    // cookie so /api/coach/run can authorize as the same user.
+  if (hasTranscript && !hasReport && origin) {
+    // Forward the cookie so /api/coach/run authorizes as the same user.
     const cookieHeader = req.headers.get("cookie") ?? "";
-    const origin =
-      req.headers.get("origin") ??
-      `${new URL(req.url).protocol}//${new URL(req.url).host}`;
-    void fetch(`${origin}/api/coach/run`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        cookie: cookieHeader,
-      },
-      body: JSON.stringify({ session_id: sessionId }),
-    }).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error("[wake] coach call failed", err);
-    });
+    tasks.push(
+      fetch(`${origin}/api/coach/run`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: cookieHeader,
+        },
+        body: JSON.stringify({ session_id: sessionId }),
+      }).catch((err) => {
+        console.error("[wake] coach call failed", err);
+      }),
+    );
   }
+
+  await Promise.all(tasks);
 
   return new Response("ok");
 }
