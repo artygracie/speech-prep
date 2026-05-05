@@ -153,12 +153,9 @@ export default function DraftsPanel({ speechId, currentVersion, drafts }: Props)
           listStyle: "none",
           padding: 0,
           margin: 0,
-          display: "grid",
-          gap: 10,
-          position: "relative",
         }}
       >
-        {visible.map((d) => {
+        {visible.map((d, i) => {
           const isCurrent = d.v === currentVersion;
           const compareHref =
             isCurrent
@@ -168,22 +165,19 @@ export default function DraftsPanel({ speechId, currentVersion, drafts }: Props)
           return (
             <li
               key={d.id}
-              className="card-elevated"
               style={{
-                padding: "14px 16px",
+                padding: "20px 0",
+                borderTop:
+                  i === 0 ? "0" : "1px solid rgba(17,17,17,0.06)",
                 display: "grid",
-                gap: 8,
-                position: "relative",
-                borderLeft: isCurrent
-                  ? "3px solid var(--color-deliver-green)"
-                  : "3px solid transparent",
+                gap: 6,
               }}
             >
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  gap: 10,
+                  gap: 12,
                   alignItems: "baseline",
                 }}
               >
@@ -191,8 +185,11 @@ export default function DraftsPanel({ speechId, currentVersion, drafts }: Props)
                   <span
                     className="num"
                     style={{
-                      fontSize: 18,
+                      fontSize: 17,
                       fontWeight: 500,
+                      color: isCurrent
+                        ? "var(--color-midnight-ink)"
+                        : "var(--color-muted-ash)",
                     }}
                   >
                     v{d.v}
@@ -202,9 +199,6 @@ export default function DraftsPanel({ speechId, currentVersion, drafts }: Props)
                       className="text-caption"
                       style={{
                         color: "var(--color-deliver-green)",
-                        fontWeight: 500,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
                       }}
                     >
                       Current
@@ -215,6 +209,10 @@ export default function DraftsPanel({ speechId, currentVersion, drafts }: Props)
                       className="text-caption"
                       style={{
                         color: "var(--color-muted-ash)",
+                        textTransform: "none",
+                        letterSpacing: 0,
+                        fontWeight: 400,
+                        fontSize: 12,
                       }}
                       title={`Collapsed: v${d.collapsedFrom
                         .slice()
@@ -227,50 +225,80 @@ export default function DraftsPanel({ speechId, currentVersion, drafts }: Props)
                 </div>
                 <div
                   className="text-caption"
-                  style={{ color: "var(--color-muted-ash)" }}
+                  style={{
+                    color: "var(--color-muted-ash)",
+                    textTransform: "none",
+                    letterSpacing: 0,
+                    fontWeight: 400,
+                    fontSize: 12,
+                  }}
                 >
                   {fmtRel(d.created_at)}
                 </div>
               </div>
 
-              <div className="text-body-sm">{summaryFor(d)}</div>
-
               <div
-                className="text-caption"
-                style={{ color: "var(--color-muted-ash)" }}
+                className="text-body-sm"
+                style={{
+                  color: "var(--color-midnight-ink)",
+                }}
               >
-                {d.session_count > 0
-                  ? `${d.session_count} ${
-                      d.session_count === 1 ? "session" : "sessions"
-                    } recorded against this draft`
-                  : "No sessions recorded against this draft"}
-              </div>
-
-              <div
-                className="flex gap-2 mt-2"
-                style={{ flexWrap: "wrap" }}
-              >
-                {compareHref && (
-                  <a
-                    href={compareHref}
-                    className="btn-light"
-                    style={{ fontSize: 12, padding: "6px 10px" }}
+                {summaryFor(d)}
+                {d.session_count > 0 && (
+                  <span
+                    style={{
+                      color: "var(--color-muted-ash)",
+                    }}
                   >
-                    Compare to v{currentVersion}
-                  </a>
-                )}
-                {!isCurrent && (
-                  <button
-                    type="button"
-                    className="btn-light"
-                    style={{ fontSize: 12, padding: "6px 10px" }}
-                    disabled={pending}
-                    onClick={() => handleRestore(d.v)}
-                  >
-                    {pending ? "Restoring…" : "Restore"}
-                  </button>
+                    {" · "}
+                    {d.session_count}{" "}
+                    {d.session_count === 1 ? "session" : "sessions"}
+                  </span>
                 )}
               </div>
+
+              {(compareHref || !isCurrent) && (
+                <div
+                  className="flex gap-4 mt-1"
+                  style={{ flexWrap: "wrap" }}
+                >
+                  {compareHref && (
+                    <a
+                      href={compareHref}
+                      style={{
+                        fontSize: 13,
+                        color: "var(--color-midnight-ink)",
+                        textDecoration: "underline",
+                        textDecorationColor: "rgba(17,17,17,0.2)",
+                        textUnderlineOffset: 3,
+                      }}
+                    >
+                      Compare to v{currentVersion}
+                    </a>
+                  )}
+                  {!isCurrent && (
+                    <button
+                      type="button"
+                      style={{
+                        fontSize: 13,
+                        color: "var(--color-midnight-ink)",
+                        textDecoration: "underline",
+                        textDecorationColor: "rgba(17,17,17,0.2)",
+                        textUnderlineOffset: 3,
+                        background: "transparent",
+                        padding: 0,
+                        border: 0,
+                        cursor: pending ? "not-allowed" : "pointer",
+                        opacity: pending ? 0.5 : 1,
+                      }}
+                      disabled={pending}
+                      onClick={() => handleRestore(d.v)}
+                    >
+                      {pending ? "Restoring…" : "Restore"}
+                    </button>
+                  )}
+                </div>
+              )}
             </li>
           );
         })}
@@ -279,13 +307,11 @@ export default function DraftsPanel({ speechId, currentVersion, drafts }: Props)
       {hasCollapsed && (
         <button
           type="button"
-          className="btn-light mt-4"
-          style={{ fontSize: 12, padding: "6px 10px" }}
+          className="btn-ghost mt-3"
+          style={{ fontSize: 12, padding: "6px 0" }}
           onClick={() => setShowAll((s) => !s)}
         >
-          {showAll
-            ? "Group rapid saves"
-            : "Show every save"}
+          {showAll ? "Group rapid saves" : "Show every save"}
         </button>
       )}
     </div>
