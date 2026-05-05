@@ -24,7 +24,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPlaybackUrl } from "@/app/app/sessions-actions";
-import { buildDiff, coalesceDiff } from "@/lib/alignment";
+import { buildDiff, coalesceDiff, computeMemoryCheck } from "@/lib/alignment";
 import type { TranscriptWord, ScriptSection } from "@/lib/alignment";
 import {
   promoteParaphrases,
@@ -36,7 +36,11 @@ import { AutoDraftButton } from "./auto-draft-button";
 import { AutoRefresh } from "./auto-refresh";
 import { DiffDocument } from "./diff-document";
 import { PlaybackDock } from "./playback-dock";
+import { MemoryCheckPanel, type MemoryCheckSection } from "./memory-check-panel";
+import { BetterOutLoudCard, type BetterOutLoudItem } from "./better-out-loud-card";
+import { StickyCTA } from "./sticky-cta";
 import { UpgradeCard } from "@/components/upgrade-card";
+import { resolveMode, MODE_LABEL } from "@/lib/modes";
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -45,6 +49,20 @@ function fmtTime(seconds: number) {
 }
 function signTime(s: number) {
   return (s >= 0 ? "+" : "−") + fmtTime(Math.abs(s));
+}
+
+// Headline fallback when ai_reports.headline is null (legacy reports
+// generated before prompt v2). We slice the first sentence and trim
+// to ≤90 chars at a word boundary.
+function firstSentence(s: string): string {
+  const trimmed = s.trim();
+  if (!trimmed) return "";
+  const m = trimmed.match(/^[^.!?]+[.!?]/);
+  const candidate = (m ? m[0] : trimmed).trim();
+  if (candidate.length <= 90) return candidate;
+  const slice = candidate.slice(0, 90);
+  const lastSpace = slice.lastIndexOf(" ");
+  return lastSpace > 50 ? slice.slice(0, lastSpace).trim() : slice.trim();
 }
 
 export default async function SessionReportPage({
@@ -123,13 +141,15 @@ export default async function SessionReportPage({
   // Coach report (if it exists).
   const { data: aiReport } = await supabase
     .from("ai_reports")
-    .select("summary, per_section, suggested_edits")
+    .select("headline, summary, per_section, suggested_edits")
     .eq("session_id", sessionId)
     .maybeSingle();
 
   const targetTotal = sections.reduce((a, s) => a + s.targetSeconds, 0);
   const actualTotal = metrics.reduce((a, m) => a + (m.actual_seconds ?? 0), 0);
   const totalDelta = actualTotal - targetTotal;
+  const currentMode = resolveMode(session.mode);
+  const isFreestyle = currentMode === "freestyle";
 
   const playbackUrl = session.audio_path ? await getPlaybackUrl(session.audio_path) : null;
 
@@ -140,6 +160,51 @@ export default async function SessionReportPage({
   if (transcript?.words && Array.isArray(transcript.words) && sections.length > 0) {
     diff = coalesceDiff(buildDiff(sections, transcript.words as TranscriptWord[]));
   }
+
+  // Memory Check rows are derived from the same diff that powers the
+  // diff view. We only build them in From-memory mode — Script-visible
+  // mode has its own hero (Better-out-loud).
+  const memoryCheckRows: MemoryCheckSection[] = isFreestyle && diff.length > 0
+    ? computeMemoryCheck(sections, diff).map((r) => ({
+        id: r.sectionId,
+        name: sectionNameById.get(r.sectionId) ?? "Section",
+        recall: r.recall,
+        band: r.band,
+        paraphraseCount: r.paraphraseCount,
+        skippedCount: r.skippedRowCount,
+        blankedAt: r.blankedAt ?? undefined,
+      }))
+    : [];
+
+  // Better-out-loud items: improvised spans from the diff that have
+  // substantive content (≥3 words). Disfluencies like "um yeah right"
+  // are dropped. Only built in Script-visible mode — From-memory mode
+  // treats improvs as memory gaps, not adoptable lines.
+  const betterOutLoudItems: BetterOutLoudItem[] = !isFreestyle && diff.length > 0
+    ? diff
+        .map((row, idx) => ({ row, idx }))
+        .filter(({ row }) => row.kind === "improv" && row.sectionId)
+        .map(({ row, idx }) => {
+          // Type narrowed: kind === "improv" and sectionId truthy.
+          const r = row as { kind: "improv"; spoken: string; sectionId: string };
+          return {
+            id: `improv-${r.sectionId}-${idx}`,
+            sectionId: r.sectionId,
+            sectionName: sectionNameById.get(r.sectionId) ?? "Section",
+            spoken: r.spoken.trim(),
+            wordCount: r.spoken.trim().split(/\s+/).filter(Boolean).length,
+          };
+        })
+        .filter((item) => item.wordCount >= 3)
+        // Drop the wordCount field; the component doesn't need it.
+        .map(({ id, sectionId, sectionName, spoken }) => ({
+          id,
+          sectionId,
+          sectionName,
+          spoken,
+        }))
+    : [];
+
   // Plain transcript text + script bodies for the Transcript / Script tabs.
   const transcriptText = (transcript?.text as string | undefined) ?? "";
   const scriptBodies: Record<string, string> = Object.fromEntries(
@@ -159,11 +224,14 @@ export default async function SessionReportPage({
   // when it returns them, so just take the first.
   type SuggestedEditShape = {
     id: string;
-    kind: "cut" | "adopt" | "rephrase";
+    kind: "cut" | "adopt" | "rephrase" | "drill";
     section_id: string;
     before?: string;
     after?: string;
     reason: string;
+    line_target?: string;
+    tactic?: string;
+    provenance?: "coach" | "user-flag" | "alignment";
   };
   const coachEdits = (Array.isArray(aiReport?.suggested_edits)
     ? aiReport.suggested_edits
@@ -173,9 +241,16 @@ export default async function SessionReportPage({
   // source of suggestions; once it lands, coach edits dominate and we
   // dedupe.
   const promoted = diff.length > 0 ? promoteParaphrases(diff, sessionId) : [];
+  // Body map fuels the interval-based dedupe in mergeSuggestedEdits —
+  // without it we fall back to a coarser prefix match and can ship
+  // duplicate edits in the same section.
+  const sectionBodyById = new Map<string, string>(
+    Object.entries(scriptBodies),
+  );
   const allEdits = mergeSuggestedEdits(
     coachEdits,
     promoted,
+    sectionBodyById,
   ) as SuggestedEditShape[];
   const railEdits = allEdits;
   const topEdit: SuggestedEditShape | null = railEdits[0] ?? null;
@@ -202,6 +277,10 @@ export default async function SessionReportPage({
         needsCoach={needsCoach}
       />
 
+      {/* Floats above the page once the Coach scrolls out of view —
+          one-click anchor back to the convergence affordance. */}
+      <StickyCTA mode={currentMode} hasCoach={hasCoach} />
+
       {/* ===== Header ===== */}
       <div style={{ display: "flex", gap: 16, alignItems: "end", justifyContent: "space-between", flexWrap: "wrap" }}>
         <div>
@@ -211,7 +290,7 @@ export default async function SessionReportPage({
           <h1 className="text-heading-lg mt-3">Session report</h1>
           <div className="flex items-center gap-3 mt-3 flex-wrap">
             <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
-              {new Date(session.created_at).toLocaleString()} · {session.mode === "with-script" ? "Teleprompter" : "Freestyle"}
+              {new Date(session.created_at).toLocaleString()} · {MODE_LABEL[currentMode]}
             </span>
             {pipelineDone ? (
               <>
@@ -294,40 +373,91 @@ export default async function SessionReportPage({
       `}</style>
       <div className="report-grid">
        <div>
-      {/* Upgrade nudge — only shown on the free plan, and only once the
-          pipeline has landed so we don't interrupt the "we're still
-          processing" moment with a sales pitch. The variant escalates
-          with how close the user is to the wall (see UpgradeCard). */}
-      {showUpgrade && pipelineDone && (
-        <div className="mt-10">
-          <UpgradeCard
-            freeSessionsRemaining={freeSessionsRemaining}
-            speechId={speechId}
-            context="post-session"
-          />
-        </div>
+      {/* ===== 0. MODE-SPECIFIC HERO PANELS =====
+          Each mode has a different hero: Memory Check (From-memory)
+          surfaces recall scoring; Better Out Loud (Script-visible)
+          surfaces ad-libs that landed and could be folded back into
+          the script. Both render above the coach card so the user
+          sees the headline answer before scrolling. */}
+      {isFreestyle && hasTranscript && memoryCheckRows.length > 0 && (
+        <MemoryCheckPanel speechId={speechId} sections={memoryCheckRows} />
+      )}
+      {!isFreestyle && hasTranscript && betterOutLoudItems.length > 0 && (
+        <BetterOutLoudCard
+          sessionId={sessionId}
+          items={betterOutLoudItems}
+        />
       )}
 
-      {/* ===== 1. SAID vs. WRITTEN =====
-          Document-style view with three tabs:
-            Diff (default)  — script with track-changes inline
-            Transcript      — clean rendering of what you said
-            Script          — clean rendering of what you wrote
-       */}
-      <section className="mt-12">
-        <h2 className="text-heading">What you said vs. what you wrote</h2>
+      {/* ===== 1. COACH (lede — surfaces the takeaway first) =====
+          The PRD makes the coach the spine of the report. Headline +
+          summary + suggested edits live above the diff so the user
+          sees what to fix before scrolling through transcripts. */}
+      <div id="coach" style={{ scrollMarginTop: 24 }}>
+      {hasCoach && aiReport ? (
+        <CoachCard
+          speechId={speechId}
+          sessionId={sessionId}
+          mode={currentMode}
+          headline={
+            (aiReport.headline as string | null | undefined) ??
+            firstSentence(aiReport.summary ?? "")
+          }
+          summary={aiReport.summary ?? ""}
+          perSection={
+            (Array.isArray(aiReport.per_section) ? aiReport.per_section : []) as unknown as {
+              section_id: string;
+              headline: string;
+              what_landed: string;
+              what_to_work_on: string;
+            }[]
+          }
+          suggestedEdits={allEdits}
+          sectionNameById={Object.fromEntries(sectionNameById)}
+        />
+      ) : (
+        <section className="mt-10">
+          <h2 className="text-heading">Coach</h2>
+          <div className="empty-state mt-5">
+            <p className="text-subheading">
+              {hasTranscript
+                ? "Reading the transcript and writing your notes…"
+                : "Your coach is waiting on the transcript."}
+            </p>
+            <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
+              Usually about a minute after the recording uploads.
+            </p>
+          </div>
+        </section>
+      )}
+      </div>
+
+      {/* ===== 2. SAID vs. WRITTEN =====
+          Document-style view with three tabs (Diff / Transcript /
+          Script). Both modes default to Diff — Script-visible users
+          want to see deviations from the page; From-memory users want
+          to see where their recall failed. The framing copy differs
+          between modes; the underlying view is the same. */}
+      <section className="mt-14">
+        <h2 className="text-heading">{
+          currentMode === "freestyle"
+            ? "What you remembered, what you didn’t"
+            : "What landed when you said it"
+        }</h2>
         <p
           className="text-body-sm mt-2"
           style={{ color: "var(--color-muted-ash)", maxWidth: 580 }}
         >
-          Edits show inline like track-changes — strikethroughs are skipped lines,
-          gold highlights are paraphrases, italic blue is what you ad-libbed.
+          {currentMode === "freestyle"
+            ? "Strikethroughs are lines you skipped. Gold highlights are where memory came close but not exact. Blue italic is what you said when memory filled the gap."
+            : "Strikethroughs are lines you skipped. Gold highlights are where you phrased it differently than the page. Blue italic is what you added live — those are usually worth adopting into the script."}
         </p>
         <div className="mt-5">
           {diff.length > 0 ? (
             <DiffDocument
               diff={diff}
               sections={sectionListForDoc}
+              mode={currentMode}
               transcriptText={transcriptText}
               scriptBodies={scriptBodies}
             />
@@ -347,42 +477,12 @@ export default async function SessionReportPage({
         </div>
       </section>
 
-      {/* ===== 2. COACH ===== */}
-      <div id="coach" style={{ scrollMarginTop: 24 }}>
-      {hasCoach && aiReport ? (
-        <CoachCard
-          speechId={speechId}
-          sessionId={sessionId}
-          summary={aiReport.summary ?? ""}
-          perSection={
-            (Array.isArray(aiReport.per_section) ? aiReport.per_section : []) as unknown as {
-              section_id: string;
-              headline: string;
-              what_landed: string;
-              what_to_work_on: string;
-            }[]
-          }
-          suggestedEdits={allEdits}
-          sectionNameById={Object.fromEntries(sectionNameById)}
-        />
-      ) : (
-        <section className="mt-14">
-          <h2 className="text-heading">Coach</h2>
-          <div className="empty-state mt-5">
-            <p className="text-subheading">
-              {hasTranscript
-                ? "Reading the transcript and writing your notes…"
-                : "Your coach is waiting on the transcript."}
-            </p>
-            <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-              Usually about a minute after the recording uploads.
-            </p>
-          </div>
-        </section>
-      )}
-      </div>
-
-      {/* ===== 3. PACING (below the fold — useful but not the headline) ===== */}
+      {/* ===== 3. PACING =====
+          Full-strength target framing in Script-visible mode. In
+          From-memory mode we soften: the user's brain is doing
+          memorization work, not pace work — pace targets are a
+          reference, not a goal. We keep the same chart but add a
+          note that flips its mental model. */}
       {metrics.length > 0 && (
         <section className="mt-14">
           <div className="flex items-baseline justify-between">
@@ -391,6 +491,14 @@ export default async function SessionReportPage({
               Target {fmtTime(targetTotal)} · Actual {fmtTime(actualTotal)}
             </span>
           </div>
+          {isFreestyle && (
+            <p
+              className="text-body-sm mt-2"
+              style={{ color: "var(--color-muted-ash)", maxWidth: 580, fontStyle: "italic" }}
+            >
+              Pace targets reflect your script. In From-memory mode, treat them as a reference — the work here is recall, not pacing.
+            </p>
+          )}
           <div className="card-bordered mt-5" style={{ padding: 24 }}>
             <div style={{ display: "grid", gap: 18 }}>
               {sections.map((sec) => {
@@ -473,6 +581,20 @@ export default async function SessionReportPage({
           </div>
         </section>
       )}
+
+      {/* ===== Upgrade nudge =====
+          Lives at the bottom of the report — after the user has felt
+          the value of the coach + diff + pacing. Selling before the
+          user feels the value kneecaps perceived value (PRD W8.1). */}
+      {showUpgrade && pipelineDone && (
+        <div className="mt-14">
+          <UpgradeCard
+            freeSessionsRemaining={freeSessionsRemaining}
+            speechId={speechId}
+            context="post-session"
+          />
+        </div>
+      )}
        </div>{/* /column 1 */}
 
        <div className="report-rail-col">
@@ -480,6 +602,11 @@ export default async function SessionReportPage({
            <CoachRail
              speechId={speechId}
              sessionId={sessionId}
+             mode={currentMode}
+             headline={
+               (aiReport.headline as string | null | undefined) ??
+               firstSentence(aiReport.summary ?? "")
+             }
              summary={aiReport.summary ?? ""}
              topEdit={topEdit}
              sectionNameById={Object.fromEntries(sectionNameById)}

@@ -3,18 +3,23 @@
 // Coach card on the session report.
 //
 // Layout, in priority order:
-//   1. Summary             — the headline takeaway, in serif body
-//   2. Per-section notes   — what landed / what to work on for each section,
-//                            with a "Practice just this section" link
-//   3. Suggested edits     — toggleable cards the user stages
-//   4. Action footer       — two CTAs:
-//        primary  → Apply staged edits AND start recording the next take
-//        secondary → Apply to script (no recording)
+//   1. Headline             — large serif pull-quote (≤90 chars), the
+//                            single most important takeaway
+//   2. Summary              — supporting prose, two sentences
+//   3. Per-section notes    — what landed / what to work on for each
+//                            section, with a "Practice / Drill" link
+//   4. Coach's edits        — toggleable cards the user picks. Grouped
+//                            by section. Each card shows provenance
+//                            (coach / detected / you flagged).
+//   5. Action footer        — two CTAs:
+//        primary  → Apply picks + record again (or "Drill again" in
+//                   freestyle mode if all picks are drills)
+//        secondary → Apply to script only (suppressed when only drills
+//                    are picked, since drills don't change the script)
 //
-// The point of this redesign is to make the convergence loop obvious.
-// The whole product story is: rehearse → see notes → apply changes →
-// rehearse again. Right now the user sees notes but nothing pulls them
-// to the next iteration. The "Apply & record again" button is the
+// The point of this layout is to make the convergence loop obvious.
+// The product story is rehearse → see notes → apply changes → rehearse
+// again. The "Apply & record again" / "Drill again" button is the
 // single most important affordance on this page.
 
 import Link from "next/link";
@@ -23,7 +28,9 @@ import { useRouter } from "next/navigation";
 import {
   applySuggestions,
   applySuggestionsAndRecord,
+  applyDrillSuggestion,
 } from "@/app/app/coach-actions";
+import { MODE_PRIMARY_CTA, type SessionMode } from "@/lib/modes";
 
 type PerSectionNote = {
   section_id: string;
@@ -31,21 +38,24 @@ type PerSectionNote = {
   what_landed: string;
   what_to_work_on: string;
 };
-type SuggestedEdit = {
+export type SuggestedEdit = {
   id: string;
-  kind: "cut" | "adopt" | "rephrase";
+  kind: "cut" | "adopt" | "rephrase" | "drill";
   section_id: string;
   before?: string;
   after?: string;
   reason: string;
+  line_target?: string;
+  tactic?: string;
+  provenance?: "coach" | "user-flag" | "alignment";
 };
 
-// Cheap urgency heuristic. A section gets the loud "Drill this
-// section →" button when the coach's prose flags a real problem
-// (the section wasn't delivered, was rushed, the speaker blanked,
-// etc) rather than the quiet underlined link. We check the
-// headline and the work-on text; what-landed is excluded because
-// "the speaker recovered from a blank" shouldn't trigger urgency.
+// Cheap urgency heuristic. A section gets the loud "Drill this section"
+// button when the coach's prose flags a real problem (the section
+// wasn't delivered, was rushed, the speaker blanked, etc.) rather than
+// the quiet underlined link. We check the headline and the work-on
+// text; what-landed is excluded because "the speaker recovered from a
+// blank" shouldn't trigger urgency.
 const URGENT_KEYWORDS = [
   "skip", "skipped",
   "miss", "missed",
@@ -64,6 +74,8 @@ function isUrgent(note: { headline: string; what_to_work_on: string }): boolean 
 export function CoachCard({
   speechId,
   sessionId,
+  mode,
+  headline,
   summary,
   perSection,
   suggestedEdits,
@@ -71,18 +83,20 @@ export function CoachCard({
 }: {
   speechId: string;
   sessionId: string;
+  mode: SessionMode;
+  headline: string;
   summary: string;
   perSection: PerSectionNote[];
   suggestedEdits: SuggestedEdit[];
   sectionNameById: Record<string, string>;
 }) {
   const router = useRouter();
-  const [staged, setStaged] = useState<Set<string>>(new Set());
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   function toggle(id: string) {
-    setStaged((prev) => {
+    setPicked((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -90,12 +104,37 @@ export function CoachCard({
     });
   }
 
+  // Group edits by section so the user reads each section's
+  // suggestions as a coherent block instead of a flat list.
+  const editsBySection = useMemo(() => {
+    const groups = new Map<string, SuggestedEdit[]>();
+    for (const e of suggestedEdits) {
+      const arr = groups.get(e.section_id) ?? [];
+      arr.push(e);
+      groups.set(e.section_id, arr);
+    }
+    return Array.from(groups.entries());
+  }, [suggestedEdits]);
+
+  // Counts that drive the footer copy. A pure-drill batch shouldn't
+  // offer "Apply to script only" because there's nothing to apply.
+  const pickedEdits = useMemo(
+    () => suggestedEdits.filter((e) => picked.has(e.id)),
+    [suggestedEdits, picked],
+  );
+  const pickedDrillCount = pickedEdits.filter((e) => e.kind === "drill").length;
+  const pickedScriptCount = pickedEdits.length - pickedDrillCount;
+  const allPicksAreDrills = pickedEdits.length > 0 && pickedScriptCount === 0;
+
   function applyOnly() {
-    if (staged.size === 0) return;
+    if (pickedScriptCount === 0) return;
     setError(null);
     startTransition(async () => {
       try {
-        const { newVersion } = await applySuggestions(sessionId, Array.from(staged));
+        const scriptIds = pickedEdits
+          .filter((e) => e.kind !== "drill")
+          .map((e) => e.id);
+        const { newVersion } = await applySuggestions(sessionId, scriptIds);
         router.push(`/app/speeches/${speechId}?applied=v${newVersion}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Couldn't apply.");
@@ -107,11 +146,11 @@ export function CoachCard({
     setError(null);
     startTransition(async () => {
       try {
-        if (staged.size > 0) {
+        if (picked.size > 0) {
           // Action redirects on success.
-          await applySuggestionsAndRecord(sessionId, Array.from(staged));
+          await applySuggestionsAndRecord(sessionId, Array.from(picked));
         } else {
-          // No edits — just go to the recorder.
+          // No picks — just go to the recorder.
           router.push(`/app/speeches/${speechId}/record`);
         }
       } catch (err) {
@@ -123,18 +162,48 @@ export function CoachCard({
     });
   }
 
-  const kindLabel = (k: SuggestedEdit["kind"]) =>
-    ({ cut: "Cut", adopt: "Adopt", rephrase: "Rephrase" }[k]);
-  const kindPill = (k: SuggestedEdit["kind"]) =>
-    ({ cut: "pill-red", adopt: "pill-blue", rephrase: "pill-gold" }[k]);
+  function drillOne(editId: string) {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await applyDrillSuggestion(sessionId, editId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("NEXT_REDIRECT")) return;
+        setError(msg);
+      }
+    });
+  }
 
-  // Primary CTA copy. The staged count already shows in the header
-  // above — no need to repeat it on the button itself.
+  const kindLabel: Record<SuggestedEdit["kind"], string> = {
+    cut: "Cut",
+    adopt: "Adopt",
+    rephrase: "Rephrase",
+    drill: "Drill",
+  };
+  const kindClass: Record<SuggestedEdit["kind"], string> = {
+    cut: "cut",
+    adopt: "adopt",
+    rephrase: "rephrase",
+    drill: "drill",
+  };
+  const provenanceLabel: Record<NonNullable<SuggestedEdit["provenance"]>, string> = {
+    coach: "🎙️ Coach",
+    "user-flag": "🎯 You flagged",
+    alignment: "🔍 Detected",
+  };
+
+  // Primary CTA copy. Mode-aware. The picked count already shows in the
+  // header above — no need to repeat it on the button itself.
   const primaryLabel = useMemo(() => {
     if (pending) return "Working…";
-    if (staged.size === 0) return "Record again →";
-    return "Apply & record →";
-  }, [staged.size, pending]);
+    if (picked.size === 0) {
+      return mode === "freestyle" ? "Drill again →" : "Record again →";
+    }
+    if (allPicksAreDrills) return "Drill the picked sections →";
+    // Mixed or all-script picks: use the mode default.
+    return MODE_PRIMARY_CTA[mode];
+  }, [picked.size, pending, mode, allPicksAreDrills]);
 
   return (
     <section className="mt-14">
@@ -142,13 +211,37 @@ export function CoachCard({
         <h2 className="text-heading">Coach</h2>
         {suggestedEdits.length > 0 && (
           <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
-            {staged.size}{" "}
-            {staged.size === 1 ? "suggestion" : "suggestions"} staged
+            {picked.size}{" "}
+            {picked.size === 1 ? "edit" : "edits"} picked
           </span>
         )}
       </div>
 
-      {/* ===== Summary ===== */}
+      {/* ===== Headline pull-quote =====
+          Large serif quote, the single most important takeaway.
+          Render before the supporting summary so the lede isn't buried. */}
+      {headline && (
+        <h3
+          className="mt-5"
+          style={{
+            fontFamily: "var(--font-script)",
+            fontSize: 30,
+            fontWeight: 500,
+            lineHeight: 1.2,
+            letterSpacing: "-0.012em",
+            color: "var(--color-midnight-ink)",
+            maxWidth: 760,
+            margin: 0,
+            paddingBottom: 12,
+            borderBottom: "2px solid rgba(201, 154, 74, 0.55)",
+            display: "inline-block",
+          }}
+        >
+          {headline}
+        </h3>
+      )}
+
+      {/* ===== Summary — supporting prose under the headline ===== */}
       {summary && (
         <div className="card-bordered mt-5" style={{ padding: 28, maxWidth: 760 }}>
           <p
@@ -249,29 +342,42 @@ export function CoachCard({
           color: rgba(17,17,17,0.82);
         }
 
-        /* Suggested edits — redline-style track-changes.
-           Visual continuity with the diff view above: a "cut" is the
-           same struck-through-red as a skipped line in the diff; an
-           "adopt" is the same blue italic as an ad-lib; a "rephrase"
-           shows old struck-through then new in soft gold, mirroring
-           the diff's paraphrase treatment. */
+        /* Coach's edits — grouped by section with redline-style cards. */
         .coach-edits {
           max-width: 720px;
           margin-top: 36px;
         }
+        .coach-edit-section {
+          margin-top: 28px;
+        }
+        .coach-edit-section:first-child { margin-top: 12px; }
+        .coach-edit-section-head {
+          display: flex; align-items: baseline; gap: 12px;
+          padding-bottom: 8px;
+          margin-bottom: 4px;
+          border-bottom: 1px solid rgba(17,17,17,0.08);
+        }
+        .coach-edit-section-name {
+          font-size: 11px; font-weight: 600;
+          letter-spacing: 0.14em; text-transform: uppercase;
+          color: var(--color-midnight-ink);
+        }
+        .coach-edit-section-count {
+          font-size: 11px; font-weight: 500;
+          color: var(--color-muted-ash);
+          letter-spacing: 0.04em;
+        }
         .coach-edit {
           padding: 18px 4px 18px 0;
-          border-top: 1px solid rgba(17,17,17,0.08);
+          border-top: 1px solid rgba(17,17,17,0.06);
           display: grid;
           grid-template-columns: 1fr auto;
           gap: 24px;
           align-items: flex-start;
           transition: background 160ms ease;
         }
-        .coach-edit:last-child {
-          border-bottom: 1px solid rgba(17,17,17,0.08);
-        }
-        .coach-edit.is-staged {
+        .coach-edit:first-of-type { border-top: 0; }
+        .coach-edit.is-picked {
           background: rgba(71, 208, 150, 0.06);
           border-radius: 6px;
           padding-left: 12px;
@@ -280,7 +386,6 @@ export function CoachCard({
           margin-right: -12px;
           border-color: rgba(71, 208, 150, 0.24);
         }
-        .coach-edit.is-staged + .coach-edit { border-top-color: rgba(71, 208, 150, 0.24); }
         .coach-edit-meta {
           display: flex; align-items: baseline; gap: 8px;
           font-size: 11px; font-weight: 500;
@@ -295,6 +400,17 @@ export function CoachCard({
         .coach-edit-meta strong.cut { color: #88321a; }
         .coach-edit-meta strong.adopt { color: var(--color-deep-indigo); }
         .coach-edit-meta strong.rephrase { color: #5a4310; }
+        .coach-edit-meta strong.drill { color: #1a4f88; }
+        .coach-edit-prov {
+          font-size: 10.5px;
+          letter-spacing: 0.04em;
+          text-transform: none;
+          padding: 2px 8px;
+          border-radius: 999px;
+          background: rgba(17,17,17,0.05);
+          color: var(--color-midnight-ink);
+          margin-left: auto;
+        }
         .coach-edit-redline {
           font-family: var(--font-script);
           font-size: 16.5px;
@@ -335,6 +451,24 @@ export function CoachCard({
           display: inline-block;
           margin-top: 4px;
         }
+        /* Drill cards: no redline. Show the line_target as a quoted
+           reference and tactic as supporting prose. */
+        .coach-edit-drill-target {
+          font-family: var(--font-script);
+          font-size: 16.5px;
+          line-height: 1.55;
+          color: var(--color-midnight-ink);
+          padding-left: 14px;
+          border-left: 3px solid rgba(26, 79, 136, 0.4);
+          margin: 0;
+        }
+        .coach-edit-drill-tactic {
+          font-size: 14px;
+          line-height: 1.55;
+          color: var(--color-midnight-ink);
+          margin-top: 10px;
+          font-family: var(--font-sans);
+        }
         .coach-edit-reason {
           font-size: 13.5px;
           line-height: 1.55;
@@ -342,7 +476,11 @@ export function CoachCard({
           margin-top: 10px;
           font-family: var(--font-sans);
         }
-        .coach-edit-stage-btn {
+        .coach-edit-actions {
+          display: flex; flex-direction: column; gap: 6px;
+          align-items: flex-end;
+        }
+        .coach-edit-pick-btn {
           appearance: none;
           background: transparent;
           border: 1px solid rgba(17,17,17,0.16);
@@ -355,17 +493,33 @@ export function CoachCard({
           white-space: nowrap;
           transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
         }
-        .coach-edit-stage-btn:hover {
+        .coach-edit-pick-btn:hover {
           background: var(--color-whisper-gray);
           border-color: rgba(17,17,17,0.24);
         }
-        .coach-edit-stage-btn.is-staged {
+        .coach-edit-pick-btn.is-picked {
           background: var(--color-midnight-ink);
           border-color: var(--color-midnight-ink);
           color: var(--color-canvas-white);
         }
-        .coach-edit-stage-btn.is-staged:hover {
+        .coach-edit-pick-btn.is-picked:hover {
           background: rgba(17,17,17,0.85);
+        }
+        .coach-edit-drill-btn {
+          appearance: none;
+          background: transparent;
+          border: 1px solid rgba(26, 79, 136, 0.3);
+          padding: 6px 12px;
+          border-radius: 7px;
+          font-size: 11.5px; font-weight: 500;
+          letter-spacing: 0.04em;
+          color: #1a4f88;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background 120ms ease;
+        }
+        .coach-edit-drill-btn:hover {
+          background: rgba(26, 79, 136, 0.06);
         }
       `}</style>
 
@@ -404,80 +558,126 @@ export function CoachCard({
         </div>
       )}
 
-      {/* ===== Suggested edits — redline track-changes ===== */}
+      {/* ===== Coach's edits — grouped by section ===== */}
       {suggestedEdits.length > 0 && (
         <div className="coach-edits">
           <div className="flex items-baseline justify-between" style={{ gap: 16, marginBottom: 6 }}>
-            <h3 className="text-subheading">Suggested edits</h3>
+            <h3 className="text-subheading">Coach&rsquo;s edits</h3>
             <p className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
-              Stage the ones you want, then apply.
+              Pick the edits you want — they&rsquo;ll be added to your script.
             </p>
           </div>
+          {/* Auto-draft escape hatch. The AutoDraftButton lives in the
+              page header; this is the contextual entry point — read it
+              as "if you don't want to pick edits one by one, here's the
+              whole next draft." */}
+          <p
+            className="text-body-sm"
+            style={{
+              color: "var(--color-muted-ash)",
+              margin: "0 0 18px",
+              fontStyle: "italic",
+            }}
+          >
+            Want the whole next draft instead? Use the <strong style={{ color: "var(--color-midnight-ink)", fontStyle: "normal" }}>Show me v(n+1) →</strong> button at the top of the page.
+          </p>
 
-          <div>
-            {suggestedEdits.map((edit) => {
-              const on = staged.has(edit.id);
-              return (
-                <div
-                  key={edit.id}
-                  className={`coach-edit ${on ? "is-staged" : ""}`}
-                >
-                  <div>
-                    <div className="coach-edit-meta">
-                      <strong className={edit.kind}>{kindLabel(edit.kind)}</strong>
-                      <span aria-hidden="true">·</span>
-                      <span>{sectionNameById[edit.section_id] ?? "Section"}</span>
+          {editsBySection.map(([sectionId, edits]) => (
+            <div key={sectionId} className="coach-edit-section">
+              <div className="coach-edit-section-head">
+                <span className="coach-edit-section-name">
+                  {sectionNameById[sectionId] ?? "Section"}
+                </span>
+                <span className="coach-edit-section-count">
+                  {edits.length} {edits.length === 1 ? "edit" : "edits"}
+                </span>
+              </div>
+
+              {edits.map((edit) => {
+                const on = picked.has(edit.id);
+                const provenance = edit.provenance ?? "coach";
+                return (
+                  <div key={edit.id} className={`coach-edit ${on ? "is-picked" : ""}`}>
+                    <div>
+                      <div className="coach-edit-meta">
+                        <strong className={kindClass[edit.kind]}>{kindLabel[edit.kind]}</strong>
+                        <span className="coach-edit-prov">{provenanceLabel[provenance]}</span>
+                      </div>
+
+                      {edit.kind === "cut" && edit.before && (
+                        <p className="coach-edit-redline cut">
+                          &ldquo;{edit.before}&rdquo;
+                        </p>
+                      )}
+                      {edit.kind === "adopt" && edit.after && (
+                        <p className="coach-edit-redline adopt">
+                          &ldquo;{edit.after}&rdquo;
+                        </p>
+                      )}
+                      {edit.kind === "rephrase" && (
+                        <>
+                          {edit.before && (
+                            <p className="coach-edit-redline rephrase-old">
+                              &ldquo;{edit.before}&rdquo;
+                            </p>
+                          )}
+                          {edit.after && (
+                            <p className="coach-edit-redline rephrase-new">
+                              &ldquo;{edit.after}&rdquo;
+                            </p>
+                          )}
+                        </>
+                      )}
+                      {edit.kind === "drill" && (
+                        <>
+                          {edit.line_target && (
+                            <p className="coach-edit-drill-target">
+                              &ldquo;{edit.line_target}&rdquo;
+                            </p>
+                          )}
+                          {edit.tactic && (
+                            <p className="coach-edit-drill-tactic">{edit.tactic}</p>
+                          )}
+                        </>
+                      )}
+
+                      <p className="coach-edit-reason">{edit.reason}</p>
                     </div>
 
-                    {edit.kind === "cut" && edit.before && (
-                      <p className="coach-edit-redline cut">
-                        &ldquo;{edit.before}&rdquo;
-                      </p>
-                    )}
-                    {edit.kind === "adopt" && edit.after && (
-                      <p className="coach-edit-redline adopt">
-                        &ldquo;{edit.after}&rdquo;
-                      </p>
-                    )}
-                    {edit.kind === "rephrase" && (
-                      <>
-                        {edit.before && (
-                          <p className="coach-edit-redline rephrase-old">
-                            &ldquo;{edit.before}&rdquo;
-                          </p>
-                        )}
-                        {edit.after && (
-                          <p className="coach-edit-redline rephrase-new">
-                            &ldquo;{edit.after}&rdquo;
-                          </p>
-                        )}
-                      </>
-                    )}
-
-                    <p className="coach-edit-reason">{edit.reason}</p>
+                    <div className="coach-edit-actions">
+                      <button
+                        type="button"
+                        onClick={() => toggle(edit.id)}
+                        className={`coach-edit-pick-btn ${on ? "is-picked" : ""}`}
+                        aria-pressed={on}
+                      >
+                        {on ? "Picked ✓" : "Pick"}
+                      </button>
+                      {edit.kind === "drill" && (
+                        <button
+                          type="button"
+                          onClick={() => drillOne(edit.id)}
+                          disabled={pending}
+                          className="coach-edit-drill-btn"
+                        >
+                          Drill →
+                        </button>
+                      )}
+                    </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => toggle(edit.id)}
-                    className={`coach-edit-stage-btn ${on ? "is-staged" : ""}`}
-                    aria-pressed={on}
-                  >
-                    {on ? "Staged ✓" : "Stage"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
 
       {/* ===== Footer CTAs =====
           Primary action — Apply + record again — is shown even if no
           suggestions exist, because re-recording is the natural next
-          step regardless of whether the coach proposed edits. The
-          secondary "Apply to script" only renders when something is
-          staged. */}
+          step regardless of whether the coach proposed edits.
+          "Apply to script only" only renders when there are picked
+          script-mutating edits (drills don't change the script). */}
       <div
         className="mt-8"
         style={{
@@ -499,7 +699,7 @@ export function CoachCard({
         >
           {primaryLabel}
         </button>
-        {staged.size > 0 && (
+        {pickedScriptCount > 0 && (
           <button
             onClick={applyOnly}
             disabled={pending}

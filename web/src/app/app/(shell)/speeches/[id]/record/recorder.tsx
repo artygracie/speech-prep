@@ -26,6 +26,7 @@ import {
   type LiveState,
 } from "@/lib/live-align";
 import { BottomBar, type BottomBarNudge } from "./bottom-bar";
+import { MODE_LABEL, type SessionMode } from "@/lib/modes";
 
 type Section = { id: string; position: number; name: string; targetSec: number; body: string };
 type Tag = { kind: "landed" | "flat" | "lost" | "callback"; atMs: number; label: string };
@@ -65,7 +66,7 @@ export function Recorder({
   sections: Section[];
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"with-script" | "freestyle">("with-script");
+  const [mode, setMode] = useState<SessionMode>("with-script");
   const [state, setState] = useState<State>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -976,7 +977,7 @@ export function Recorder({
                 disabled={state !== "idle"}
                 className={mode === m ? "is-on" : ""}
               >
-                {m === "with-script" ? "Script visible" : "From memory"}
+                {MODE_LABEL[m]}
               </button>
             ))}
           </div>
@@ -1008,7 +1009,7 @@ export function Recorder({
           <div className="rec-freestyle">
             {/* Mode marker so it's unmistakable what you're looking at,
                 even when scrolled or screenshotted. */}
-            <span className="rec-freestyle-badge">From memory</span>
+            <span className="rec-freestyle-badge">{MODE_LABEL.freestyle}</span>
 
             {/* Same section structure as teleprompter — only the bodies
                 are missing. The user keeps their navigational map: which

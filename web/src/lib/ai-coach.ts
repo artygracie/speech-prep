@@ -1,6 +1,8 @@
 // Server-only AI coach: produces an ai_reports row for a session.
 //
 // Inputs (caller assembles these):
+//   - the session mode (with-script | freestyle) — drives the coaching
+//     persona (writing coach vs. memorization coach)
 //   - the speech's sections (id, name, body, target_seconds)
 //   - the transcript (text + optional words[] for citation)
 //   - per-section metrics from alignment.ts (actual_seconds, delta,
@@ -9,8 +11,11 @@
 //   - the session's diff rows (from buildDiff/coalesceDiff) summarised
 //     down to counts so the coach knows what's already been promoted
 //
-// Output: { summary, per_section[], suggested_edits[] } shaped to match
-// the existing ai_reports schema and the coach-card.tsx renderer.
+// Output: { headline, summary, per_section[], suggested_edits[] }
+//   - headline is a one-sentence pull-quote (≤90 chars) — the most
+//     important takeaway, rendered as a hero pull-quote on the report
+//   - suggested_edits include kind: "drill" (with optional tactic) for
+//     practice-action suggestions; the dominant kind in freestyle mode
 //
 // Model: claude-sonnet-4-6, with prompt caching on the static system
 // prompt + style guide so the per-call cost stays reasonable.
@@ -21,6 +26,7 @@
 
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import type { SessionMode } from "./modes";
 
 const MODEL = "claude-sonnet-4-6";
 
@@ -54,6 +60,7 @@ export type CoachMetric = {
 };
 
 export type CoachInput = {
+  mode: SessionMode;
   speechTitle: string;
   occasion: string | null;
   sections: CoachSection[];
@@ -67,7 +74,11 @@ export type CoachInput = {
   };
 };
 
+export type SuggestedEditKind = "cut" | "adopt" | "rephrase" | "drill";
+export type SuggestedEditProvenance = "coach" | "user-flag" | "alignment";
+
 export type CoachReport = {
+  headline: string;
   summary: string;
   per_section: Array<{
     section_id: string;
@@ -78,11 +89,17 @@ export type CoachReport = {
   }>;
   suggested_edits: Array<{
     id: string;
-    kind: "cut" | "adopt" | "rephrase";
+    kind: SuggestedEditKind;
     section_id: string;
     before?: string;
     after?: string;
     reason: string;
+    // Practice-action fields, used when kind === "drill"
+    line_target?: string;
+    tactic?: string;
+    // Provenance — coach-generated edits always carry "coach"; the
+    // paraphrase promoter and live-tag derivers tag their own.
+    provenance?: SuggestedEditProvenance;
   }>;
   // Token accounting — written to ai_reports for cost tracking.
   input_tokens: number;
@@ -90,37 +107,100 @@ export type CoachReport = {
   prompt_version: number;
 };
 
-// Bump this when the SYSTEM_PROMPT changes. ai_reports.prompt_version
-// uses a numeric column so we can range-query / chart by version.
-const PROMPT_VERSION = 1;
+// Bump this when the SYSTEM_PROMPT or persona blocks change.
+// ai_reports.prompt_version uses a numeric column so we can range-query
+// or chart by version.
+const PROMPT_VERSION = 2;
 
 // Static system prompt — cached. The dynamic per-session content goes
 // in the user message so the cache hits on every call.
-const SYSTEM_PROMPT = `You are a speech coach reviewing a user's rehearsal. They wrote a script and just delivered it; you have the script, the transcript, per-section pacing, and a count of what they paraphrased / skipped / improvised.
+//
+// Two coaching personas live in this file. The system prompt teaches
+// the model BOTH personas; the user message tells it which one to use
+// for this call. Same output schema either way.
+const SYSTEM_PROMPT = `You are a speech coach. You are reading a single rehearsal take from one of two perspectives — the user's mode tells you which:
 
-Your job, in priority order:
-  1. A two-sentence summary of how the take landed overall (what worked, what to work on next).
-  2. Per-section notes — for each section, one short headline, one line on what landed, and one line on what to work on. Severity is "high" if the section was skipped or rushed >30%, "med" if it ran long or had fillers, "low" otherwise.
-  3. Suggested edits — concrete changes to the script:
-     - "cut": remove a written passage that the speaker skipped or that ran the section long
-     - "adopt": add a spoken phrase that landed cleaner than what was written
-     - "rephrase": swap a written passage for a spoken one
-     For each suggested edit, give the exact "before" substring (must appear verbatim in the script) and the "after" text. Be sparing — at most 5 suggestions. Order by impact.
+WRITING COACH (mode: "with-script")
+The speaker had the script in front of them. Your lens: "does this writing land out loud?"
+Treat deviations from the script as data about the writing, not the speaker's discipline.
+- When the speaker naturally improvised a line that's better than the script (more honest, more rhythmic, more natural), call it out. Quote both versions and recommend adopting the spoken version. This is the most valuable thing you can do — it turns rehearsal into editing.
+- When the speaker repeatedly stumbled, paraphrased, or skipped a line, that line is probably awkward. Recommend rewriting (kind: "rephrase"), not rehearsing — unless the line is clearly fine and the issue is delivery (then say so, kind: "drill" sparingly).
+- Default suggestion bias: adopt > rephrase > drill > cut.
 
-Voice: direct, specific, encouraging. Don't lecture about public speaking in general; only react to this take.
+MEMORIZATION COACH (mode: "freestyle")
+The speaker delivered from memory. The script was hidden. Your lens: "where did memory hold and where did it fail?"
+Treat deviations from the script as gaps in memorization. The user is trying to MATCH the script, not improve it.
+- Identify which sections were word-perfect, which were paraphrased (memory approximate), which were skipped or blanked.
+- Default to kind: "drill" suggestions targeting weak sections. Recommend tactics: anchor on a transition word, chunk the section into shorter beats, rehearse the bridge between sections separately.
+- Only suggest "rephrase" if a specific line is clearly hard to memorize (long, abstract, syntactically tangled). Even then, lead with drill, mention rephrase as fallback.
+- Do NOT scold paraphrasing. The speaker did not improvise on purpose; their memory filled a gap. Frame as "the line you reached for," not "your improvement on the script."
+- Default suggestion bias: drill > rephrase > adopt > cut.
+
+In BOTH modes, you also produce:
+
+1. A one-sentence HEADLINE (≤90 chars) — the single most important takeaway. Specific, never generic.
+   Bad: "Work on your pacing."
+   Good: "You rushed the opener — slow your first 30 seconds by 2 beats."
+   Reference a concrete moment, line, or section by name when you can. Imperative or observational, never advisory ("try to", "consider").
+
+2. A two-sentence summary — what worked, what to work on next.
+
+3. Per-section notes — for each section: one short headline, one line on what landed, one line on what to work on. Severity is "high" if the section was skipped or rushed >30%, "med" if it ran long or had fillers, "low" otherwise.
+
+4. Suggested edits — at most 5, ordered by impact. Schema:
+   - kind: "cut"      → remove a written passage (before required, verbatim from script)
+   - kind: "adopt"    → add a phrase the speaker said live (after required)
+   - kind: "rephrase" → swap a written passage for the spoken phrasing (before + after both required, before verbatim from script)
+   - kind: "drill"    → no script change. Target a section/line and tell the user how to practice it. Set line_target (a quoted snippet from the script, optional) and tactic (one sentence on the practice approach, optional).
+
+Voice: direct, specific, encouraging. Don't lecture about public speaking in general; only react to this take. No therapy speak. No "great job" without specifics.
 
 Output STRICT JSON, no prose, no markdown:
 {
+  "headline": "...",
   "summary": "...",
   "per_section": [{"section_id": "...", "headline": "...", "what_landed": "...", "what_to_work_on": "...", "severity": "low|med|high"}],
-  "suggested_edits": [{"id": "edit-1", "kind": "cut|adopt|rephrase", "section_id": "...", "before": "...", "after": "...", "reason": "..."}]
+  "suggested_edits": [{"id": "edit-1", "kind": "cut|adopt|rephrase|drill", "section_id": "...", "before": "...", "after": "...", "line_target": "...", "tactic": "...", "reason": "..."}]
 }
 
-Rules:
+Hard rules:
 - "before" for "cut" and "rephrase" MUST be a verbatim substring of the section body. If you can't quote verbatim, omit the suggestion.
 - "after" for "rephrase" and "adopt" should be the speaker's actual spoken phrasing where possible.
-- Section ids are opaque strings — copy them through unchanged from the input.
-- Edit ids are opaque strings you choose, like "edit-1". They must be unique within the response.`;
+- For "drill", omit before/after; include tactic.
+- Section ids are opaque — copy unchanged from input.
+- Edit ids are opaque strings you choose, like "edit-1". Unique within the response.
+- headline ≤ 90 characters. If you can't fit, prefer specificity over completeness.`;
+
+// Persona-specific guidance prepended to the user message. The
+// persona block lives in the user message (not system) because it's
+// per-call, but small enough that we don't worry about cache impact.
+function personaPrefix(mode: SessionMode): string {
+  if (mode === "with-script") {
+    return `MODE: with-script (writing coach perspective)
+
+The speaker had the script visible while delivering. Read this take as a TEST OF THE WRITING — where does the script land in the mouth, where does it not? Improvisations and natural paraphrasings are GIFTS — surface them as adopt/rephrase suggestions. Don't suggest drilling unless the line is genuinely good and the speaker just needs reps.
+
+`;
+  }
+  // freestyle
+  return `MODE: freestyle (memorization coach perspective)
+
+The speaker delivered from memory — the script was HIDDEN. Read this take as a MEMORY CHECK — which sections held, which did not? Default to drill suggestions for weak sections. Do not celebrate paraphrasing as "better phrasing" — these are memory gaps, not editorial improvements. Only recommend rephrase if a line is repeatedly hard to remember.
+
+`;
+}
+
+// Truncate a headline to ≤ maxChars at a word boundary if possible.
+// Models occasionally overshoot the 90-char limit; we don't want a
+// grammatically broken cliffhanger in production.
+function clampHeadline(s: string, maxChars = 90): string {
+  const trimmed = s.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  const slice = trimmed.slice(0, maxChars);
+  const lastSpace = slice.lastIndexOf(" ");
+  if (lastSpace > maxChars * 0.6) return slice.slice(0, lastSpace).trim();
+  return slice.trim();
+}
 
 export async function generateCoachReport(
   input: CoachInput,
@@ -128,7 +208,7 @@ export async function generateCoachReport(
   const c = client();
   if (!c) return null;
 
-  const userMessage = buildUserMessage(input);
+  const userMessage = personaPrefix(input.mode) + buildUserMessage(input);
 
   try {
     const res = await c.messages.create({
@@ -155,11 +235,28 @@ export async function generateCoachReport(
     const perSection = Array.isArray(parsed.per_section)
       ? parsed.per_section.filter(isPerSectionRow)
       : [];
-    const edits = Array.isArray(parsed.suggested_edits)
+    const editsRaw = Array.isArray(parsed.suggested_edits)
       ? parsed.suggested_edits.filter(isSuggestedEdit)
       : [];
+    // Stamp every coach-originated edit with provenance "coach". The
+    // paraphrase promoter and user-flag derivers stamp their own.
+    const edits = editsRaw.map((e) => ({ ...e, provenance: "coach" as const }));
+
+    // Headline: required for v2 reports, but if the model omits it or
+    // returns junk, fall back to the first sentence of the summary so
+    // the UI never has to deal with an empty hero block.
+    const rawHeadline = typeof parsed.headline === "string" ? parsed.headline : "";
+    const headline = rawHeadline
+      ? clampHeadline(rawHeadline)
+      : firstSentence(parsed.summary);
+    if (rawHeadline && rawHeadline.length > 90) {
+      console.warn(
+        `[ai-coach] headline overflow: ${rawHeadline.length} chars — truncated to ${headline.length}`,
+      );
+    }
 
     return {
+      headline,
       summary: parsed.summary,
       per_section: perSection,
       suggested_edits: edits,
@@ -205,6 +302,12 @@ TRANSCRIPT (what they actually said):
 ${input.transcriptText.trim()}`;
 }
 
+function firstSentence(s: string): string {
+  const trimmed = s.trim();
+  const m = trimmed.match(/^[^.!?]+[.!?]/);
+  return clampHeadline(m ? m[0] : trimmed);
+}
+
 function isPerSectionRow(x: unknown): x is CoachReport["per_section"][number] {
   if (!x || typeof x !== "object") return false;
   const r = x as Record<string, unknown>;
@@ -222,12 +325,18 @@ function isSuggestedEdit(
 ): x is CoachReport["suggested_edits"][number] {
   if (!x || typeof x !== "object") return false;
   const r = x as Record<string, unknown>;
-  return (
-    typeof r.id === "string" &&
-    (r.kind === "cut" || r.kind === "adopt" || r.kind === "rephrase") &&
-    typeof r.section_id === "string" &&
-    typeof r.reason === "string"
-  );
+  if (typeof r.id !== "string") return false;
+  if (typeof r.section_id !== "string") return false;
+  if (typeof r.reason !== "string") return false;
+  if (
+    r.kind !== "cut" &&
+    r.kind !== "adopt" &&
+    r.kind !== "rephrase" &&
+    r.kind !== "drill"
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function parseJson(s: string): unknown {

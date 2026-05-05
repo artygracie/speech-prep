@@ -20,6 +20,7 @@ export type Database = {
         Row: {
           cached_input_tokens: number | null
           created_at: string
+          headline: string | null
           id: string
           input_tokens: number | null
           model: string | null
@@ -36,6 +37,7 @@ export type Database = {
         Insert: {
           cached_input_tokens?: number | null
           created_at?: string
+          headline?: string | null
           id?: string
           input_tokens?: number | null
           model?: string | null
@@ -52,6 +54,7 @@ export type Database = {
         Update: {
           cached_input_tokens?: number | null
           created_at?: string
+          headline?: string | null
           id?: string
           input_tokens?: number | null
           model?: string | null

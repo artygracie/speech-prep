@@ -23,22 +23,27 @@
 // column there, so the rail would just push the coach further away.
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { applySuggestionsAndRecord } from "@/app/app/coach-actions";
+import { MODE_PRIMARY_CTA, type SessionMode } from "@/lib/modes";
 
 type SuggestedEdit = {
   id: string;
-  kind: "cut" | "adopt" | "rephrase";
+  kind: "cut" | "adopt" | "rephrase" | "drill";
   section_id: string;
   before?: string;
   after?: string;
   reason: string;
+  line_target?: string;
+  tactic?: string;
 };
 
 type Props = {
   speechId: string;
   sessionId: string;
+  mode: SessionMode;
+  headline: string;
   summary: string;
   topEdit: SuggestedEdit | null;
   sectionNameById: Record<string, string>;
@@ -47,6 +52,8 @@ type Props = {
 export function CoachRail({
   speechId,
   sessionId,
+  mode,
+  headline,
   summary,
   topEdit,
   sectionNameById,
@@ -71,11 +78,17 @@ export function CoachRail({
     });
   }
 
+  // Mode-aware CTA copy. If a drill is the top edit, the mode default
+  // already captures the right verb (Drill again →) for freestyle. For
+  // script mode with a drill top edit, "Apply & record" is misleading —
+  // we'd be drilling, not applying — so we read the kind directly.
   const ctaLabel = pending
     ? "Working…"
     : topEdit
-    ? "Apply & record →"
-    : "Record again →";
+    ? topEdit.kind === "drill"
+      ? "Drill this section →"
+      : "Apply & record →"
+    : MODE_PRIMARY_CTA[mode];
 
   return (
     <>
@@ -95,11 +108,28 @@ export function CoachRail({
           color: var(--color-muted-ash);
           margin-bottom: 10px;
         }
+        .coach-rail-headline {
+          font-family: var(--font-script);
+          font-size: 18px;
+          font-weight: 500;
+          line-height: 1.3;
+          letter-spacing: -0.005em;
+          color: var(--color-midnight-ink);
+          margin: 0 0 10px 0;
+          padding-bottom: 8px;
+          border-bottom: 1.5px solid rgba(201, 154, 74, 0.45);
+        }
         .coach-rail-summary {
           font-family: var(--font-script);
           font-size: 15.5px;
           line-height: 1.55;
           color: var(--color-midnight-ink);
+        }
+        .coach-rail-edit-meta strong.drill { color: #1a4f88; }
+        .coach-rail-redline.drill {
+          color: var(--color-midnight-ink);
+          padding-left: 10px;
+          border-left: 3px solid rgba(26, 79, 136, 0.4);
         }
         .coach-rail-divider {
           margin: 18px 0 16px;
@@ -199,14 +229,21 @@ export function CoachRail({
 
       <aside className="coach-rail">
         <div className="coach-rail-label">Coach</div>
-        <p className="coach-rail-summary">{summary}</p>
+        {headline && <p className="coach-rail-headline">{headline}</p>}
+        {summary && <p className="coach-rail-summary">{summary}</p>}
 
         {topEdit && (
           <>
             <div className="coach-rail-divider" />
             <div className="coach-rail-edit-meta">
               <strong className={topEdit.kind}>
-                {topEdit.kind === "cut" ? "Cut" : topEdit.kind === "adopt" ? "Adopt" : "Rephrase"}
+                {topEdit.kind === "cut"
+                  ? "Cut"
+                  : topEdit.kind === "adopt"
+                  ? "Adopt"
+                  : topEdit.kind === "drill"
+                  ? "Drill"
+                  : "Rephrase"}
               </strong>
               <span aria-hidden="true">·</span>
               <span>{sectionNameById[topEdit.section_id] ?? "Section"}</span>
@@ -230,6 +267,9 @@ export function CoachRail({
                   </p>
                 )}
               </>
+            )}
+            {topEdit.kind === "drill" && topEdit.line_target && (
+              <p className="coach-rail-redline drill">&ldquo;{topEdit.line_target}&rdquo;</p>
             )}
           </>
         )}

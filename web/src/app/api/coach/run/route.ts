@@ -20,6 +20,7 @@ import {
   type TranscriptWord,
 } from "@/lib/alignment";
 import { generateCoachReport, type CoachInput } from "@/lib/ai-coach";
+import { resolveMode } from "@/lib/modes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -147,6 +148,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const input: CoachInput = {
+    mode: resolveMode(session.mode),
     speechTitle: speech?.title ?? "Untitled",
     occasion: speech?.occasion ?? null,
     sections: secRows.map((r) => ({
@@ -187,6 +189,7 @@ export async function POST(req: Request): Promise<Response> {
     const body = sectionBodyById.get(e.section_id);
     if (!body) return false;
     if (e.kind === "adopt") return !!e.after;
+    if (e.kind === "drill") return true; // drill has no before/after; targets a section
     if (!e.before) return false;
     return body.toLowerCase().includes(e.before.toLowerCase());
   });
@@ -194,6 +197,7 @@ export async function POST(req: Request): Promise<Response> {
   const { error: insErr } = await admin.from("ai_reports").insert({
     session_id: sessionId,
     user_id: session.user_id,
+    headline: report.headline,
     summary: report.summary,
     per_section: report.per_section,
     suggested_edits: validEdits,
