@@ -41,6 +41,19 @@ export function PlaybackDock({ src, durationSeconds }: Props) {
   // so the pill shows a real number on first paint. Once metadata loads
   // we replace it with the audio element's value, which is authoritative.
   const [duration, setDuration] = useState<number>(durationSeconds ?? 0);
+  // Playback rate. Cycles 1 → 1.25 → 1.5 → 2 → 1 on click.
+  const [rate, setRate] = useState<number>(1);
+  function nextRate(r: number): number {
+    if (r < 1.25) return 1.25;
+    if (r < 1.5) return 1.5;
+    if (r < 2) return 2;
+    return 1;
+  }
+  function cycleRate() {
+    const r = nextRate(rate);
+    setRate(r);
+    if (audioRef.current) audioRef.current.playbackRate = r;
+  }
 
   // Wire up audio listeners once the element exists.
   useEffect(() => {
@@ -142,15 +155,15 @@ export function PlaybackDock({ src, durationSeconds }: Props) {
         .dock {
           pointer-events: auto;
           width: 100%;
-          max-width: 720px;
+          max-width: 760px;
           background: var(--color-midnight-ink);
           color: var(--color-canvas-white);
           border-radius: 14px;
           padding: 12px 14px;
           display: grid;
-          grid-template-columns: auto 1fr auto auto;
+          grid-template-columns: auto 1fr auto auto auto auto;
           align-items: center;
-          gap: 14px;
+          gap: 12px;
           box-shadow: 0 8px 24px rgba(17,17,17,0.22), 0 2px 6px rgba(17,17,17,0.18);
           animation: dock-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
         }
@@ -236,8 +249,8 @@ export function PlaybackDock({ src, durationSeconds }: Props) {
 
         @media (max-width: 640px) {
           .dock {
-            grid-template-columns: auto 1fr auto;
-            gap: 10px;
+            grid-template-columns: auto 1fr auto auto auto;
+            gap: 8px;
             padding: 10px 12px;
           }
           .dock-time { display: none; }
@@ -288,6 +301,31 @@ export function PlaybackDock({ src, durationSeconds }: Props) {
             <div className="dock-time">
               {fmt(current)} / {fmt(duration)}
             </div>
+            <button
+              type="button"
+              className="dock-close"
+              onClick={cycleRate}
+              aria-label={`Playback speed ${rate}x`}
+              title="Cycle playback speed"
+              style={{
+                fontSize: 12,
+                fontVariantNumeric: "tabular-nums",
+                fontWeight: 500,
+                minWidth: 36,
+              }}
+            >
+              {rate}x
+            </button>
+            <a
+              href={src}
+              download
+              className="dock-close"
+              aria-label="Download recording"
+              title="Download"
+              style={{ textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+            >
+              ⤓
+            </a>
             <button
               type="button"
               className="dock-close"
