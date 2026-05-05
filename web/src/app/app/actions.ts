@@ -274,6 +274,82 @@ export async function saveScript(
   return { newVersion: newV };
 }
 
+// Restore a prior version. Implemented additively: copy the chosen
+// version's sections into a brand-new version (v = current+1) with a
+// summary of "Rolled back to v{N}". The original version stays in place,
+// so a restore is itself reversible — nothing is destroyed.
+export async function restoreVersion(
+  speechId: string,
+  v: number,
+): Promise<{ newVersion: number }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: speech } = await supabase
+    .from("speeches")
+    .select("id, current_version, user_id")
+    .eq("id", speechId)
+    .single();
+  if (!speech || speech.user_id !== user.id) throw new Error("Not found");
+  if (v === speech.current_version) {
+    return { newVersion: speech.current_version };
+  }
+
+  const { data: src } = await supabase
+    .from("script_versions")
+    .select("id")
+    .eq("speech_id", speechId)
+    .eq("v", v)
+    .single();
+  if (!src) throw new Error(`Version v${v} not found`);
+
+  const { data: srcSections } = await supabase
+    .from("sections")
+    .select("position, name, target_seconds, body")
+    .eq("script_version_id", src.id)
+    .order("position", { ascending: true });
+  if (!srcSections || srcSections.length === 0) {
+    throw new Error("That version has no sections to restore");
+  }
+
+  const newV = speech.current_version + 1;
+  const { error: upErr } = await supabase
+    .from("speeches")
+    .update({ current_version: newV })
+    .eq("id", speechId);
+  if (upErr) throw upErr;
+
+  const { data: newVer, error: insVerErr } = await supabase
+    .from("script_versions")
+    .insert({
+      speech_id: speechId,
+      v: newV,
+      summary: `Rolled back to v${v}`,
+      parent_version_id: src.id,
+    })
+    .select("id")
+    .single();
+  if (insVerErr || !newVer) throw insVerErr ?? new Error("Failed to insert version");
+
+  const { error: secErr } = await supabase.from("sections").insert(
+    srcSections.map((s, i) => ({
+      script_version_id: newVer.id,
+      position: i,
+      name: s.name,
+      target_seconds: s.target_seconds,
+      body: s.body,
+    })),
+  );
+  if (secErr) throw secErr;
+
+  revalidatePath(`/app/speeches/${speechId}`);
+  revalidatePath(`/app/speeches/${speechId}/edit`);
+  return { newVersion: newV };
+}
+
 // Editor "Suggest names" button. Takes the current section bodies (as the
 // user has them in-editor, before save) and returns one new name per
 // section. We don't persist anything — the editor patches its local

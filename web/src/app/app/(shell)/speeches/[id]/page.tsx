@@ -5,6 +5,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { UpgradeCard } from "@/components/upgrade-card";
+import DraftsPanel from "./drafts-panel";
+import { SessionRowActions } from "./session-row-actions";
+import { ConvergenceChart } from "./convergence-chart";
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -47,6 +50,74 @@ export default async function SpeechDetailPage({
     .eq("speech_id", id)
     .order("created_at", { ascending: false });
   const sessions = sessionRows ?? [];
+
+  // Drafts timeline. We want every script_versions row + a count of
+  // sessions recorded against each version (joined client-side because
+  // the schema doesn't model the relationship as a foreign key on
+  // sessions.script_version_id -> script_versions.id, but we have the
+  // ids on both sides so a JS-side count is fine).
+  const { data: versionRows } = await supabase
+    .from("script_versions")
+    .select("id, v, summary, created_at, parent_version_id")
+    .eq("speech_id", id)
+    .order("v", { ascending: false });
+  // Pull script_version_id + total spoken seconds per session — used
+  // both for the "N sessions recorded against this draft" count on the
+  // drafts panel and for the convergence chart.
+  const { data: sessionsForChart } = await supabase
+    .from("session_summaries")
+    .select("session_id, script_version_id, total_actual_seconds")
+    .eq("speech_id", id);
+  const sessionsByVersionId = new Map<string, number>();
+  const actualsByVersionId = new Map<string, number[]>();
+  for (const row of sessionsForChart ?? []) {
+    if (!row.script_version_id) continue;
+    sessionsByVersionId.set(
+      row.script_version_id,
+      (sessionsByVersionId.get(row.script_version_id) ?? 0) + 1,
+    );
+    if (
+      row.total_actual_seconds != null &&
+      row.total_actual_seconds > 0
+    ) {
+      const arr =
+        actualsByVersionId.get(row.script_version_id) ?? [];
+      arr.push(row.total_actual_seconds);
+      actualsByVersionId.set(row.script_version_id, arr);
+    }
+  }
+  function median(xs: number[]): number {
+    const s = [...xs].sort((a, b) => a - b);
+    const n = s.length;
+    if (n === 0) return 0;
+    if (n % 2 === 1) return s[(n - 1) / 2];
+    return (s[n / 2 - 1] + s[n / 2]) / 2;
+  }
+  const drafts = (versionRows ?? []).map((v) => ({
+    id: v.id,
+    v: v.v,
+    summary: v.summary,
+    created_at: v.created_at,
+    parent_version_id: v.parent_version_id,
+    session_count: sessionsByVersionId.get(v.id) ?? 0,
+  }));
+
+  // Convergence chart data: one bar per draft that had at least one
+  // session, ordered ascending by version. Bar value is median total
+  // spoken seconds across the draft's sessions.
+  const chartData = (versionRows ?? [])
+    .slice()
+    .sort((a, b) => a.v - b.v)
+    .map((v) => {
+      const arr = actualsByVersionId.get(v.id) ?? [];
+      if (arr.length === 0) return null;
+      const med = median(arr);
+      const delta = med - targetTotal;
+      const status: "match" | "under" | "over" =
+        Math.abs(delta) <= 5 ? "match" : delta > 0 ? "over" : "under";
+      return { v: v.v, actualSeconds: med, status };
+    })
+    .filter((x): x is { v: number; actualSeconds: number; status: "match" | "under" | "over" } => x !== null);
 
   // Entitlement gate. If the free plan is exhausted we replace the
   // "Record session" CTA with an inline upgrade card — that way the
@@ -112,6 +183,15 @@ export default async function SpeechDetailPage({
           </div>
         </div>
         <div className="flex gap-2">
+          <Link
+            href={`/app/speeches/${speech.id}/print`}
+            className="btn-light"
+            target="_blank"
+            rel="noopener"
+            title="Print or save the script as a PDF"
+          >
+            Print
+          </Link>
           <Link href={`/app/speeches/${speech.id}/edit`} className="btn-light">
             Edit script
           </Link>
@@ -219,7 +299,18 @@ export default async function SpeechDetailPage({
           </article>
         </div>
 
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-5" style={{ display: "grid", gap: 40 }}>
+          <DraftsPanel
+            speechId={speech.id}
+            currentVersion={speech.current_version}
+            drafts={drafts}
+          />
+
+          {chartData.length >= 2 && (
+            <ConvergenceChart data={chartData} targetSeconds={targetTotal} />
+          )}
+
+          <div>
           <h2 className="text-heading">Sessions</h2>
           <p className="text-body mt-2" style={{ color: "var(--color-muted-ash)" }}>
             {sessions.length === 0
@@ -256,18 +347,38 @@ export default async function SpeechDetailPage({
                     ? "var(--color-leadgen-red)"
                     : "var(--color-engagement-gold)";
                 return (
-                  <Link
+                  <div
                     key={sess.session_id ?? i}
-                    href={`/app/speeches/${speech.id}/sessions/${sess.session_id}`}
                     className="card-elevated"
                     style={{
-                      padding: "14px 16px",
+                      position: "relative",
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                  {sess.session_id && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 6,
+                        right: 6,
+                        zIndex: 2,
+                      }}
+                    >
+                      <SessionRowActions sessionId={sess.session_id} />
+                    </div>
+                  )}
+                  <Link
+                    href={`/app/speeches/${speech.id}/sessions/${sess.session_id}`}
+                    style={{
+                      padding: "14px 36px 14px 16px",
                       display: "flex",
                       justifyContent: "space-between",
                       gap: 12,
                       alignItems: "center",
                       textDecoration: "none",
                       color: "inherit",
+                      flex: 1,
                     }}
                   >
                     <div>
@@ -302,10 +413,12 @@ export default async function SpeechDetailPage({
                       )}
                     </div>
                   </Link>
+                  </div>
                 );
               })}
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>
