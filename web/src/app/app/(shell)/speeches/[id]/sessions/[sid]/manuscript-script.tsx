@@ -67,6 +67,25 @@ type SectionInput = {
 type ViewMode = "coach" | "spoken" | "both";
 type AcceptanceState = "accepted" | "pending" | "rejected";
 
+// Observation = a speaker deviation from the script the coach didn't
+// address with a proposed edit. Surfaces in the rail as informational
+// — no Accept/Reject, just a callout. ("You skipped this line.",
+// "You phrased this differently.")
+type ObservationItem = {
+  kind: "observation";
+  id: string;
+  sectionId: string;
+  deviation: "skipped" | "paraphrase";
+  written: string;        // the script's wording at this spot
+  spoken?: string;        // what the speaker said (paraphrase only)
+};
+
+// The rail shows proposed edits AND observations together, ordered by
+// where they appear in the manuscript.
+type RailItem =
+  | { kind: "edit"; edit: SuggestedEdit }
+  | ObservationItem;
+
 // A run of script body rendered with inline annotations.
 type Token =
   | { kind: "text"; text: string }
@@ -126,6 +145,43 @@ function tokeniseCoachEdits(body: string, edits: SuggestedEdit[]): Token[] {
   }
 
   return tokens;
+}
+
+// Some "rephrase" suggestions are *defensive* — the coach is saying
+// "the speaker drifted, but the script's wording is actually better;
+// keep the script as written." The data model doesn't carry direction
+// today, so we infer it from reason text. Brittle but immediate; the
+// real fix is a `direction` field on the coach prompt output.
+//
+// When we detect a defensive rephrase, the card flips: it shows the
+// script version as the recommended text (no strikethrough), the
+// spoken version as a small "you said" annotation, and the action
+// button reads "Keep as written" instead of "Accept" (because there
+// is no script change to apply — accepting the coach's recommendation
+// here means *making no change*).
+const DEFENSIVE_PHRASES = [
+  "wait —",
+  "wait,",
+  "reverse this",
+  "reverse it",
+  "actually keep",
+  "actually, keep",
+  "keep the script",
+  "keep what you wrote",
+  "keep what's in the script",
+  "keep the original",
+  "stick with the script",
+  "stay with the script",
+  "don't change",
+  "do not change",
+  "leave this",
+  "leave as is",
+  "leave it as written",
+];
+export function isDefensiveRephrase(reason: string | undefined): boolean {
+  if (!reason) return false;
+  const lower = reason.toLowerCase();
+  return DEFENSIVE_PHRASES.some((p) => lower.includes(p));
 }
 
 function tokeniseSpokenDeviations(diffRows: DiffRow[], sectionId: string): Token[] {
@@ -190,6 +246,14 @@ export function ManuscriptScript({
         map.set(edit.id, "pending");
         continue;
       }
+      // Defensive rephrases (coach saying "keep the script") shouldn't
+      // be pre-accepted, since accepting would commit the speaker's
+      // worse version. Leave them pending so the user actively
+      // chooses "Keep as written."
+      if (edit.kind === "rephrase" && isDefensiveRephrase(edit.reason)) {
+        map.set(edit.id, "pending");
+        continue;
+      }
       if (accepted < DEFAULT_ACCEPT_COUNT) {
         map.set(edit.id, "accepted");
         accepted += 1;
@@ -228,6 +292,86 @@ export function ManuscriptScript({
       ),
     [suggestedEdits, acceptance],
   );
+
+  // Observations: speaker deviations from the script the coach didn't
+  // address with an edit. We surface skips and paraphrases the user
+  // should know about even when they aren't actionable. No Accept /
+  // Reject — these are informational. Improvs (off-script ad-libs)
+  // are excluded because they tend to be either covered by a coach
+  // adopt suggestion or short disfluencies the user doesn't need
+  // pinged on.
+  const observations: ObservationItem[] = useMemo(() => {
+    if (diffRows.length === 0) return [];
+    const out: ObservationItem[] = [];
+    let i = 0;
+    for (const row of diffRows) {
+      if (row.kind !== "skipped" && row.kind !== "paraphrase") continue;
+      // Get the written-side text we'd anchor against.
+      const written =
+        row.kind === "skipped"
+          ? row.written
+          : row.ops
+              .filter((o) => o.kind === "equal" || o.kind === "del" || o.kind === "sub")
+              .map((o) => (o.kind === "equal" ? o.text : o.kind === "del" ? o.written : o.written))
+              .join(" ")
+              .trim();
+      if (!written) continue;
+      const sectionEdits = (editsBySection.get(row.sectionId) ?? []).filter(
+        (e) => e.kind !== "drill" && e.before,
+      );
+      const addressed = sectionEdits.some((e) => {
+        if (!e.before) return false;
+        const a = e.before.toLowerCase();
+        const b = written.toLowerCase();
+        return a.includes(b) || b.includes(a);
+      });
+      if (addressed) continue;
+      // Skip noisy single-word paraphrases — the manuscript already
+      // shows them inline in "What you said" view; pinging the rail
+      // for every "the / a" swap is just clutter.
+      if (row.kind === "paraphrase" && written.split(/\s+/).length < 4) continue;
+      i += 1;
+      out.push({
+        kind: "observation",
+        id: `obs-${row.sectionId}-${i}`,
+        sectionId: row.sectionId,
+        deviation: row.kind,
+        written,
+        spoken:
+          row.kind === "paraphrase"
+            ? row.ops
+                .filter((o) => o.kind === "equal" || o.kind === "ins" || o.kind === "sub")
+                .map((o) => (o.kind === "equal" ? o.text : o.kind === "ins" ? o.spoken : o.spoken))
+                .join(" ")
+                .trim()
+            : undefined,
+      });
+    }
+    return out;
+  }, [diffRows, editsBySection]);
+
+  // Combined rail content: proposed edits (with Accept/Reject) followed
+  // by observations (informational only). Ordered by section position
+  // so the rail mirrors the manuscript's flow.
+  const railItems: RailItem[] = useMemo(() => {
+    const sectionOrder = new Map<string, number>(
+      sections.map((s, idx) => [s.id, idx]),
+    );
+    const all: RailItem[] = [
+      ...suggestedEdits.map((edit) => ({ kind: "edit" as const, edit })),
+      ...observations,
+    ];
+    return all.sort((a, b) => {
+      const aSec = a.kind === "edit" ? a.edit.section_id : a.sectionId;
+      const bSec = b.kind === "edit" ? b.edit.section_id : b.sectionId;
+      const aIdx = sectionOrder.get(aSec) ?? 999;
+      const bIdx = sectionOrder.get(bSec) ?? 999;
+      if (aIdx !== bIdx) return aIdx - bIdx;
+      // Within a section, edits before observations.
+      if (a.kind !== b.kind) return a.kind === "edit" ? -1 : 1;
+      return 0;
+    });
+  }, [suggestedEdits, observations, sections]);
 
   // Activate an edit: scroll the corresponding rail card and manuscript
   // anchor into view, mark it active for highlighting.
@@ -295,10 +439,12 @@ export function ManuscriptScript({
       : "Record again →"
     : MODE_PRIMARY_CTA[mode];
 
-  // The rail only renders when we have coach edits and the view
-  // includes them. In "spoken" view we hide the rail entirely.
+  // The rail only renders when we have something to show (proposed
+  // edits OR observations) and the view includes them. In "spoken"
+  // view we hide the rail — speaker deviations are surfaced inline in
+  // the manuscript at that point.
   const showRail =
-    suggestedEdits.length > 0 && (viewMode === "coach" || viewMode === "both");
+    railItems.length > 0 && (viewMode === "coach" || viewMode === "both");
 
   return (
     <>
@@ -437,6 +583,18 @@ export function ManuscriptScript({
         .ms-rephrase-new.accepted {
           color: var(--color-midnight-ink);
         }
+        /* Defensive rephrase inline: don't render a strikethrough or
+           swap. Render the script text plain with a soft underline
+           that says "this is flagged but stays as written." */
+        .ms-rephrase-keep {
+          background: rgba(71, 208, 150, 0.08);
+          border-radius: 2px;
+          padding: 0 2px;
+          text-decoration: underline;
+          text-decoration-color: rgba(71, 208, 150, 0.6);
+          text-decoration-style: dotted;
+          text-underline-offset: 4px;
+        }
         .ms-adopt.pending {
           background: rgba(50,142,250,0.10);
           color: var(--color-deep-indigo, #3a5fb1);
@@ -517,6 +675,13 @@ export function ManuscriptScript({
           border: 1px dashed rgba(17,17,17,0.12);
           border-radius: 8px;
         }
+        .ms-rail-heading {
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          color: var(--color-midnight-ink);
+          margin: 0 0 4px;
+        }
 
         /* ─── Edit card ─────────────────────────────────────────── */
         .ms-card {
@@ -554,6 +719,40 @@ export function ManuscriptScript({
         .ms-card-meta strong.adopt { color: var(--color-deep-indigo); }
         .ms-card-meta strong.rephrase { color: #5a4310; }
         .ms-card-meta strong.drill { color: #1a4f88; }
+        .ms-card-meta strong.observation { color: var(--color-muted-ash); font-weight: 500; }
+
+        /* Defensive rephrase: the script's wording is the recommended
+           text — render it as the "winner," with the spoken version
+           as a small aside underneath. */
+        .ms-card-redline.rephrase-keep {
+          background: rgba(71, 208, 150, 0.10);
+          color: var(--color-midnight-ink);
+          border-radius: 3px;
+          padding: 1px 6px;
+          display: inline-block;
+        }
+        .ms-card-spoken-aside {
+          display: block;
+          margin-top: 8px;
+          font-size: 12.5px;
+          color: var(--color-muted-ash);
+          font-style: italic;
+        }
+        .ms-card-spoken-aside::before {
+          content: "";
+        }
+
+        /* Observation card: same shell, quieter. */
+        .ms-card-observation {
+          border-style: dashed;
+          background: rgba(17,17,17,0.015);
+        }
+        .ms-card-observation-label {
+          font-size: 12.5px;
+          color: var(--color-midnight-ink);
+          margin: 0;
+          font-weight: 500;
+        }
 
         .ms-card-redline {
           font-family: var(--font-script);
@@ -817,26 +1016,41 @@ export function ManuscriptScript({
 
         {/* ─── Right column: comments rail ─────────────────────── */}
         {showRail && (
-          <aside className="ms-rail" aria-label="Coach edits">
-            {suggestedEdits.length === 0 ? (
-              <div className="ms-rail-empty">No suggestions for this take.</div>
+          <aside className="ms-rail" aria-labelledby="ms-rail-heading">
+            <h3 id="ms-rail-heading" className="ms-rail-heading">
+              Adjustments
+            </h3>
+            {railItems.length === 0 ? (
+              <div className="ms-rail-empty">No adjustments for this take.</div>
             ) : (
-              suggestedEdits.map((edit) => (
-                <EditCard
-                  key={edit.id}
-                  edit={edit}
-                  sectionName={
-                    sections.find((s) => s.id === edit.section_id)?.name ?? "Section"
-                  }
-                  state={acceptance.get(edit.id) ?? "pending"}
-                  isActive={activeEditId === edit.id}
-                  onSetState={(s) => setEdit(edit.id, s)}
-                  onActivate={() => activateEdit(edit.id, "rail")}
-                  onDrill={() => startDrill(edit.id)}
-                  drillPending={pending}
-                  setCardRef={setCardRef}
-                />
-              ))
+              railItems.map((item) =>
+                item.kind === "edit" ? (
+                  <EditCard
+                    key={item.edit.id}
+                    edit={item.edit}
+                    sectionName={
+                      sections.find((s) => s.id === item.edit.section_id)?.name ??
+                      "Section"
+                    }
+                    state={acceptance.get(item.edit.id) ?? "pending"}
+                    isActive={activeEditId === item.edit.id}
+                    onSetState={(s) => setEdit(item.edit.id, s)}
+                    onActivate={() => activateEdit(item.edit.id, "rail")}
+                    onDrill={() => startDrill(item.edit.id)}
+                    drillPending={pending}
+                    setCardRef={setCardRef}
+                  />
+                ) : (
+                  <ObservationCard
+                    key={item.id}
+                    observation={item}
+                    sectionName={
+                      sections.find((s) => s.id === item.sectionId)?.name ??
+                      "Section"
+                    }
+                  />
+                ),
+              )
             )}
           </aside>
         )}
@@ -927,6 +1141,23 @@ function CoachTokenSpan({
     );
   }
   if (edit.kind === "rephrase") {
+    // Defensive rephrase: render the script's original text with a
+    // soft "flagged" underline. The coach is saying keep this; we
+    // don't want to render the spoken alternative as if it were a
+    // proposed swap. (state === "rejected" was already handled
+    // higher up — that path renders the plain original.)
+    if (isDefensiveRephrase(edit.reason)) {
+      return (
+        <span
+          ref={(el) => setAnchorRef(edit.id, el)}
+          className={`ms-edit-anchor ms-rephrase-keep${activeClass}`}
+          onClick={() => onActivate(edit.id)}
+          onMouseEnter={() => onActivate(edit.id)}
+        >
+          {original}
+        </span>
+      );
+    }
     return (
       <span
         ref={(el) => setAnchorRef(edit.id, el)}
@@ -1054,15 +1285,38 @@ function EditCard({
       )}
       {edit.kind === "rephrase" && (
         <>
-          {edit.before && (
-            <span className="ms-card-redline rephrase-old">
-              &ldquo;{edit.before}&rdquo;
-            </span>
-          )}
-          {edit.after && (
-            <span className="ms-card-redline rephrase-new">
-              &ldquo;{edit.after}&rdquo;
-            </span>
+          {/* Defensive rephrase: coach is recommending KEEP THE SCRIPT.
+              Render the script version as the "winning" text (not
+              struck through) and the spoken version as a small "you
+              said" annotation, so the visual matches the prose intent.
+              Otherwise render normally: script struck → spoken
+              highlighted as the proposed swap. */}
+          {isDefensiveRephrase(edit.reason) ? (
+            <>
+              {edit.before && (
+                <span className="ms-card-redline rephrase-keep">
+                  &ldquo;{edit.before}&rdquo;
+                </span>
+              )}
+              {edit.after && (
+                <span className="ms-card-spoken-aside">
+                  You said: &ldquo;{edit.after}&rdquo;
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              {edit.before && (
+                <span className="ms-card-redline rephrase-old">
+                  &ldquo;{edit.before}&rdquo;
+                </span>
+              )}
+              {edit.after && (
+                <span className="ms-card-redline rephrase-new">
+                  &ldquo;{edit.after}&rdquo;
+                </span>
+              )}
+            </>
           )}
         </>
       )}
@@ -1092,6 +1346,25 @@ function EditCard({
           >
             Drill →
           </button>
+        ) : edit.kind === "rephrase" && isDefensiveRephrase(edit.reason) ? (
+          // Defensive rephrase = coach saying "keep the script."
+          // There's no script change to apply, so the only meaningful
+          // action is to acknowledge by leaving the script alone.
+          // We surface a single, quiet "Keep as written" action that
+          // dismisses the card without committing anything; the
+          // sticky-footer apply count won't include this edit.
+          <button
+            type="button"
+            className={`ms-card-btn${state === "rejected" ? " is-reject-active" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              // Mark as rejected (= "make no change to the script") so
+              // it doesn't get included in apply, and dim the card.
+              onSetState(state === "rejected" ? "pending" : "rejected");
+            }}
+          >
+            {state === "rejected" ? "Kept as written" : "Keep as written"}
+          </button>
         ) : (
           <>
             <button
@@ -1117,6 +1390,48 @@ function EditCard({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Observation card (informational, no actions) ────────────────────
+//
+// Surfaces speaker deviations the coach didn't address. No buttons —
+// the user just needs to know they happened. "You skipped this line"
+// or "You phrased this differently."
+
+function ObservationCard({
+  observation,
+  sectionName,
+}: {
+  observation: ObservationItem;
+  sectionName: string;
+}) {
+  const label =
+    observation.deviation === "skipped"
+      ? "You skipped this"
+      : "You phrased this differently";
+  return (
+    <div className="ms-card ms-card-observation">
+      <div className="ms-card-meta">
+        <strong className="observation">Note</strong>
+        <span aria-hidden="true">·</span>
+        <span>{sectionName}</span>
+      </div>
+      <p className="ms-card-observation-label">{label}</p>
+      <p
+        className={`ms-card-redline ${
+          observation.deviation === "skipped" ? "cut" : "rephrase-old"
+        }`}
+        style={{ marginTop: 4 }}
+      >
+        &ldquo;{observation.written}&rdquo;
+      </p>
+      {observation.spoken && observation.deviation === "paraphrase" && (
+        <span className="ms-card-spoken-aside">
+          You said: &ldquo;{observation.spoken}&rdquo;
+        </span>
+      )}
     </div>
   );
 }
