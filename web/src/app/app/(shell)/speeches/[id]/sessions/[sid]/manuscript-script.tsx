@@ -69,16 +69,20 @@ type AcceptanceState = "accepted" | "pending" | "rejected";
 
 // Observation = a speaker deviation from the script the coach didn't
 // address with a proposed edit. Surfaces in the rail as informational
-// — no Accept/Reject, just a callout. ("You skipped this line.",
-// "You phrased this differently.")
+// — no Accept/Reject, just a callout.
+//
+// Paraphrase observations carry the structured WordOp list so the card
+// can render proper inline track-changes (only the actually-changed
+// words highlighted, not the entire row). Skipped observations carry
+// the plain script text since there's nothing to compare against.
 type ObservationItem = {
   kind: "observation";
   id: string;
   sectionId: string;
-  deviation: "skipped" | "paraphrase";
-  written: string;        // the script's wording at this spot
-  spoken?: string;        // what the speaker said (paraphrase only)
-};
+} & (
+  | { deviation: "skipped"; written: string }
+  | { deviation: "paraphrase"; ops: WordOp[] }
+);
 
 // The rail shows proposed edits AND observations together, ordered by
 // where they appear in the manuscript.
@@ -182,6 +186,79 @@ export function isDefensiveRephrase(reason: string | undefined): boolean {
   if (!reason) return false;
   const lower = reason.toLowerCase();
   return DEFENSIVE_PHRASES.some((p) => lower.includes(p));
+}
+
+// ─── Body-position overlap helpers ───────────────────────────────────
+//
+// Used to decide whether a coach edit and a diff row anchor at the
+// same place in the script body. Tokenise once, then resolve each
+// edit / row to a [start, end) token-index range and test for
+// overlap.
+//
+// The point: substring-contains was an over-approximation that
+// caught nothing useful — paraphrase rows accumulate the entire
+// row's worth of script text, which a tight coach `before` could
+// never contain. This also gives us the surface to suppress
+// observations near adopt edits, which have no `before` at all.
+
+function tokeniseLower(s: string): string[] {
+  if (!s) return [];
+  return s
+    .toLowerCase()
+    .replace(/[‘’']/g, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+}
+
+type TokenRange = [number, number] | null;
+
+function findTokenRange(haystack: string[], needle: string): TokenRange {
+  const ns = tokeniseLower(needle);
+  if (ns.length === 0 || haystack.length === 0) return null;
+  outer: for (let i = 0; i + ns.length <= haystack.length; i++) {
+    for (let j = 0; j < ns.length; j++) {
+      if (haystack[i + j] !== ns[j]) continue outer;
+    }
+    return [i, i + ns.length];
+  }
+  // Fall back to longest-common-substring approximation: find the
+  // first token of `needle` and treat the row as anchoring there
+  // even if the rest doesn't match exactly. Useful when paraphrase
+  // text drifts from the script body wording.
+  const firstIdx = haystack.indexOf(ns[0]);
+  if (firstIdx >= 0) return [firstIdx, firstIdx + 1];
+  return null;
+}
+
+function rangesOverlap(a: TokenRange, b: TokenRange): boolean {
+  if (!a || !b) return false;
+  return a[0] < b[1] && b[0] < a[1];
+}
+
+// Two phrases share a "meaningful phrase" when they have ≥3 contiguous
+// matching tokens. Used to decide whether an adopt edit's `after`
+// covers what the speaker improvised in a paraphrase row, so we don't
+// surface a redundant observation alongside the adopt suggestion.
+const STOP_WORDS = new Set([
+  "i", "a", "an", "the", "and", "or", "but", "of", "to", "is", "it",
+  "in", "on", "at", "for", "with", "as", "be", "so", "that", "this",
+]);
+function sharesMeaningfulPhrase(a: string, b: string): boolean {
+  const at = tokeniseLower(a);
+  const bt = tokeniseLower(b);
+  if (at.length < 3 || bt.length < 3) return false;
+  // Slide a 3-token window over `a`; if any window has all three
+  // tokens appearing in order in `b`, treat it as a match.
+  for (let i = 0; i + 3 <= at.length; i++) {
+    const w0 = at[i],
+      w1 = at[i + 1],
+      w2 = at[i + 2];
+    if (STOP_WORDS.has(w0) && STOP_WORDS.has(w1) && STOP_WORDS.has(w2)) continue;
+    for (let j = 0; j + 3 <= bt.length; j++) {
+      if (bt[j] === w0 && bt[j + 1] === w1 && bt[j + 2] === w2) return true;
+    }
+  }
+  return false;
 }
 
 function tokeniseSpokenDeviations(diffRows: DiffRow[], sectionId: string): Token[] {
@@ -293,62 +370,109 @@ export function ManuscriptScript({
     [suggestedEdits, acceptance],
   );
 
+  // Section bodies indexed for the overlap check below. We tokenise
+  // each section body once into a lowercase word array; an edit's
+  // `before` and a row's written text both resolve to a token-range
+  // inside this array, and we check overlap by index.
+  const sectionTokensById = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const s of sections) {
+      map.set(s.id, tokeniseLower(s.body));
+    }
+    return map;
+  }, [sections]);
+
   // Observations: speaker deviations from the script the coach didn't
   // address with an edit. We surface skips and paraphrases the user
   // should know about even when they aren't actionable. No Accept /
-  // Reject — these are informational. Improvs (off-script ad-libs)
-  // are excluded because they tend to be either covered by a coach
-  // adopt suggestion or short disfluencies the user doesn't need
-  // pinged on.
+  // Reject — these are informational. Improvs are excluded.
+  //
+  // The "addressed" check is body-position based: each coach edit and
+  // each diff row resolves to a token range in the script body, and
+  // any overlap means the coach has already covered this span. The
+  // earlier substring-contains check missed adopt edits (no `before`)
+  // and false-positively flagged whole sections as observations.
   const observations: ObservationItem[] = useMemo(() => {
     if (diffRows.length === 0) return [];
     const out: ObservationItem[] = [];
     let i = 0;
+
     for (const row of diffRows) {
       if (row.kind !== "skipped" && row.kind !== "paraphrase") continue;
-      // Get the written-side text we'd anchor against.
-      const written =
+
+      // Quick filter: very short paraphrases are noise (the / a, etc.).
+      // Use the count of *changed* word ops, not total — a long row
+      // with only one sub shouldn't be an observation either.
+      if (row.kind === "paraphrase") {
+        const changedOps = row.ops.filter(
+          (o) => o.kind === "del" || o.kind === "sub" || o.kind === "ins",
+        ).length;
+        if (changedOps < 2) continue;
+      }
+
+      const tokens = sectionTokensById.get(row.sectionId) ?? [];
+      const writtenText =
         row.kind === "skipped"
           ? row.written
-          : row.ops
+          : // For overlap detection only: use the *equal + del + sub*
+            // tokens (the script-side of the row) so we know where in
+            // the body this row anchors.
+            row.ops
               .filter((o) => o.kind === "equal" || o.kind === "del" || o.kind === "sub")
-              .map((o) => (o.kind === "equal" ? o.text : o.kind === "del" ? o.written : o.written))
-              .join(" ")
-              .trim();
-      if (!written) continue;
-      const sectionEdits = (editsBySection.get(row.sectionId) ?? []).filter(
-        (e) => e.kind !== "drill" && e.before,
-      );
-      const addressed = sectionEdits.some((e) => {
-        if (!e.before) return false;
-        const a = e.before.toLowerCase();
-        const b = written.toLowerCase();
-        return a.includes(b) || b.includes(a);
+              .map((o) => (o.kind === "equal" ? o.text : "written" in o ? o.written : ""))
+              .join(" ");
+      const rowRange = findTokenRange(tokens, writtenText);
+
+      const sectionEdits = editsBySection.get(row.sectionId) ?? [];
+      const addressed = sectionEdits.some((edit) => {
+        if (edit.kind === "drill") return false;
+
+        // Cut / rephrase: anchored on `before` in the body.
+        if (edit.before) {
+          const editRange = findTokenRange(tokens, edit.before);
+          if (rangesOverlap(rowRange, editRange)) return true;
+        }
+
+        // Adopt: anchored at an insertion point. We approximate by
+        // checking whether the spoken side of THIS row (paraphrase or
+        // improv) shares meaningful word content with the adopt's
+        // `after`. If the speaker's improv is the thing being adopted,
+        // we don't separately ping the user about it.
+        if (edit.kind === "adopt" && edit.after && row.kind === "paraphrase") {
+          const spoken = row.ops
+            .filter((o) => o.kind === "equal" || o.kind === "ins" || o.kind === "sub")
+            .map((o) =>
+              o.kind === "equal" ? o.text : "spoken" in o ? o.spoken : "",
+            )
+            .join(" ");
+          if (sharesMeaningfulPhrase(spoken, edit.after)) return true;
+        }
+
+        return false;
       });
       if (addressed) continue;
-      // Skip noisy single-word paraphrases — the manuscript already
-      // shows them inline in "What you said" view; pinging the rail
-      // for every "the / a" swap is just clutter.
-      if (row.kind === "paraphrase" && written.split(/\s+/).length < 4) continue;
+
       i += 1;
-      out.push({
-        kind: "observation",
-        id: `obs-${row.sectionId}-${i}`,
-        sectionId: row.sectionId,
-        deviation: row.kind,
-        written,
-        spoken:
-          row.kind === "paraphrase"
-            ? row.ops
-                .filter((o) => o.kind === "equal" || o.kind === "ins" || o.kind === "sub")
-                .map((o) => (o.kind === "equal" ? o.text : o.kind === "ins" ? o.spoken : o.spoken))
-                .join(" ")
-                .trim()
-            : undefined,
-      });
+      if (row.kind === "skipped") {
+        out.push({
+          kind: "observation",
+          id: `obs-${row.sectionId}-${i}`,
+          sectionId: row.sectionId,
+          deviation: "skipped",
+          written: row.written,
+        });
+      } else {
+        out.push({
+          kind: "observation",
+          id: `obs-${row.sectionId}-${i}`,
+          sectionId: row.sectionId,
+          deviation: "paraphrase",
+          ops: row.ops,
+        });
+      }
     }
     return out;
-  }, [diffRows, editsBySection]);
+  }, [diffRows, editsBySection, sectionTokensById]);
 
   // Combined rail content: proposed edits (with Accept/Reject) followed
   // by observations (informational only). Ordered by section position
@@ -752,6 +876,29 @@ export function ManuscriptScript({
           color: var(--color-midnight-ink);
           margin: 0;
           font-weight: 500;
+        }
+        /* Paraphrase line in an observation card: serif body text,
+           same family as the manuscript. Only the actually-changed
+           words get visual treatment — equal words flow plain. */
+        .ms-card-paraphrase {
+          font-family: var(--font-script);
+          font-size: 14.5px;
+          line-height: 1.6;
+          color: var(--color-midnight-ink);
+          margin: 0;
+        }
+        .ms-card-paraphrase-del {
+          color: rgba(17,17,17,0.5);
+          text-decoration: line-through;
+          text-decoration-color: rgba(225,101,64,0.5);
+          text-decoration-thickness: 1.5px;
+          margin-right: 2px;
+        }
+        .ms-card-paraphrase-ins {
+          background: rgba(251,199,104,0.32);
+          color: #4a3508;
+          border-radius: 3px;
+          padding: 0 3px;
         }
 
         .ms-card-redline {
@@ -1399,6 +1546,11 @@ function EditCard({
 // Surfaces speaker deviations the coach didn't address. No buttons —
 // the user just needs to know they happened. "You skipped this line"
 // or "You phrased this differently."
+//
+// Paraphrase observations render the row's WordOp[] inline so only
+// the actually-changed words are highlighted. A skipped observation
+// shows the missed script text with a strikethrough and no spoken
+// counterpart.
 
 function ObservationCard({
   observation,
@@ -1419,20 +1571,46 @@ function ObservationCard({
         <span>{sectionName}</span>
       </div>
       <p className="ms-card-observation-label">{label}</p>
-      <p
-        className={`ms-card-redline ${
-          observation.deviation === "skipped" ? "cut" : "rephrase-old"
-        }`}
-        style={{ marginTop: 4 }}
-      >
-        &ldquo;{observation.written}&rdquo;
-      </p>
-      {observation.spoken && observation.deviation === "paraphrase" && (
-        <span className="ms-card-spoken-aside">
-          You said: &ldquo;{observation.spoken}&rdquo;
-        </span>
+      {observation.deviation === "skipped" ? (
+        <p
+          className="ms-card-redline cut"
+          style={{ marginTop: 4 }}
+        >
+          &ldquo;{observation.written}&rdquo;
+        </p>
+      ) : (
+        <p className="ms-card-paraphrase" style={{ marginTop: 4 }}>
+          {observation.ops.map((op, i) => (
+            <ObsOpSpan key={i} op={op} />
+          ))}
+        </p>
       )}
     </div>
+  );
+}
+
+// Inline track-changes for a single paraphrase op. Equal words flow as
+// plain body text; subs render the script word struck-through inline
+// with the spoken word highlighted next to it; pure dels strike the
+// script word; pure ins highlight the spoken word.
+function ObsOpSpan({ op }: { op: WordOp }) {
+  if (op.kind === "equal") return <span>{op.text} </span>;
+  if (op.kind === "del") {
+    return (
+      <span className="ms-card-paraphrase-del">{op.written} </span>
+    );
+  }
+  if (op.kind === "ins") {
+    return (
+      <span className="ms-card-paraphrase-ins">{op.spoken} </span>
+    );
+  }
+  // sub
+  return (
+    <span>
+      <span className="ms-card-paraphrase-del">{op.written}</span>
+      <span className="ms-card-paraphrase-ins">{op.spoken}</span>{" "}
+    </span>
   );
 }
 
