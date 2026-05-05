@@ -2,26 +2,33 @@
 
 // ManuscriptScript — the session report's primary surface.
 //
-// The user's script rendered as a long-form manuscript, with coach
-// suggestions and speaker deviations as inline track-changes. Three
-// view modes:
+// Two-column layout:
+//   - Left: the user's script as a manuscript, with coach edits and
+//     speaker deviations as inline track-changes. The manuscript is
+//     reading material — no buttons, no chrome on the lines.
+//   - Right: a comments rail (Google-Docs style) anchoring one card
+//     per coach edit. Each card has the full reason, the kind/
+//     section meta, and the Accept/Reject buttons. Drills get their
+//     own card with the tactic text.
 //
-//   "coach"   — show only coach edits (default). The user reviews and
-//               accepts/rejects each one in place.
-//   "spoken"  — show only speaker deviations from the script (skipped
-//               lines, paraphrases, ad-libs). This is the diff view,
-//               folded into the same document.
-//   "both"    — show both layers simultaneously.
+// Hover an inline edit mark on the left → the matching card on the
+// right activates. Click an active card → the manuscript scrolls to
+// the anchor and flashes it. The two columns are kept in sync via
+// scroll-into-view, no virtualization or heavy state.
 //
-// Acceptance is local component state. By default the top N coach
-// edits are accepted; the rest are pending. Click Reject on an
-// accepted edit and the change reverts inline; click Accept on a
-// pending edit and the change becomes part of the rendered script.
+// Three view modes (toggle, sticky at the top of the manuscript):
+//   "coach"   — show coach-edit marks in the manuscript + the
+//               comments rail (default).
+//   "spoken"  — show speaker deviations from the script in the
+//               manuscript instead. The rail is hidden in this view
+//               (deviations aren't actionable cards, they're
+//               observations).
+//   "both"    — show both layers, comments rail visible.
 //
 // On apply, accepted coach-edit ids are sent to the existing
 // applySuggestionsAndRecord server action — same path as before.
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   applySuggestions,
@@ -58,12 +65,9 @@ type SectionInput = {
 };
 
 type ViewMode = "coach" | "spoken" | "both";
-
 type AcceptanceState = "accepted" | "pending" | "rejected";
 
-// A run of script body rendered with inline annotations. We tokenise
-// each section once per render — text → coach-edit → text → text-with-
-// speaker-deviation → ... — then walk the tokens once to render JSX.
+// A run of script body rendered with inline annotations.
 type Token =
   | { kind: "text"; text: string }
   | {
@@ -71,33 +75,13 @@ type Token =
       edit: SuggestedEdit;
       original: string; // matched substring from the body (for cut/rephrase)
     }
-  | {
-      kind: "speaker-skipped";
-      text: string;
-    }
-  | {
-      kind: "speaker-paraphrase";
-      ops: WordOp[];
-    }
-  | {
-      kind: "speaker-improv";
-      spoken: string;
-    };
+  | { kind: "speaker-skipped"; text: string }
+  | { kind: "speaker-paraphrase"; ops: WordOp[] }
+  | { kind: "speaker-improv"; spoken: string };
 
 // ─── Tokenisation ────────────────────────────────────────────────────
-//
-// For each section we walk the body once, splitting on coach edit
-// `before` substrings. Speaker deviations (DiffRow) don't have
-// stable substring anchors against the SCRIPT body — they're
-// alignment-driven. So we render speaker layers from the diff rows
-// directly, separately, and the "Both" view uses both passes side
-// by side. (A previous attempt to merge them into one token stream
-// was deferred — the v1 of this redesign keeps the two layers
-// independently rendered, with the toggle picking which one shows.)
 
 function tokeniseCoachEdits(body: string, edits: SuggestedEdit[]): Token[] {
-  // Adopts with no `before` are pure insertions at the section tail.
-  // Cuts and rephrases match a verbatim before-string in the body.
   const indexed = edits
     .filter((e) => e.kind !== "drill")
     .map((edit) => {
@@ -110,7 +94,6 @@ function tokeniseCoachEdits(body: string, edits: SuggestedEdit[]): Token[] {
       return { edit, idx, len: edit.before.length };
     })
     .filter((x): x is { edit: SuggestedEdit; idx: number; len: number } => x !== null)
-    // Sort by position; tail-appends (idx === -1) go last.
     .sort((a, b) => {
       if (a.idx < 0 && b.idx < 0) return 0;
       if (a.idx < 0) return 1;
@@ -122,11 +105,8 @@ function tokeniseCoachEdits(body: string, edits: SuggestedEdit[]): Token[] {
   let cursor = 0;
 
   for (const { edit, idx, len } of indexed) {
-    if (idx < 0) {
-      // Adopt-tail: handled after the walk
-      continue;
-    }
-    if (idx < cursor) continue; // overlapping; skip the later one
+    if (idx < 0) continue;
+    if (idx < cursor) continue;
     if (idx > cursor) {
       tokens.push({ kind: "text", text: body.slice(cursor, idx) });
     }
@@ -139,7 +119,6 @@ function tokeniseCoachEdits(body: string, edits: SuggestedEdit[]): Token[] {
     tokens.push({ kind: "text", text: body.slice(cursor) });
   }
 
-  // Tail-append adopts.
   for (const { edit, idx } of indexed) {
     if (idx < 0) {
       tokens.push({ kind: "coach-edit", edit, original: "" });
@@ -186,15 +165,23 @@ export function ManuscriptScript({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-
-  // The user's choice for which annotation layer to show. Starts at
-  // "coach" (default reading mode). The "spoken" / "both" toggles
-  // surface alternate views of the same document.
   const [viewMode, setViewMode] = useState<ViewMode>("coach");
+  const [activeEditId, setActiveEditId] = useState<string | null>(null);
 
-  // Default acceptance: top N coach edits accepted, rest pending,
-  // drills always pending (drills aren't accept/reject — they're
-  // a separate Drill action).
+  // DOM refs for the bidirectional scroll-into-view between manuscript
+  // anchors and rail cards. Keyed by edit id.
+  const anchorRefs = useRef<Map<string, HTMLElement | null>>(new Map());
+  const cardRefs = useRef<Map<string, HTMLElement | null>>(new Map());
+
+  const setAnchorRef = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) anchorRefs.current.set(id, el);
+    else anchorRefs.current.delete(id);
+  }, []);
+  const setCardRef = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) cardRefs.current.set(id, el);
+    else cardRefs.current.delete(id);
+  }, []);
+
   const initialAcceptance = useMemo(() => {
     const map = new Map<string, AcceptanceState>();
     let accepted = 0;
@@ -224,7 +211,6 @@ export function ManuscriptScript({
     });
   }
 
-  // Group edits by section for tokenisation.
   const editsBySection = useMemo(() => {
     const map = new Map<string, SuggestedEdit[]>();
     for (const e of suggestedEdits) {
@@ -242,10 +228,19 @@ export function ManuscriptScript({
       ),
     [suggestedEdits, acceptance],
   );
-  const pendingDrills = useMemo(
-    () => suggestedEdits.filter((e) => e.kind === "drill"),
-    [suggestedEdits],
-  );
+
+  // Activate an edit: scroll the corresponding rail card and manuscript
+  // anchor into view, mark it active for highlighting.
+  const activateEdit = useCallback((editId: string, source: "manuscript" | "rail") => {
+    setActiveEditId(editId);
+    const otherEl =
+      source === "manuscript"
+        ? cardRefs.current.get(editId)
+        : anchorRefs.current.get(editId);
+    if (otherEl) {
+      otherEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, []);
 
   function applyAndRecord() {
     setError(null);
@@ -300,17 +295,29 @@ export function ManuscriptScript({
       : "Record again →"
     : MODE_PRIMARY_CTA[mode];
 
+  // The rail only renders when we have coach edits and the view
+  // includes them. In "spoken" view we hide the rail entirely.
+  const showRail =
+    suggestedEdits.length > 0 && (viewMode === "coach" || viewMode === "both");
+
   return (
     <>
       <style>{`
-        /* ─── Layout shell ─────────────────────────────────────────── */
-        .ms {
-          max-width: 760px;
-          margin: 0;
+        /* ─── Two-column layout ─────────────────────────────────── */
+        .ms-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 32px;
           padding-bottom: 96px; /* room for sticky bar */
         }
+        @media (min-width: 1100px) {
+          .ms-grid.has-rail {
+            grid-template-columns: minmax(0, 720px) minmax(280px, 360px);
+            gap: 48px;
+          }
+        }
 
-        /* ─── View toggle (sticky just under the page header) ──────── */
+        /* ─── View toggle (sticky at top of manuscript column) ──── */
         .ms-toggle {
           position: sticky;
           top: 0;
@@ -347,7 +354,7 @@ export function ManuscriptScript({
           letter-spacing: 0.04em;
         }
 
-        /* ─── Section heading (with inline pacing/memory chip) ─────── */
+        /* ─── Section heading ───────────────────────────────────── */
         .ms-section { padding-top: 32px; }
         .ms-section:first-of-type { padding-top: 12px; }
         .ms-section-head {
@@ -371,44 +378,36 @@ export function ManuscriptScript({
           border-radius: 999px;
           font-variant-numeric: tabular-nums;
         }
-        .ms-section-chip.green {
-          background: rgba(71, 208, 150, 0.14);
-          color: #1f6f48;
-        }
-        .ms-section-chip.gold {
-          background: rgba(251,199,104,0.22);
-          color: #5a4310;
-        }
-        .ms-section-chip.red {
-          background: rgba(225,101,64,0.14);
-          color: #88321a;
-        }
-        .ms-section-chip.indigo {
-          background: rgba(50,142,250,0.10);
-          color: var(--color-deep-indigo, #3a5fb1);
-        }
-        .ms-section-chip.muted {
-          background: rgba(17,17,17,0.05);
-          color: var(--color-muted-ash);
-        }
+        .ms-section-chip.green { background: rgba(71, 208, 150, 0.14); color: #1f6f48; }
+        .ms-section-chip.gold { background: rgba(251,199,104,0.22); color: #5a4310; }
+        .ms-section-chip.red { background: rgba(225,101,64,0.14); color: #88321a; }
+        .ms-section-chip.indigo { background: rgba(50,142,250,0.10); color: var(--color-deep-indigo, #3a5fb1); }
+        .ms-section-chip.muted { background: rgba(17,17,17,0.05); color: var(--color-muted-ash); }
 
-        /* ─── Manuscript body ──────────────────────────────────────── */
+        /* ─── Manuscript body ───────────────────────────────────── */
         .ms-body {
           font-family: 'Iowan Old Style', 'Charter', Georgia, serif;
           font-size: 18px;
-          line-height: 1.75;
+          line-height: 1.78;
           color: var(--color-midnight-ink);
           margin: 0;
         }
 
-        /* ─── Track-changes inline marks (coach view) ──────────────── */
-        /* Pending coach edit: track-changes visible, accept/reject in margin */
-        .ms-edit {
-          position: relative;
-          display: inline;
+        /* ─── Inline edit marks (manuscript) ─────────────────────
+           No buttons in the manuscript — just visual marks that
+           anchor to a card in the rail. Hovering or clicking a
+           mark activates its card. */
+        .ms-edit-anchor {
+          cursor: pointer;
+          transition: background-color 120ms ease;
         }
-        .ms-edit-pending.ms-cut {
-          color: rgba(17,17,17,0.5);
+        .ms-edit-anchor.is-active {
+          outline: 2px solid rgba(50,142,250,0.45);
+          outline-offset: 2px;
+          border-radius: 2px;
+        }
+        .ms-cut.pending {
+          color: rgba(17,17,17,0.55);
           text-decoration: line-through;
           text-decoration-color: rgba(225,101,64,0.55);
           text-decoration-thickness: 1.5px;
@@ -416,146 +415,52 @@ export function ManuscriptScript({
           border-radius: 3px;
           padding: 0 2px;
         }
-        .ms-edit-pending.ms-rephrase-old {
-          color: rgba(17,17,17,0.5);
+        .ms-cut.accepted {
+          color: rgba(17,17,17,0.32);
+          text-decoration: line-through;
+          text-decoration-color: rgba(17,17,17,0.18);
+          text-decoration-thickness: 1px;
+        }
+        .ms-rephrase-old.pending {
+          color: rgba(17,17,17,0.55);
           text-decoration: line-through;
           text-decoration-color: rgba(225,101,64,0.55);
           text-decoration-thickness: 1.5px;
           margin-right: 4px;
         }
-        .ms-edit-pending.ms-rephrase-new {
+        .ms-rephrase-new.pending {
           background: rgba(251,199,104,0.32);
           color: #4a3508;
           border-radius: 3px;
           padding: 0 4px;
         }
-        .ms-edit-pending.ms-adopt {
+        .ms-rephrase-new.accepted {
+          color: var(--color-midnight-ink);
+        }
+        .ms-adopt.pending {
           background: rgba(50,142,250,0.10);
           color: var(--color-deep-indigo, #3a5fb1);
           border-radius: 3px;
           padding: 0 4px;
           font-style: italic;
         }
-        .ms-edit-pending.ms-adopt::before {
+        .ms-adopt.pending::before {
           content: "+ ";
           font-style: normal;
           opacity: 0.55;
           margin-right: 2px;
         }
-
-        /* Accepted edit: change is "decided" — render the result */
-        .ms-edit-accepted.ms-cut {
-          color: rgba(17,17,17,0.32);
-          text-decoration: line-through;
-          text-decoration-color: rgba(17,17,17,0.18);
-          text-decoration-thickness: 1px;
-        }
-        .ms-edit-accepted.ms-rephrase-new {
-          color: var(--color-midnight-ink);
-        }
-        .ms-edit-accepted.ms-adopt {
+        .ms-adopt.accepted {
           color: var(--color-midnight-ink);
           font-style: italic;
         }
-        .ms-edit-accepted.ms-adopt::before {
+        .ms-adopt.accepted::before {
           content: "+ ";
           font-style: normal;
           opacity: 0.4;
         }
 
-        /* Rejected: hidden entirely, original text rendered as plain script */
-
-        /* ─── Margin chip (accept/reject, drill, why) ──────────────── */
-        .ms-edit-chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          margin: 0 4px 0 6px;
-          font-family: 'Inter', sans-serif;
-          font-size: 11px;
-          font-weight: 500;
-          letter-spacing: 0.02em;
-          color: var(--color-muted-ash);
-          vertical-align: 2px;
-          line-height: 1;
-          white-space: nowrap;
-        }
-        .ms-edit-btn {
-          appearance: none;
-          background: transparent;
-          border: 1px solid rgba(17,17,17,0.18);
-          color: var(--color-midnight-ink);
-          padding: 3px 8px;
-          border-radius: 5px;
-          font-size: 10.5px;
-          font-weight: 500;
-          letter-spacing: 0.02em;
-          cursor: pointer;
-          transition: background 120ms ease, border-color 120ms ease;
-        }
-        .ms-edit-btn:hover { background: var(--color-whisper-gray, rgba(17,17,17,0.04)); }
-        .ms-edit-btn.is-accept-active {
-          background: var(--color-midnight-ink);
-          color: var(--color-canvas-white);
-          border-color: var(--color-midnight-ink);
-        }
-        .ms-edit-btn.is-reject {
-          color: var(--color-muted-ash);
-          border-color: rgba(17,17,17,0.12);
-        }
-        .ms-edit-btn.is-drill {
-          color: var(--color-deep-indigo, #3a5fb1);
-          border-color: rgba(50,142,250,0.32);
-        }
-        .ms-edit-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .ms-edit-reason {
-          display: block;
-          font-family: 'Inter', sans-serif;
-          font-size: 12.5px;
-          color: var(--color-muted-ash);
-          margin: 4px 0 8px;
-          line-height: 1.5;
-          padding-left: 12px;
-          border-left: 2px solid rgba(201, 154, 74, 0.4);
-        }
-
-        /* ─── Drill annotation (paragraph-level) ──────────────────── */
-        .ms-drill-block {
-          margin: 16px 0;
-          padding: 10px 14px;
-          border-left: 3px solid rgba(26, 79, 136, 0.45);
-          background: rgba(26, 79, 136, 0.04);
-          border-radius: 0 6px 6px 0;
-        }
-        .ms-drill-block-meta {
-          display: flex;
-          align-items: baseline;
-          justify-content: space-between;
-          gap: 12px;
-          margin-bottom: 4px;
-        }
-        .ms-drill-block-label {
-          font-size: 10.5px;
-          font-weight: 600;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          color: var(--color-deep-indigo, #3a5fb1);
-        }
-        .ms-drill-block-target {
-          font-family: 'Iowan Old Style', 'Charter', Georgia, serif;
-          font-size: 16.5px;
-          line-height: 1.55;
-          color: var(--color-midnight-ink);
-          margin: 4px 0 0;
-        }
-        .ms-drill-block-tactic {
-          font-size: 13.5px;
-          color: rgba(17,17,17,0.78);
-          margin-top: 8px;
-          line-height: 1.5;
-        }
-
-        /* ─── Speaker layer (spoken view) ─────────────────────────── */
+        /* ─── Speaker layer ─────────────────────────────────────── */
         .ms-spoken-skipped {
           color: rgba(17,17,17,0.4);
           text-decoration: line-through;
@@ -588,7 +493,160 @@ export function ManuscriptScript({
           opacity: 0.55;
         }
 
-        /* ─── Sticky action bar ───────────────────────────────────── */
+        /* ─── Comments rail ─────────────────────────────────────── */
+        .ms-rail {
+          /* On wide screens the rail sits beside the manuscript and
+             scrolls independently with the page. We keep it
+             non-sticky so its top aligns with the manuscript top —
+             feels more like Google Docs comments than a sidebar. */
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          padding-top: 64px; /* matches the height of the sticky toggle */
+        }
+        @media (max-width: 1099px) {
+          .ms-rail { padding-top: 12px; }
+        }
+
+        .ms-rail-empty {
+          padding: 20px;
+          font-size: 13px;
+          color: var(--color-muted-ash);
+          font-style: italic;
+          text-align: center;
+          border: 1px dashed rgba(17,17,17,0.12);
+          border-radius: 8px;
+        }
+
+        /* ─── Edit card ─────────────────────────────────────────── */
+        .ms-card {
+          background: var(--color-canvas-white);
+          border: 1px solid rgba(17,17,17,0.10);
+          border-radius: 10px;
+          padding: 14px 16px;
+          transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+          scroll-margin-top: 80px; /* don't hide behind the toggle on scroll */
+        }
+        .ms-card.is-active {
+          border-color: rgba(50,142,250,0.45);
+          box-shadow: 0 0 0 3px rgba(50,142,250,0.10);
+        }
+        .ms-card.is-accepted {
+          background: rgba(71, 208, 150, 0.04);
+          border-color: rgba(71, 208, 150, 0.24);
+        }
+        .ms-card.is-rejected {
+          opacity: 0.55;
+        }
+        .ms-card-meta {
+          display: flex;
+          align-items: baseline;
+          gap: 8px;
+          font-size: 10.5px;
+          font-weight: 500;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          color: var(--color-muted-ash);
+          margin-bottom: 8px;
+        }
+        .ms-card-meta strong { font-weight: 600; }
+        .ms-card-meta strong.cut { color: #88321a; }
+        .ms-card-meta strong.adopt { color: var(--color-deep-indigo); }
+        .ms-card-meta strong.rephrase { color: #5a4310; }
+        .ms-card-meta strong.drill { color: #1a4f88; }
+
+        .ms-card-redline {
+          font-family: var(--font-script);
+          font-size: 14.5px;
+          line-height: 1.55;
+          margin: 0;
+        }
+        .ms-card-redline.cut {
+          color: rgba(17,17,17,0.5);
+          text-decoration: line-through;
+          text-decoration-color: rgba(225,101,64,0.5);
+          text-decoration-thickness: 1.5px;
+        }
+        .ms-card-redline.rephrase-old {
+          color: rgba(17,17,17,0.5);
+          text-decoration: line-through;
+          text-decoration-color: rgba(225,101,64,0.5);
+          text-decoration-thickness: 1.5px;
+          display: block;
+        }
+        .ms-card-redline.rephrase-new {
+          background: rgba(251,199,104,0.28);
+          color: #4a3508;
+          border-radius: 3px;
+          padding: 1px 6px;
+          display: inline-block;
+          margin-top: 4px;
+        }
+        .ms-card-redline.adopt {
+          background: rgba(50,142,250,0.08);
+          color: var(--color-deep-indigo, #3a5fb1);
+          border-radius: 3px;
+          padding: 1px 6px;
+          display: inline-block;
+          font-style: italic;
+        }
+        .ms-card-redline.drill {
+          color: var(--color-midnight-ink);
+          padding-left: 10px;
+          border-left: 2px solid rgba(26, 79, 136, 0.4);
+        }
+        .ms-card-reason {
+          margin-top: 10px;
+          font-size: 12.5px;
+          line-height: 1.5;
+          color: rgba(17,17,17,0.7);
+          font-family: 'Inter', sans-serif;
+        }
+        .ms-card-tactic {
+          margin-top: 8px;
+          font-size: 13px;
+          line-height: 1.5;
+          color: var(--color-midnight-ink);
+          font-family: 'Inter', sans-serif;
+        }
+        .ms-card-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 12px;
+        }
+        .ms-card-btn {
+          appearance: none;
+          background: transparent;
+          border: 1px solid rgba(17,17,17,0.18);
+          color: var(--color-midnight-ink);
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background 120ms ease, border-color 120ms ease;
+        }
+        .ms-card-btn:hover {
+          background: var(--color-whisper-gray, rgba(17,17,17,0.04));
+        }
+        .ms-card-btn.is-accept-active {
+          background: var(--color-midnight-ink);
+          color: var(--color-canvas-white);
+          border-color: var(--color-midnight-ink);
+        }
+        .ms-card-btn.is-reject-active {
+          background: rgba(225,101,64,0.10);
+          border-color: rgba(225,101,64,0.45);
+          color: #88321a;
+        }
+        .ms-card-btn.is-drill {
+          color: var(--color-deep-indigo, #3a5fb1);
+          border-color: rgba(50,142,250,0.32);
+        }
+        .ms-card-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ─── Sticky action bar ─────────────────────────────────── */
         .ms-bar {
           position: fixed;
           left: 0; right: 0; bottom: 0;
@@ -607,7 +665,7 @@ export function ManuscriptScript({
           align-items: center;
           gap: 14px;
           width: 100%;
-          max-width: 760px;
+          max-width: 1140px;
         }
         .ms-bar-count {
           font-size: 13px;
@@ -625,185 +683,171 @@ export function ManuscriptScript({
         }
       `}</style>
 
-      <div className="ms">
-        <div className="ms-toggle" role="tablist" aria-label="View">
-          <button
-            role="tab"
-            aria-selected={viewMode === "coach"}
-            className="ms-toggle-pill"
-            onClick={() => setViewMode("coach")}
-          >
-            Coach edits
-          </button>
-          <button
-            role="tab"
-            aria-selected={viewMode === "spoken"}
-            className="ms-toggle-pill"
-            onClick={() => setViewMode("spoken")}
-          >
-            What you said
-          </button>
-          <button
-            role="tab"
-            aria-selected={viewMode === "both"}
-            className="ms-toggle-pill"
-            onClick={() => setViewMode("both")}
-          >
-            Both
-          </button>
-          <span className="ms-toggle-spacer" />
-          <span className="ms-toggle-meta">
-            {viewMode === "coach"
-              ? `${acceptedEdits.length} of ${suggestedEdits.filter((e) => e.kind !== "drill").length} accepted`
-              : viewMode === "spoken"
-              ? "How your delivery diverged"
-              : "Coach + speaker layers overlaid"}
-          </span>
+      <div className={`ms-grid ${showRail ? "has-rail" : ""}`}>
+        {/* ─── Left column: manuscript ─────────────────────────── */}
+        <div>
+          <div className="ms-toggle" role="tablist" aria-label="View">
+            <button
+              role="tab"
+              aria-selected={viewMode === "coach"}
+              className="ms-toggle-pill"
+              onClick={() => setViewMode("coach")}
+            >
+              Coach edits
+            </button>
+            <button
+              role="tab"
+              aria-selected={viewMode === "spoken"}
+              className="ms-toggle-pill"
+              onClick={() => setViewMode("spoken")}
+            >
+              What you said
+            </button>
+            <button
+              role="tab"
+              aria-selected={viewMode === "both"}
+              className="ms-toggle-pill"
+              onClick={() => setViewMode("both")}
+            >
+              Both
+            </button>
+            <span className="ms-toggle-spacer" />
+            <span className="ms-toggle-meta">
+              {viewMode === "coach"
+                ? `${acceptedEdits.length} of ${suggestedEdits.filter((e) => e.kind !== "drill").length} accepted`
+                : viewMode === "spoken"
+                ? "How your delivery diverged"
+                : "Coach + speaker layers overlaid"}
+            </span>
+          </div>
+
+          {sections.map((section) => {
+            const sectionEdits = editsBySection.get(section.id) ?? [];
+            const inlineEdits = sectionEdits.filter((e) => e.kind !== "drill");
+            const showCoach = viewMode === "coach" || viewMode === "both";
+            const showSpoken = viewMode === "spoken" || viewMode === "both";
+            const coachTokens = showCoach
+              ? tokeniseCoachEdits(section.body, inlineEdits)
+              : null;
+            const spokenTokens = showSpoken
+              ? tokeniseSpokenDeviations(diffRows, section.id)
+              : null;
+
+            return (
+              <section key={section.id} className="ms-section">
+                <header className="ms-section-head">
+                  <span className="ms-section-name">{section.name}</span>
+                  <SectionChip section={section} mode={mode} />
+                </header>
+
+                {coachTokens && (
+                  <p className="ms-body">
+                    {coachTokens.length === 0 ? (
+                      <span>{section.body}</span>
+                    ) : (
+                      coachTokens.map((tok, i) => (
+                        <CoachTokenSpan
+                          key={i}
+                          token={tok}
+                          acceptance={acceptance}
+                          activeEditId={activeEditId}
+                          onActivate={(id) => activateEdit(id, "manuscript")}
+                          setAnchorRef={setAnchorRef}
+                        />
+                      ))
+                    )}
+                  </p>
+                )}
+
+                {spokenTokens && (
+                  <p
+                    className="ms-body"
+                    style={
+                      viewMode === "both"
+                        ? {
+                            marginTop: 12,
+                            paddingTop: 12,
+                            borderTop: "1px dashed rgba(17,17,17,0.10)",
+                            fontSize: 16,
+                            color: "rgba(17,17,17,0.78)",
+                          }
+                        : undefined
+                    }
+                  >
+                    {viewMode === "both" && (
+                      <span
+                        style={{
+                          display: "block",
+                          fontFamily: "Inter, sans-serif",
+                          fontSize: 11,
+                          letterSpacing: "0.12em",
+                          textTransform: "uppercase",
+                          color: "var(--color-muted-ash)",
+                          marginBottom: 6,
+                        }}
+                      >
+                        What you said
+                      </span>
+                    )}
+                    {spokenTokens.length === 0 ? (
+                      <span style={{ color: "var(--color-muted-ash)", fontStyle: "italic" }}>
+                        — this section wasn&rsquo;t reached —
+                      </span>
+                    ) : (
+                      spokenTokens.map((tok, i) => <SpokenTokenSpan key={i} token={tok} />)
+                    )}
+                  </p>
+                )}
+              </section>
+            );
+          })}
+
+          {sections.length === 0 && (
+            <p
+              style={{
+                color: "var(--color-muted-ash)",
+                fontStyle: "italic",
+                padding: "32px 0",
+              }}
+            >
+              No sections to display.
+            </p>
+          )}
         </div>
 
-        {sections.map((section) => {
-          const sectionEdits = editsBySection.get(section.id) ?? [];
-          const inlineEdits = sectionEdits.filter((e) => e.kind !== "drill");
-          const drillEdits = sectionEdits.filter((e) => e.kind === "drill");
-          const showCoach = viewMode === "coach" || viewMode === "both";
-          const showSpoken = viewMode === "spoken" || viewMode === "both";
-
-          // Coach-layer tokens use the script body as the source of truth.
-          const coachTokens = showCoach
-            ? tokeniseCoachEdits(section.body, inlineEdits)
-            : null;
-          // Spoken-layer tokens use the diff rows for this section.
-          const spokenTokens = showSpoken
-            ? tokeniseSpokenDeviations(diffRows, section.id)
-            : null;
-
-          return (
-            <section key={section.id} className="ms-section">
-              <header className="ms-section-head">
-                <span className="ms-section-name">{section.name}</span>
-                <SectionChip section={section} mode={mode} />
-              </header>
-
-              {/* Coach layer */}
-              {coachTokens && (
-                <p className="ms-body">
-                  {coachTokens.length === 0 ? (
-                    <span>{section.body}</span>
-                  ) : (
-                    coachTokens.map((tok, i) => (
-                      <CoachToken
-                        key={i}
-                        token={tok}
-                        acceptance={acceptance}
-                        onSetEdit={setEdit}
-                      />
-                    ))
-                  )}
-                </p>
-              )}
-
-              {/* Drill annotations (paragraph-level — they don't fit
-                  inline). Always shown when there are drills for the
-                  section, regardless of view mode. */}
-              {drillEdits.map((edit) => (
-                <div key={edit.id} className="ms-drill-block">
-                  <div className="ms-drill-block-meta">
-                    <span className="ms-drill-block-label">Drill</span>
-                    <button
-                      type="button"
-                      onClick={() => startDrill(edit.id)}
-                      disabled={pending}
-                      className="ms-edit-btn is-drill"
-                    >
-                      Drill →
-                    </button>
-                  </div>
-                  {edit.line_target && (
-                    <p className="ms-drill-block-target">
-                      &ldquo;{edit.line_target}&rdquo;
-                    </p>
-                  )}
-                  {edit.tactic && (
-                    <p className="ms-drill-block-tactic">{edit.tactic}</p>
-                  )}
-                  {!edit.tactic && edit.reason && (
-                    <p className="ms-drill-block-tactic">{edit.reason}</p>
-                  )}
-                </div>
-              ))}
-
-              {/* Spoken layer — rendered separately when in
-                  "spoken" or "both" view. In "both" we render the
-                  spoken layer as a small subhead under the script. */}
-              {spokenTokens && (
-                <p
-                  className="ms-body"
-                  style={
-                    viewMode === "both"
-                      ? {
-                          marginTop: 12,
-                          paddingTop: 12,
-                          borderTop: "1px dashed rgba(17,17,17,0.10)",
-                          fontSize: 16,
-                          color: "rgba(17,17,17,0.78)",
-                        }
-                      : undefined
+        {/* ─── Right column: comments rail ─────────────────────── */}
+        {showRail && (
+          <aside className="ms-rail" aria-label="Coach edits">
+            {suggestedEdits.length === 0 ? (
+              <div className="ms-rail-empty">No suggestions for this take.</div>
+            ) : (
+              suggestedEdits.map((edit) => (
+                <EditCard
+                  key={edit.id}
+                  edit={edit}
+                  sectionName={
+                    sections.find((s) => s.id === edit.section_id)?.name ?? "Section"
                   }
-                >
-                  {viewMode === "both" && (
-                    <span
-                      style={{
-                        display: "block",
-                        fontFamily: "Inter, sans-serif",
-                        fontSize: 11,
-                        letterSpacing: "0.12em",
-                        textTransform: "uppercase",
-                        color: "var(--color-muted-ash)",
-                        marginBottom: 6,
-                      }}
-                    >
-                      What you said
-                    </span>
-                  )}
-                  {spokenTokens.length === 0 ? (
-                    <span style={{ color: "var(--color-muted-ash)", fontStyle: "italic" }}>
-                      — this section wasn&rsquo;t reached —
-                    </span>
-                  ) : (
-                    spokenTokens.map((tok, i) => <SpokenToken key={i} token={tok} />)
-                  )}
-                </p>
-              )}
-            </section>
-          );
-        })}
-
-        {/* Empty state when there are no sections at all */}
-        {sections.length === 0 && (
-          <p
-            style={{
-              color: "var(--color-muted-ash)",
-              fontStyle: "italic",
-              padding: "32px 0",
-            }}
-          >
-            No sections to display.
-          </p>
+                  state={acceptance.get(edit.id) ?? "pending"}
+                  isActive={activeEditId === edit.id}
+                  onSetState={(s) => setEdit(edit.id, s)}
+                  onActivate={() => activateEdit(edit.id, "rail")}
+                  onDrill={() => startDrill(edit.id)}
+                  drillPending={pending}
+                  setCardRef={setCardRef}
+                />
+              ))
+            )}
+          </aside>
         )}
       </div>
 
-      {/* ─── Sticky action bar ──────────────────────────────────── */}
+      {/* ─── Sticky action bar ─────────────────────────────────── */}
       <div className="ms-bar">
         <div className="ms-bar-inner">
           <span className="ms-bar-count">
-            {pendingDrills.length > 0
-              ? `${acceptedEdits.length} ${
-                  acceptedEdits.length === 1 ? "edit" : "edits"
-                } accepted · ${pendingDrills.length} drill ${
-                  pendingDrills.length === 1 ? "section" : "sections"
-                }`
-              : acceptedEdits.length === 0
-              ? `No edits yet — accept some above`
+            {acceptedEdits.length === 0
+              ? `No edits accepted yet`
               : `${acceptedEdits.length} ${
                   acceptedEdits.length === 1 ? "edit" : "edits"
                 } accepted`}
@@ -835,113 +879,85 @@ export function ManuscriptScript({
   );
 }
 
-// ─── Token renderers ─────────────────────────────────────────────────
+// ─── Manuscript token renderers ──────────────────────────────────────
 
-function CoachToken({
+function CoachTokenSpan({
   token,
   acceptance,
-  onSetEdit,
+  activeEditId,
+  onActivate,
+  setAnchorRef,
 }: {
   token: Token;
   acceptance: Map<string, AcceptanceState>;
-  onSetEdit: (id: string, state: AcceptanceState) => void;
+  activeEditId: string | null;
+  onActivate: (id: string) => void;
+  setAnchorRef: (id: string, el: HTMLElement | null) => void;
 }) {
-  if (token.kind === "text") {
-    return <span>{token.text}</span>;
-  }
-  if (token.kind !== "coach-edit") {
-    // Shouldn't happen in coach-layer rendering, but fall through cleanly.
-    return null;
-  }
+  if (token.kind === "text") return <span>{token.text}</span>;
+  if (token.kind !== "coach-edit") return null;
+
   const { edit, original } = token;
   const state = acceptance.get(edit.id) ?? "pending";
 
-  // Rejected: render the original text as if the edit didn't exist.
+  // Rejected: hide the change. Show the original text plain (for cut/
+  // rephrase) or nothing (for adopt). No anchor — there's nothing to
+  // point to.
   if (state === "rejected") {
     if (edit.kind === "cut" || edit.kind === "rephrase") {
       return <span>{original}</span>;
     }
-    // Adopt rejected → render nothing
     return null;
   }
 
+  const isActive = activeEditId === edit.id;
+  const stateClass = state === "accepted" ? "accepted" : "pending";
+  const activeClass = isActive ? " is-active" : "";
+
   if (edit.kind === "cut") {
     return (
-      <span className="ms-edit">
-        <span className={`ms-edit-pending ms-cut${state === "accepted" ? " ms-edit-accepted" : ""}`}>
-          {original}
-        </span>
-        <EditChip edit={edit} state={state} onSetEdit={onSetEdit} />
+      <span
+        ref={(el) => setAnchorRef(edit.id, el)}
+        className={`ms-edit-anchor ms-cut ${stateClass}${activeClass}`}
+        onClick={() => onActivate(edit.id)}
+        onMouseEnter={() => onActivate(edit.id)}
+      >
+        {original}
       </span>
     );
   }
   if (edit.kind === "rephrase") {
     return (
-      <span className="ms-edit">
+      <span
+        ref={(el) => setAnchorRef(edit.id, el)}
+        className={`ms-edit-anchor${activeClass}`}
+        onClick={() => onActivate(edit.id)}
+        onMouseEnter={() => onActivate(edit.id)}
+      >
         {state === "pending" && (
-          <span className="ms-edit-pending ms-rephrase-old">{original}</span>
+          <span className={`ms-rephrase-old ${stateClass}`}>{original}</span>
         )}
-        <span
-          className={`ms-edit-pending ms-rephrase-new${state === "accepted" ? " ms-edit-accepted" : ""}`}
-        >
-          {edit.after}
-        </span>
-        <EditChip edit={edit} state={state} onSetEdit={onSetEdit} />
+        <span className={`ms-rephrase-new ${stateClass}`}>{edit.after}</span>
       </span>
     );
   }
   if (edit.kind === "adopt") {
     return (
-      <span className="ms-edit">
+      <span
+        ref={(el) => setAnchorRef(edit.id, el)}
+        className={`ms-edit-anchor${activeClass}`}
+        onClick={() => onActivate(edit.id)}
+        onMouseEnter={() => onActivate(edit.id)}
+      >
         {" "}
-        <span
-          className={`ms-edit-pending ms-adopt${state === "accepted" ? " ms-edit-accepted" : ""}`}
-        >
-          {edit.after}
-        </span>
-        <EditChip edit={edit} state={state} onSetEdit={onSetEdit} />
+        <span className={`ms-adopt ${stateClass}`}>{edit.after}</span>
       </span>
     );
   }
   return null;
 }
 
-function EditChip({
-  edit,
-  state,
-  onSetEdit,
-}: {
-  edit: SuggestedEdit;
-  state: AcceptanceState;
-  onSetEdit: (id: string, state: AcceptanceState) => void;
-}) {
-  return (
-    <span className="ms-edit-chip">
-      <button
-        type="button"
-        className={`ms-edit-btn${state === "accepted" ? " is-accept-active" : ""}`}
-        onClick={() =>
-          onSetEdit(edit.id, state === "accepted" ? "pending" : "accepted")
-        }
-        title={edit.reason}
-      >
-        {state === "accepted" ? "Accepted" : "Accept"}
-      </button>
-      {state !== "rejected" && (
-        <button
-          type="button"
-          className="ms-edit-btn is-reject"
-          onClick={() => onSetEdit(edit.id, "rejected")}
-          title="Reject this suggestion"
-        >
-          Reject
-        </button>
-      )}
-    </span>
-  );
-}
-
-function SpokenToken({ token }: { token: Token }) {
+function SpokenTokenSpan({ token }: { token: Token }) {
   if (token.kind === "text") return <span>{token.text}</span>;
   if (token.kind === "speaker-skipped") {
     return <span className="ms-spoken-skipped">{token.text}</span>;
@@ -968,7 +984,6 @@ function SpokenToken({ token }: { token: Token }) {
               </span>
             );
           }
-          // sub
           return (
             <span key={i}>
               <span className="ms-spoken-paraphrase-old">{op.written}</span>
@@ -982,6 +997,130 @@ function SpokenToken({ token }: { token: Token }) {
   return null;
 }
 
+// ─── Rail card ───────────────────────────────────────────────────────
+
+function EditCard({
+  edit,
+  sectionName,
+  state,
+  isActive,
+  onSetState,
+  onActivate,
+  onDrill,
+  drillPending,
+  setCardRef,
+}: {
+  edit: SuggestedEdit;
+  sectionName: string;
+  state: AcceptanceState;
+  isActive: boolean;
+  onSetState: (s: AcceptanceState) => void;
+  onActivate: () => void;
+  onDrill: () => void;
+  drillPending: boolean;
+  setCardRef: (id: string, el: HTMLElement | null) => void;
+}) {
+  const kindLabel: Record<SuggestedEdit["kind"], string> = {
+    cut: "Cut",
+    adopt: "Adopt",
+    rephrase: "Rephrase",
+    drill: "Drill",
+  };
+  const stateClass =
+    state === "accepted"
+      ? "is-accepted"
+      : state === "rejected"
+      ? "is-rejected"
+      : "";
+
+  return (
+    <div
+      ref={(el) => setCardRef(edit.id, el)}
+      className={`ms-card ${stateClass}${isActive ? " is-active" : ""}`}
+      onMouseEnter={() => onActivate()}
+      onClick={() => onActivate()}
+    >
+      <div className="ms-card-meta">
+        <strong className={edit.kind}>{kindLabel[edit.kind]}</strong>
+        <span aria-hidden="true">·</span>
+        <span>{sectionName}</span>
+      </div>
+
+      {edit.kind === "cut" && edit.before && (
+        <p className="ms-card-redline cut">&ldquo;{edit.before}&rdquo;</p>
+      )}
+      {edit.kind === "adopt" && edit.after && (
+        <p className="ms-card-redline adopt">&ldquo;{edit.after}&rdquo;</p>
+      )}
+      {edit.kind === "rephrase" && (
+        <>
+          {edit.before && (
+            <span className="ms-card-redline rephrase-old">
+              &ldquo;{edit.before}&rdquo;
+            </span>
+          )}
+          {edit.after && (
+            <span className="ms-card-redline rephrase-new">
+              &ldquo;{edit.after}&rdquo;
+            </span>
+          )}
+        </>
+      )}
+      {edit.kind === "drill" && edit.line_target && (
+        <p className="ms-card-redline drill">&ldquo;{edit.line_target}&rdquo;</p>
+      )}
+
+      {edit.kind === "drill" && edit.tactic ? (
+        <p className="ms-card-tactic">{edit.tactic}</p>
+      ) : (
+        edit.reason && <p className="ms-card-reason">{edit.reason}</p>
+      )}
+      {edit.kind === "drill" && edit.tactic && edit.reason && (
+        <p className="ms-card-reason">{edit.reason}</p>
+      )}
+
+      <div className="ms-card-actions">
+        {edit.kind === "drill" ? (
+          <button
+            type="button"
+            className="ms-card-btn is-drill"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDrill();
+            }}
+            disabled={drillPending}
+          >
+            Drill →
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className={`ms-card-btn${state === "accepted" ? " is-accept-active" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSetState(state === "accepted" ? "pending" : "accepted");
+              }}
+            >
+              {state === "accepted" ? "Accepted" : "Accept"}
+            </button>
+            <button
+              type="button"
+              className={`ms-card-btn${state === "rejected" ? " is-reject-active" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSetState(state === "rejected" ? "pending" : "rejected");
+              }}
+            >
+              {state === "rejected" ? "Rejected" : "Reject"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SectionChip({
   section,
   mode,
@@ -989,8 +1128,6 @@ function SectionChip({
   section: SectionInput;
   mode: SessionMode;
 }) {
-  // From-memory mode: show the memory band, not pacing — recall is
-  // the user's primary lens here.
   if (mode === "freestyle" && section.memoryBand) {
     const band = section.memoryBand;
     const label =
@@ -1015,7 +1152,6 @@ function SectionChip({
         : "muted";
     return <span className={`ms-section-chip ${color}`}>{label}</span>;
   }
-  // Script-visible mode: show pacing.
   if (section.pacing) {
     const { actualSeconds, targetSeconds, deltaSeconds } = section.pacing;
     const sign = deltaSeconds > 0 ? "+" : deltaSeconds < 0 ? "−" : "";
