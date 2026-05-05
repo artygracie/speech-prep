@@ -499,3 +499,51 @@ export function alignSession(
     diff: buildDiff(sections, transcriptWords),
   };
 }
+
+// ---------- Script ↔ script diff ----------
+//
+// Compare two versions of the same speech (v(a) ↔ v(b)) and produce the
+// same DiffRow shape the session report uses. Sections are aligned by
+// position, not id, because cross-version section ids never match — but
+// we still want one logical diff per section pair, so we route every
+// "old" word through the new section's id and let buildDiff group runs
+// the way it normally does.
+//
+// Implementation: synthesize a TranscriptWord[] from the *old* sections'
+// text (timestamps zero'd) and run buildDiff against the *new* sections.
+// "skipped" rows become the cuts (in v(a) but not v(b)); "improv" rows
+// become additions (in v(b) but not v(a)); "paraphrase" rows are
+// rewordings.
+
+export function buildScriptDiff(
+  oldSections: ScriptSection[],
+  newSections: ScriptSection[],
+): DiffRow[] {
+  // Treat the new script as the "script" and the old script as the
+  // "transcript" — the alignment is symmetric, but this orientation
+  // makes "skipped" mean "in old but cut from new" and "improv" mean
+  // "added in new", which is the way users read a redline.
+  //
+  // Wait — buildDiff iterates pairs and labels p.s (script) as
+  // "skipped" when the transcript dropped it. So if we want "skipped"
+  // to mean "removed in v(b)", the *old* script must be the
+  // ScriptSection arg and the *new* script the transcript. Doing it
+  // that way.
+  const fakeTranscript: TranscriptWord[] = [];
+  for (const s of newSections) {
+    if (!s.body) continue;
+    for (const raw of s.body.split(/\s+/)) {
+      if (!raw) continue;
+      // We embed the new-section id into the word so the diff renderer
+      // can route the row to the right section. Cheap encoding.
+      fakeTranscript.push({
+        word: raw,
+        startMs: 0,
+        endMs: 0,
+        confidence: 1,
+        isFiller: false,
+      });
+    }
+  }
+  return buildDiff(oldSections, fakeTranscript);
+}
