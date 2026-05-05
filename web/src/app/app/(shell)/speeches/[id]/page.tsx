@@ -216,6 +216,7 @@ export default async function SpeechDetailPage({
           <UpgradeCard
             freeSessionsRemaining={freeSessionsRemaining}
             speechId={speech.id}
+            returnTo={`/app/speeches/${speech.id}`}
             context="speech-detail"
           />
         </div>

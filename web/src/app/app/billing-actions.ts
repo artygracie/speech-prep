@@ -12,6 +12,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { stripe, PRICES, SITE_URL } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { safeReturnTo } from "@/lib/entitlements";
 
 // Reuse a customer if we have one; otherwise mint a new one and write
 // the id back to the profile so we don't create duplicates on every
@@ -42,6 +43,11 @@ export async function startSubscriptionCheckout(formData: FormData): Promise<voi
   const priceId = cadence === "yearly" ? PRICES.practiced_yearly : PRICES.practiced_monthly;
   if (!priceId) throw new Error(`No Stripe price configured for cadence=${cadence}`);
 
+  // Where to send the user after they pay. Stored on the Stripe session
+  // metadata so the post-checkout redirect target can read it back, and
+  // sanitised to same-origin paths to prevent open redirects.
+  const returnTo = safeReturnTo(formData.get("return_to")?.toString() ?? null);
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -56,11 +62,11 @@ export async function startSubscriptionCheckout(formData: FormData): Promise<voi
     line_items: [{ price: priceId, quantity: 1 }],
     // The metadata flows into the webhook so we can attribute payments
     // back to the right user even in race conditions.
-    metadata: { user_id: user.id, plan: "practiced", cadence },
+    metadata: { user_id: user.id, plan: "practiced", cadence, return_to: returnTo },
     subscription_data: {
       metadata: { user_id: user.id, plan: "practiced", cadence },
     },
-    success_url: `${SITE_URL}/app/billing?status=success&session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${SITE_URL}/app/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${SITE_URL}/app/billing?status=cancelled`,
     allow_promotion_codes: true,
     billing_address_collection: "auto",
@@ -76,6 +82,7 @@ export async function startOneShotCheckout(formData: FormData): Promise<void> {
   if (!priceId) throw new Error("SINGLE_SPEECH_PRICE not configured");
 
   const speechId = String(formData.get("speech_id") ?? "");
+  const returnTo = safeReturnTo(formData.get("return_to")?.toString() ?? null);
 
   const supabase = await createClient();
   const {
@@ -92,6 +99,7 @@ export async function startOneShotCheckout(formData: FormData): Promise<void> {
     metadata: {
       user_id: user.id,
       plan: "single_speech",
+      return_to: returnTo,
       ...(speechId ? { speech_id: speechId } : {}),
     },
     payment_intent_data: {
@@ -101,7 +109,7 @@ export async function startOneShotCheckout(formData: FormData): Promise<void> {
         ...(speechId ? { speech_id: speechId } : {}),
       },
     },
-    success_url: `${SITE_URL}/app/billing?status=success&session_id={CHECKOUT_SESSION_ID}`,
+    success_url: `${SITE_URL}/app/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${SITE_URL}/app/billing?status=cancelled`,
     allow_promotion_codes: true,
   });

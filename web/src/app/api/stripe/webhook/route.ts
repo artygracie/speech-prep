@@ -17,8 +17,13 @@
 // and updates `profiles` to reflect the new entitlement.
 
 import type Stripe from "stripe";
-import { stripe, PLAN_FOR_PRICE } from "@/lib/stripe";
+import { stripe } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  applyEntitlementFromCheckoutSession,
+  applySubscription,
+  resolveUserIdFromSubscription,
+} from "@/lib/entitlements";
 
 // Force the route to run on the Node runtime — Stripe's signature
 // verification uses Node's crypto and is unhappy on the Edge runtime.
@@ -28,11 +33,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function log(...args: unknown[]) {
-  // eslint-disable-next-line no-console
   console.log("[stripe-webhook]", ...args);
 }
 function logError(...args: unknown[]) {
-  // eslint-disable-next-line no-console
   console.error("[stripe-webhook]", ...args);
 }
 
@@ -98,51 +101,12 @@ export async function POST(req: Request): Promise<Response> {
 
 async function onCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
   const userId = (session.metadata?.user_id ?? null) as string | null;
-  const planTag = (session.metadata?.plan ?? null) as string | null;
-  const speechId = (session.metadata?.speech_id ?? null) as string | null;
-  const customerId =
-    typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
-
   if (!userId) {
     log("no user_id in checkout metadata; skipping", session.id);
     return;
   }
-
-  const admin = createAdminClient();
-
-  // Subscription path: details land via the subscription.* events too,
-  // but we record the customer id and a placeholder plan now so the
-  // user sees their entitlement immediately on the success redirect.
-  if (session.mode === "subscription" && session.subscription) {
-    const subId = typeof session.subscription === "string"
-      ? session.subscription
-      : session.subscription.id;
-    const sub = await stripe.subscriptions.retrieve(subId);
-    await applySubscription(userId, sub);
-    return;
-  }
-
-  // One-shot pass: $19, gives 7 days of access locked to one speech
-  // (or all speeches if no speech_id was passed).
-  if (session.mode === "payment" && planTag === "single_speech") {
-    const periodEnd = new Date();
-    periodEnd.setDate(periodEnd.getDate() + 7);
-
-    const { error } = await admin
-      .from("profiles")
-      .update({
-        plan: "single_speech",
-        stripe_customer_id: customerId,
-        stripe_subscription_id: null,
-        subscription_status: "one_shot",
-        current_period_end: periodEnd.toISOString(),
-        ...(speechId ? { one_shot_speech_id: speechId } : {}),
-      })
-      .eq("id", userId);
-    if (error) throw error;
-    log("granted one-shot pass", { userId, speechId, until: periodEnd.toISOString() });
-    return;
-  }
+  await applyEntitlementFromCheckoutSession(session);
+  log("applied entitlement", { userId, mode: session.mode });
 }
 
 async function onSubscriptionChanged(sub: Stripe.Subscription): Promise<void> {
@@ -195,55 +159,3 @@ async function onInvoicePaymentFailed(inv: Stripe.Invoice): Promise<void> {
   log("invoice payment failed", { userId: profile.id });
 }
 
-// ============================================================
-// Helpers
-// ============================================================
-
-async function applySubscription(userId: string, sub: Stripe.Subscription): Promise<void> {
-  const admin = createAdminClient();
-  // The first item's price drives the plan label. Multi-item subs aren't
-  // a thing in our pricing model.
-  const item = sub.items.data[0];
-  const priceId = item?.price.id;
-  const inferredPlan = priceId ? PLAN_FOR_PRICE[priceId] : undefined;
-  const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
-
-  // The Stripe API exposes period_end on the sub item; on the sub itself
-  // it's `current_period_end` for backwards compat.
-  const periodEndUnix =
-    (sub as unknown as { current_period_end?: number }).current_period_end ??
-    (item as unknown as { current_period_end?: number } | undefined)?.current_period_end ??
-    null;
-
-  const { error } = await admin
-    .from("profiles")
-    .update({
-      plan: inferredPlan ?? "practiced",
-      stripe_customer_id: customerId,
-      stripe_subscription_id: sub.id,
-      subscription_status: sub.status,
-      current_period_end: periodEndUnix
-        ? new Date(periodEndUnix * 1000).toISOString()
-        : null,
-    })
-    .eq("id", userId);
-  if (error) throw error;
-  log("subscription applied", { userId, status: sub.status, plan: inferredPlan });
-}
-
-async function resolveUserIdFromSubscription(sub: Stripe.Subscription): Promise<string | null> {
-  // First try the metadata we set at checkout time.
-  const metaUserId = (sub.metadata?.user_id ?? null) as string | null;
-  if (metaUserId) return metaUserId;
-
-  // Fall back to looking the user up by their stripe_customer_id.
-  const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
-  if (!customerId) return null;
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("profiles")
-    .select("id")
-    .eq("stripe_customer_id", customerId)
-    .maybeSingle();
-  return data?.id ?? null;
-}

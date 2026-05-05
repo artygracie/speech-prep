@@ -113,6 +113,7 @@ export default async function RecordPage({
         <UpgradeCard
           freeSessionsRemaining={freeSessionsRemaining}
           speechId={speech.id}
+          returnTo={`/app/speeches/${speech.id}/record`}
           context="recorder-gate"
         />
       ) : (
