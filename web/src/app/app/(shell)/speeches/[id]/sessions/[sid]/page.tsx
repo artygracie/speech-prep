@@ -432,155 +432,169 @@ export default async function SessionReportPage({
       )}
       </div>
 
-      {/* ===== 2. SAID vs. WRITTEN =====
-          Document-style view with three tabs (Diff / Transcript /
-          Script). Both modes default to Diff — Script-visible users
-          want to see deviations from the page; From-memory users want
-          to see where their recall failed. The framing copy differs
-          between modes; the underlying view is the same. */}
-      <section className="mt-14">
-        <h2 className="text-heading">{
-          currentMode === "freestyle"
-            ? "What you remembered, what you didn’t"
-            : "What landed when you said it"
-        }</h2>
-        <p
-          className="text-body-sm mt-2"
-          style={{ color: "var(--color-muted-ash)", maxWidth: 580 }}
+      {/* ===== Full report disclosure =====
+          Diff, pacing, and live notes live below a collapsed disclosure
+          so the user's first read is just headline + edits + apply
+          button. Power users (or users who want to verify the coach)
+          click "See full report" to expand the rest. */}
+      <details className="mt-12" style={{ maxWidth: 760 }}>
+        <summary
+          style={{
+            cursor: "pointer",
+            fontSize: 14,
+            fontWeight: 500,
+            color: "var(--color-midnight-ink)",
+            padding: "12px 16px",
+            border: "1px solid rgba(17,17,17,0.08)",
+            borderRadius: 10,
+            listStyle: "none",
+            userSelect: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
         >
-          {currentMode === "freestyle"
-            ? "Strikethroughs are lines you skipped. Gold highlights are where memory came close but not exact. Blue italic is what you said when memory filled the gap."
-            : "Strikethroughs are lines you skipped. Gold highlights are where you phrased it differently than the page. Blue italic is what you added live — those are usually worth adopting into the script."}
-        </p>
-        <div className="mt-5">
-          {diff.length > 0 ? (
-            <DiffDocument
-              diff={diff}
-              sections={sectionListForDoc}
-              mode={currentMode}
-              transcriptText={transcriptText}
-              scriptBodies={scriptBodies}
-            />
-          ) : (
-            <div className="empty-state">
-              <p className="text-subheading">
-                Lining up your transcript against the script…
-              </p>
-              <p
-                className="text-body mt-3"
-                style={{ color: "var(--color-muted-ash)" }}
-              >
-                This page refreshes itself — you don&rsquo;t need to do anything.
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
+          <span>See full report</span>
+          <span
+            style={{
+              fontSize: 12,
+              color: "var(--color-muted-ash)",
+              fontWeight: 400,
+            }}
+          >
+            transcript · diff · pacing · notes
+          </span>
+        </summary>
 
-      {/* ===== 3. PACING =====
-          Full-strength target framing in Script-visible mode. In
-          From-memory mode we soften: the user's brain is doing
-          memorization work, not pace work — pace targets are a
-          reference, not a goal. We keep the same chart but add a
-          note that flips its mental model. */}
-      {metrics.length > 0 && (
-        <section className="mt-14">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-heading">Pacing</h2>
-            <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
-              Target {fmtTime(targetTotal)} · Actual {fmtTime(actualTotal)}
-            </span>
-          </div>
-          {isFreestyle && (
-            <p
-              className="text-body-sm mt-2"
-              style={{ color: "var(--color-muted-ash)", maxWidth: 580, fontStyle: "italic" }}
-            >
-              Pace targets reflect your script. In From-memory mode, treat them as a reference — the work here is recall, not pacing.
-            </p>
-          )}
-          <div className="card-bordered mt-5" style={{ padding: 24 }}>
-            <div style={{ display: "grid", gap: 18 }}>
-              {sections.map((sec) => {
-                const m = metrics.find((x) => x.section_id === sec.id);
-                const actual = m?.actual_seconds ?? 0;
-                const target = sec.targetSeconds;
-                const delta = actual - target;
-                const widthTarget = (target / Math.max(targetTotal, 1)) * 100;
-                const widthActual = (actual / Math.max(targetTotal, 1)) * 100;
-                const color =
-                  Math.abs(delta) <= 5
-                    ? "var(--color-deliver-green)"
-                    : delta > 0
-                    ? "var(--color-leadgen-red)"
-                    : "var(--color-engagement-gold)";
-                return (
-                  <div key={sec.id}>
-                    <div className="flex items-baseline justify-between mb-2">
-                      <span className="text-body-sm" style={{ fontWeight: 500 }}>
-                        {sectionNameById.get(sec.id) ?? "Untitled"}
-                      </span>
-                      <span className="text-body-sm num" style={{ color }}>
-                        {fmtTime(actual)} / {fmtTime(target)} · {signTime(delta)}
-                      </span>
-                    </div>
-                    <div style={{ position: "relative", height: 18 }}>
-                      <div style={{ position: "absolute", inset: "6px 0", background: "rgba(17,17,17,0.04)", borderRadius: 999 }} />
-                      <div
-                        style={{
-                          position: "absolute",
-                          left: 0,
-                          top: 6,
-                          height: 6,
-                          width: `${widthTarget}%`,
-                          background: "rgba(17,17,17,0.18)",
-                          borderRadius: 999,
-                        }}
-                      />
-                      <div
-                        style={{
-                          position: "absolute",
-                          left: 0,
-                          top: 6,
-                          height: 6,
-                          width: `${widthActual}%`,
-                          background: color,
-                          borderRadius: 999,
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+        <div style={{ marginTop: 24 }}>
+          {/* Said vs. written. Mode-aware copy + default tab. */}
+          <section>
+            <h3 className="text-subheading">{
+              currentMode === "freestyle"
+                ? "What you remembered, what you didn’t"
+                : "What landed when you said it"
+            }</h3>
+            <div className="mt-4">
+              {diff.length > 0 ? (
+                <DiffDocument
+                  diff={diff}
+                  sections={sectionListForDoc}
+                  mode={currentMode}
+                  transcriptText={transcriptText}
+                  scriptBodies={scriptBodies}
+                />
+              ) : (
+                <div className="empty-state">
+                  <p className="text-body" style={{ color: "var(--color-muted-ash)" }}>
+                    Lining up your transcript against the script…
+                  </p>
+                </div>
+              )}
             </div>
-          </div>
-        </section>
-      )}
+          </section>
 
-      {/* ===== 4. LIVE TAGS ===== */}
-      {Array.isArray(session.tags) && session.tags.length > 0 && (
-        <section className="mt-14">
-          <h2 className="text-heading">Live notes you flagged</h2>
-          <div className="card-bordered mt-5" style={{ padding: 24, maxWidth: 760 }}>
-            {(session.tags as { kind: string; label: string; atMs: number }[]).map((t, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  padding: "10px 0",
-                  borderTop: i === 0 ? 0 : "1px solid rgba(17,17,17,0.06)",
-                }}
-              >
-                <span className="text-body-sm">{t.label}</span>
-                <span className="text-caption num" style={{ color: "var(--color-muted-ash)" }}>
-                  {fmtTime(Math.floor((t.atMs ?? 0) / 1000))}
+          {/* Pacing. Softened framing in From-memory mode. */}
+          {metrics.length > 0 && (
+            <section className="mt-12">
+              <div className="flex items-baseline justify-between">
+                <h3 className="text-subheading">Pacing</h3>
+                <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
+                  Target {fmtTime(targetTotal)} · Actual {fmtTime(actualTotal)}
                 </span>
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+              {isFreestyle && (
+                <p
+                  className="text-body-sm mt-2"
+                  style={{ color: "var(--color-muted-ash)", maxWidth: 580, fontStyle: "italic" }}
+                >
+                  Pace targets reflect your script. In From-memory mode, treat them as a reference — the work here is recall, not pacing.
+                </p>
+              )}
+              <div className="card-bordered mt-4" style={{ padding: 20 }}>
+                <div style={{ display: "grid", gap: 14 }}>
+                  {sections.map((sec) => {
+                    const m = metrics.find((x) => x.section_id === sec.id);
+                    const actual = m?.actual_seconds ?? 0;
+                    const target = sec.targetSeconds;
+                    const delta = actual - target;
+                    const widthTarget = (target / Math.max(targetTotal, 1)) * 100;
+                    const widthActual = (actual / Math.max(targetTotal, 1)) * 100;
+                    const color =
+                      Math.abs(delta) <= 5
+                        ? "var(--color-deliver-green)"
+                        : delta > 0
+                        ? "var(--color-leadgen-red)"
+                        : "var(--color-engagement-gold)";
+                    return (
+                      <div key={sec.id}>
+                        <div className="flex items-baseline justify-between mb-2">
+                          <span className="text-body-sm" style={{ fontWeight: 500 }}>
+                            {sectionNameById.get(sec.id) ?? "Untitled"}
+                          </span>
+                          <span className="text-body-sm num" style={{ color }}>
+                            {fmtTime(actual)} / {fmtTime(target)} · {signTime(delta)}
+                          </span>
+                        </div>
+                        <div style={{ position: "relative", height: 18 }}>
+                          <div style={{ position: "absolute", inset: "6px 0", background: "rgba(17,17,17,0.04)", borderRadius: 999 }} />
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              top: 6,
+                              height: 6,
+                              width: `${widthTarget}%`,
+                              background: "rgba(17,17,17,0.18)",
+                              borderRadius: 999,
+                            }}
+                          />
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: 0,
+                              top: 6,
+                              height: 6,
+                              width: `${widthActual}%`,
+                              background: color,
+                              borderRadius: 999,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Live tags flagged during recording. */}
+          {Array.isArray(session.tags) && session.tags.length > 0 && (
+            <section className="mt-12">
+              <h3 className="text-subheading">Live notes you flagged</h3>
+              <div className="card-bordered mt-4" style={{ padding: 20, maxWidth: 760 }}>
+                {(session.tags as { kind: string; label: string; atMs: number }[]).map((t, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "8px 0",
+                      borderTop: i === 0 ? 0 : "1px solid rgba(17,17,17,0.06)",
+                    }}
+                  >
+                    <span className="text-body-sm">{t.label}</span>
+                    <span className="text-caption num" style={{ color: "var(--color-muted-ash)" }}>
+                      {fmtTime(Math.floor((t.atMs ?? 0) / 1000))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </details>
 
       {/* ===== Upgrade nudge =====
           Lives at the bottom of the report — after the user has felt
