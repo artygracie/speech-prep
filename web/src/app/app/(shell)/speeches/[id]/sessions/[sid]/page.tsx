@@ -187,6 +187,10 @@ export default async function SessionReportPage({
   const ageMs = Date.now() - new Date(session.created_at).getTime();
   const suspectedStuck =
     !hasTranscript && session.status !== "transcribed" && ageMs > 60_000;
+  // Transcript landed but coach hasn't run — AutoRefresh will fire
+  // /api/coach/run directly so the report fills in without the user
+  // having to do anything. Idempotent on the route side.
+  const needsCoach = hasTranscript && !hasCoach;
 
   return (
     <div>
@@ -195,6 +199,7 @@ export default async function SessionReportPage({
         sessionId={sessionId}
         done={pipelineDone}
         suspectedStuck={suspectedStuck}
+        needsCoach={needsCoach}
       />
 
       {/* ===== Header ===== */}
