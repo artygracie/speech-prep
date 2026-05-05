@@ -32,6 +32,7 @@ import {
   applyDrillSuggestion,
 } from "@/app/app/coach-actions";
 import { MODE_PRIMARY_CTA, type SessionMode } from "@/lib/modes";
+import { usePickedEdits } from "./picked-edits-context";
 
 export type SuggestedEdit = {
   id: string;
@@ -44,8 +45,6 @@ export type SuggestedEdit = {
   tactic?: string;
   provenance?: "coach" | "user-flag" | "alignment";
 };
-
-const DEFAULT_PICK_COUNT = 3;
 
 export function CoachCard({
   speechId,
@@ -76,33 +75,15 @@ export function CoachCard({
 }) {
   const router = useRouter();
 
-  // Pre-pick the top N on first render. The coach orders edits by
-  // impact, so the first three are the highest-leverage. This makes
-  // the common path one click.
-  const initialPicked = useMemo(() => {
-    const ids = suggestedEdits.slice(0, DEFAULT_PICK_COUNT).map((e) => e.id);
-    return new Set(ids);
-  }, [suggestedEdits]);
-
-  const [picked, setPicked] = useState<Set<string>>(initialPicked);
+  // Picked-edit state lives in PickedEditsProvider higher up the tree
+  // so the right-rail Live Script Preview can read it too. The
+  // provider seeds with the top N (default 3) edit ids on mount.
+  const { picked, toggle, pickIds, pickNone } = usePickedEdits();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function toggle(id: string) {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   function pickAll() {
-    setPicked(new Set(suggestedEdits.map((e) => e.id)));
-  }
-
-  function pickNone() {
-    setPicked(new Set());
+    pickIds(suggestedEdits.map((e) => e.id));
   }
 
   const pickedEdits = useMemo(

@@ -31,7 +31,6 @@ import {
   mergeSuggestedEdits,
 } from "@/lib/paraphrase-suggestions";
 import { CoachCard } from "./coach-card";
-import { CoachRail } from "./coach-rail";
 import { AutoDraftButton } from "./auto-draft-button";
 import { AutoRefresh } from "./auto-refresh";
 import { DiffDocument } from "./diff-document";
@@ -39,8 +38,14 @@ import { PlaybackDock } from "./playback-dock";
 import { MemoryCheckPanel, type MemoryCheckSection } from "./memory-check-panel";
 import { BetterOutLoudCard, type BetterOutLoudItem } from "./better-out-loud-card";
 import { StickyCTA } from "./sticky-cta";
+import { LiveScriptPreview } from "./live-script-preview";
+import { PickedEditsProvider } from "./picked-edits-context";
 import { UpgradeCard } from "@/components/upgrade-card";
 import { resolveMode, MODE_LABEL } from "@/lib/modes";
+
+// How many top edits to pre-pick on first render of the Coach card.
+// Coach orders edits by impact, so the first N are highest-leverage.
+const DEFAULT_PICK_COUNT = 3;
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -252,8 +257,18 @@ export default async function SessionReportPage({
     promoted,
     sectionBodyById,
   ) as SuggestedEditShape[];
-  const railEdits = allEdits;
-  const topEdit: SuggestedEditShape | null = railEdits[0] ?? null;
+
+  // Pre-pick the top N edits — drives Coach card defaults AND seeds
+  // the LiveScriptPreview rail so it shows the v(n+1) preview without
+  // the user having to click anything first.
+  const initialPickedIds = allEdits.slice(0, DEFAULT_PICK_COUNT).map((e) => e.id);
+
+  // Sections shaped for LiveScriptPreview — id, name, body.
+  const previewSections = (secRows ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    body: s.body ?? "",
+  }));
   // The whole pipeline is "done" when both transcript AND coach landed —
   // those are the two server-side jobs that happen post-stop.
   const pipelineDone = hasTranscript && hasCoach;
@@ -349,11 +364,12 @@ export default async function SessionReportPage({
         }
       `}</style>
 
-      {/* Two-column body. Main content (recording, diff, coach, pacing,
-          tags) flows in column 1. The CoachRail pins to column 2 on
-          desktop so the answer is always one glance away. The grid
-          collapses to a single column on mobile, where the rail is
-          hidden because the page is already a single scroll. */}
+      {/* Two-column body. Main content (Coach card, diff, pacing, tags)
+          flows in column 1. The LiveScriptPreview pins to column 2 on
+          desktop so the user watches their next-version script form as
+          they pick edits. The grid collapses to a single column on
+          mobile, where the rail is hidden because the page is already
+          a single scroll. */}
       <style>{`
         .report-grid {
           display: grid;
@@ -371,6 +387,7 @@ export default async function SessionReportPage({
           .report-rail-col { display: none; }
         }
       `}</style>
+      <PickedEditsProvider initialPickedIds={initialPickedIds}>
       <div className="report-grid">
        <div>
       {/* ===== 0. MODE-SPECIFIC HERO PANELS =====
@@ -432,169 +449,164 @@ export default async function SessionReportPage({
       )}
       </div>
 
-      {/* ===== Full report disclosure =====
-          Diff, pacing, and live notes live below a collapsed disclosure
-          so the user's first read is just headline + edits + apply
-          button. Power users (or users who want to verify the coach)
-          click "See full report" to expand the rest. */}
-      <details className="mt-12" style={{ maxWidth: 760 }}>
-        <summary
-          style={{
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: 500,
-            color: "var(--color-midnight-ink)",
-            padding: "12px 16px",
-            border: "1px solid rgba(17,17,17,0.08)",
-            borderRadius: 10,
-            listStyle: "none",
-            userSelect: "none",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <span>See full report</span>
-          <span
-            style={{
-              fontSize: 12,
-              color: "var(--color-muted-ash)",
-              fontWeight: 400,
-            }}
-          >
-            transcript · diff · pacing · notes
-          </span>
-        </summary>
-
-        <div style={{ marginTop: 24 }}>
-          {/* Said vs. written. Mode-aware copy + default tab. */}
-          <section>
-            <h3 className="text-subheading">{
-              currentMode === "freestyle"
-                ? "What you remembered, what you didn’t"
-                : "What landed when you said it"
-            }</h3>
-            <div className="mt-4">
-              {diff.length > 0 ? (
-                <DiffDocument
-                  diff={diff}
-                  sections={sectionListForDoc}
-                  mode={currentMode}
-                  transcriptText={transcriptText}
-                  scriptBodies={scriptBodies}
-                />
-              ) : (
-                <div className="empty-state">
-                  <p className="text-body" style={{ color: "var(--color-muted-ash)" }}>
-                    Lining up your transcript against the script…
-                  </p>
-                </div>
-              )}
+      {/* ===== 2. SAID vs. WRITTEN =====
+          The diff is the differentiating artifact of the product —
+          show it directly under the Coach. Mode-aware copy framing.
+          Pacing + live tags moved into a smaller disclosure below. */}
+      <section className="mt-12">
+        <h3 className="text-subheading">{
+          currentMode === "freestyle"
+            ? "What you remembered, what you didn’t"
+            : "What landed when you said it"
+        }</h3>
+        <div className="mt-4">
+          {diff.length > 0 ? (
+            <DiffDocument
+              diff={diff}
+              sections={sectionListForDoc}
+              mode={currentMode}
+              transcriptText={transcriptText}
+              scriptBodies={scriptBodies}
+            />
+          ) : (
+            <div className="empty-state">
+              <p className="text-body" style={{ color: "var(--color-muted-ash)" }}>
+                Lining up your transcript against the script…
+              </p>
             </div>
-          </section>
-
-          {/* Pacing. Softened framing in From-memory mode. */}
-          {metrics.length > 0 && (
-            <section className="mt-12">
-              <div className="flex items-baseline justify-between">
-                <h3 className="text-subheading">Pacing</h3>
-                <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
-                  Target {fmtTime(targetTotal)} · Actual {fmtTime(actualTotal)}
-                </span>
-              </div>
-              {isFreestyle && (
-                <p
-                  className="text-body-sm mt-2"
-                  style={{ color: "var(--color-muted-ash)", maxWidth: 580, fontStyle: "italic" }}
-                >
-                  Pace targets reflect your script. In From-memory mode, treat them as a reference — the work here is recall, not pacing.
-                </p>
-              )}
-              <div className="card-bordered mt-4" style={{ padding: 20 }}>
-                <div style={{ display: "grid", gap: 14 }}>
-                  {sections.map((sec) => {
-                    const m = metrics.find((x) => x.section_id === sec.id);
-                    const actual = m?.actual_seconds ?? 0;
-                    const target = sec.targetSeconds;
-                    const delta = actual - target;
-                    const widthTarget = (target / Math.max(targetTotal, 1)) * 100;
-                    const widthActual = (actual / Math.max(targetTotal, 1)) * 100;
-                    const color =
-                      Math.abs(delta) <= 5
-                        ? "var(--color-deliver-green)"
-                        : delta > 0
-                        ? "var(--color-leadgen-red)"
-                        : "var(--color-engagement-gold)";
-                    return (
-                      <div key={sec.id}>
-                        <div className="flex items-baseline justify-between mb-2">
-                          <span className="text-body-sm" style={{ fontWeight: 500 }}>
-                            {sectionNameById.get(sec.id) ?? "Untitled"}
-                          </span>
-                          <span className="text-body-sm num" style={{ color }}>
-                            {fmtTime(actual)} / {fmtTime(target)} · {signTime(delta)}
-                          </span>
-                        </div>
-                        <div style={{ position: "relative", height: 18 }}>
-                          <div style={{ position: "absolute", inset: "6px 0", background: "rgba(17,17,17,0.04)", borderRadius: 999 }} />
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: 0,
-                              top: 6,
-                              height: 6,
-                              width: `${widthTarget}%`,
-                              background: "rgba(17,17,17,0.18)",
-                              borderRadius: 999,
-                            }}
-                          />
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: 0,
-                              top: 6,
-                              height: 6,
-                              width: `${widthActual}%`,
-                              background: color,
-                              borderRadius: 999,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* Live tags flagged during recording. */}
-          {Array.isArray(session.tags) && session.tags.length > 0 && (
-            <section className="mt-12">
-              <h3 className="text-subheading">Live notes you flagged</h3>
-              <div className="card-bordered mt-4" style={{ padding: 20, maxWidth: 760 }}>
-                {(session.tags as { kind: string; label: string; atMs: number }[]).map((t, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      padding: "8px 0",
-                      borderTop: i === 0 ? 0 : "1px solid rgba(17,17,17,0.06)",
-                    }}
-                  >
-                    <span className="text-body-sm">{t.label}</span>
-                    <span className="text-caption num" style={{ color: "var(--color-muted-ash)" }}>
-                      {fmtTime(Math.floor((t.atMs ?? 0) / 1000))}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </section>
           )}
         </div>
-      </details>
+      </section>
+
+      {/* ===== Pacing & live notes — collapsed by default =====
+          Quantitative trim that's useful to verify but not load-bearing.
+          The diff above already tells the user where their delivery
+          went. */}
+      {(metrics.length > 0 ||
+        (Array.isArray(session.tags) && session.tags.length > 0)) && (
+        <details className="mt-10" style={{ maxWidth: 760 }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              fontSize: 13,
+              fontWeight: 500,
+              color: "var(--color-muted-ash)",
+              padding: "10px 14px",
+              border: "1px solid rgba(17,17,17,0.08)",
+              borderRadius: 10,
+              listStyle: "none",
+              userSelect: "none",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            Show pacing &amp; live notes
+          </summary>
+
+          <div style={{ marginTop: 20 }}>
+            {/* Pacing. Softened framing in From-memory mode. */}
+            {metrics.length > 0 && (
+              <section>
+                <div className="flex items-baseline justify-between">
+                  <h4 className="text-body" style={{ fontWeight: 500 }}>Pacing</h4>
+                  <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
+                    Target {fmtTime(targetTotal)} · Actual {fmtTime(actualTotal)}
+                  </span>
+                </div>
+                {isFreestyle && (
+                  <p
+                    className="text-body-sm mt-2"
+                    style={{ color: "var(--color-muted-ash)", maxWidth: 580, fontStyle: "italic" }}
+                  >
+                    Pace targets reflect your script. In From-memory mode, treat them as a reference — the work here is recall, not pacing.
+                  </p>
+                )}
+                <div className="card-bordered mt-4" style={{ padding: 20 }}>
+                  <div style={{ display: "grid", gap: 14 }}>
+                    {sections.map((sec) => {
+                      const m = metrics.find((x) => x.section_id === sec.id);
+                      const actual = m?.actual_seconds ?? 0;
+                      const target = sec.targetSeconds;
+                      const delta = actual - target;
+                      const widthTarget = (target / Math.max(targetTotal, 1)) * 100;
+                      const widthActual = (actual / Math.max(targetTotal, 1)) * 100;
+                      const color =
+                        Math.abs(delta) <= 5
+                          ? "var(--color-deliver-green)"
+                          : delta > 0
+                          ? "var(--color-leadgen-red)"
+                          : "var(--color-engagement-gold)";
+                      return (
+                        <div key={sec.id}>
+                          <div className="flex items-baseline justify-between mb-2">
+                            <span className="text-body-sm" style={{ fontWeight: 500 }}>
+                              {sectionNameById.get(sec.id) ?? "Untitled"}
+                            </span>
+                            <span className="text-body-sm num" style={{ color }}>
+                              {fmtTime(actual)} / {fmtTime(target)} · {signTime(delta)}
+                            </span>
+                          </div>
+                          <div style={{ position: "relative", height: 18 }}>
+                            <div style={{ position: "absolute", inset: "6px 0", background: "rgba(17,17,17,0.04)", borderRadius: 999 }} />
+                            <div
+                              style={{
+                                position: "absolute",
+                                left: 0,
+                                top: 6,
+                                height: 6,
+                                width: `${widthTarget}%`,
+                                background: "rgba(17,17,17,0.18)",
+                                borderRadius: 999,
+                              }}
+                            />
+                            <div
+                              style={{
+                                position: "absolute",
+                                left: 0,
+                                top: 6,
+                                height: 6,
+                                width: `${widthActual}%`,
+                                background: color,
+                                borderRadius: 999,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {/* Live tags flagged during recording. */}
+            {Array.isArray(session.tags) && session.tags.length > 0 && (
+              <section className="mt-8">
+                <h4 className="text-body" style={{ fontWeight: 500 }}>Live notes you flagged</h4>
+                <div className="card-bordered mt-3" style={{ padding: 20, maxWidth: 760 }}>
+                  {(session.tags as { kind: string; label: string; atMs: number }[]).map((t, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        padding: "8px 0",
+                        borderTop: i === 0 ? 0 : "1px solid rgba(17,17,17,0.06)",
+                      }}
+                    >
+                      <span className="text-body-sm">{t.label}</span>
+                      <span className="text-caption num" style={{ color: "var(--color-muted-ash)" }}>
+                        {fmtTime(Math.floor((t.atMs ?? 0) / 1000))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        </details>
+      )}
 
       {/* ===== Upgrade nudge =====
           Lives at the bottom of the report — after the user has felt
@@ -612,22 +624,15 @@ export default async function SessionReportPage({
        </div>{/* /column 1 */}
 
        <div className="report-rail-col">
-         {hasCoach && aiReport && (
-           <CoachRail
-             speechId={speechId}
-             sessionId={sessionId}
-             mode={currentMode}
-             headline={
-               (aiReport.headline as string | null | undefined) ??
-               firstSentence(aiReport.summary ?? "")
-             }
-             summary={aiReport.summary ?? ""}
-             topEdit={topEdit}
-             sectionNameById={Object.fromEntries(sectionNameById)}
+         {hasCoach && aiReport && allEdits.length > 0 && (
+           <LiveScriptPreview
+             sections={previewSections}
+             suggestedEdits={allEdits}
            />
          )}
        </div>
       </div>{/* /report-grid */}
+      </PickedEditsProvider>
     </div>
   );
 }
