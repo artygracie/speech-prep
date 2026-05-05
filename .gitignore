@@ -28,3 +28,6 @@ web/coverage/
 # pnpm
 pnpm-debug.log*
 pnpm-lock.yaml.bak
+
+# Local Claude Code state
+.claude/
