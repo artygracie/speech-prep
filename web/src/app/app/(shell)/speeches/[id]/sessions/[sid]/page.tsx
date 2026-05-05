@@ -26,8 +26,13 @@ import { createClient } from "@/lib/supabase/server";
 import { getPlaybackUrl } from "@/app/app/sessions-actions";
 import { buildDiff, coalesceDiff } from "@/lib/alignment";
 import type { TranscriptWord, ScriptSection } from "@/lib/alignment";
+import {
+  promoteParaphrases,
+  mergeSuggestedEdits,
+} from "@/lib/paraphrase-suggestions";
 import { CoachCard } from "./coach-card";
 import { CoachRail } from "./coach-rail";
+import { AutoDraftButton } from "./auto-draft-button";
 import { AutoRefresh } from "./auto-refresh";
 import { DiffDocument } from "./diff-document";
 import { PlaybackDock } from "./playback-dock";
@@ -160,9 +165,19 @@ export default async function SessionReportPage({
     after?: string;
     reason: string;
   };
-  const railEdits = (Array.isArray(aiReport?.suggested_edits)
+  const coachEdits = (Array.isArray(aiReport?.suggested_edits)
     ? aiReport.suggested_edits
     : []) as unknown as SuggestedEditShape[];
+  // Promote paraphrases from the diff into deterministic "rephrase"
+  // suggestions. Until the coach edge function lands, this is the only
+  // source of suggestions; once it lands, coach edits dominate and we
+  // dedupe.
+  const promoted = diff.length > 0 ? promoteParaphrases(diff, sessionId) : [];
+  const allEdits = mergeSuggestedEdits(
+    coachEdits,
+    promoted,
+  ) as SuggestedEditShape[];
+  const railEdits = allEdits;
   const topEdit: SuggestedEditShape | null = railEdits[0] ?? null;
   // The whole pipeline is "done" when both transcript AND coach landed —
   // those are the two server-side jobs that happen post-stop.
@@ -229,6 +244,11 @@ export default async function SessionReportPage({
               }
             />
           )}
+          <AutoDraftButton
+            sessionId={sessionId}
+            speechId={speechId}
+            enabled={hasTranscript && (hasCoach || promoted.length > 0)}
+          />
           <Link href={`/app/speeches/${speechId}/record`} className="btn-light">Record again</Link>
         </div>
       </div>
@@ -337,16 +357,7 @@ export default async function SessionReportPage({
               what_to_work_on: string;
             }[]
           }
-          suggestedEdits={
-            (Array.isArray(aiReport.suggested_edits) ? aiReport.suggested_edits : []) as unknown as {
-              id: string;
-              kind: "cut" | "adopt" | "rephrase";
-              section_id: string;
-              before?: string;
-              after?: string;
-              reason: string;
-            }[]
-          }
+          suggestedEdits={allEdits}
           sectionNameById={Object.fromEntries(sectionNameById)}
         />
       ) : (
