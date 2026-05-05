@@ -66,13 +66,23 @@ export function tokeniseScript(sections: ScriptSection[]): ScriptToken[] {
   const out: ScriptToken[] = [];
   for (const s of sections) {
     if (!s.body) continue;
-    for (const raw of s.body.split(/\s+/)) {
-      const token = normaliseToken(raw);
-      if (!token) continue;
-      // Preserve the raw word (with punctuation + case) so the diff
-      // renderer can show the user's actual text instead of normalised
-      // tokens like "name" instead of "[Name]".
-      out.push({ sectionId: s.id, position: s.position, token, raw });
+    for (const ws of s.body.split(/\s+/)) {
+      // Split hyphenated compounds ("thirty-one", "self-aware") into
+      // separate tokens. Transcripts almost always emit them as two
+      // words, so leaving them joined makes the aligner pair the joined
+      // script token against just the first transcript word and surface
+      // a phantom paraphrase + an inserted second word. The raw form of
+      // each piece keeps its own original casing/punctuation so the
+      // renderer reads naturally.
+      const pieces = ws.split(/-+/).filter(Boolean);
+      for (const raw of pieces) {
+        const token = normaliseToken(raw);
+        if (!token) continue;
+        // Preserve the raw word (with punctuation + case) so the diff
+        // renderer can show the user's actual text instead of normalised
+        // tokens like "name" instead of "[Name]".
+        out.push({ sectionId: s.id, position: s.position, token, raw });
+      }
     }
   }
   return out;
@@ -287,11 +297,60 @@ export type DiffRow =
   | { kind: "skipped"; written: string; sectionId: string }
   | { kind: "improv"; spoken: string; sectionId: string | null };
 
-// Strip non-letter/digit characters and lowercase for surface-equality
-// checks on a single word. "everyone." vs "everyone" should be equal so
-// trailing-period differences don't promote a match into a paraphrase.
+// Surface-equality core: lowercase, strip apostrophes (curly + straight),
+// strip everything else that isn't a letter or digit. Used when deciding
+// whether an aligned pair is a real word swap or just punctuation/casing
+// noise. Examples that should compare equal here:
+//   "don't"  vs  "don't"   (curly vs straight apostrophe)
+//   "I've"   vs  "I've"
+//   "everyone." vs "everyone"
+// This must match how `normaliseToken` collapses tokens during alignment;
+// otherwise the aligner says "match" but buildDiff says "sub" and we
+// emit phantom paraphrases like the ones in the bug report.
 function surfaceCore(s: string): string {
-  return s.toLowerCase().replace(/[^\p{L}\p{N}']+/gu, "");
+  return s
+    .toLowerCase()
+    .replace(/[‘’']/g, "")           // curly + straight apostrophes
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+// Number-word ↔ digit equivalents. The speaker said "fifty" because
+// that's how digits are pronounced; the transcriber sometimes emits
+// "fifty" and sometimes "50". Either way it's not a paraphrase.
+const NUMBER_WORDS_TO_DIGITS: Record<string, string> = {
+  zero: "0", one: "1", two: "2", three: "3", four: "4", five: "5",
+  six: "6", seven: "7", eight: "8", nine: "9", ten: "10",
+  eleven: "11", twelve: "12", thirteen: "13", fourteen: "14",
+  fifteen: "15", sixteen: "16", seventeen: "17", eighteen: "18",
+  nineteen: "19", twenty: "20", thirty: "30", forty: "40",
+  fifty: "50", sixty: "60", seventy: "70", eighty: "80", ninety: "90",
+  hundred: "100", thousand: "1000", million: "1000000",
+};
+
+// US/UK spelling variants. Treat as cosmetic — render as a match, not
+// a sub, in the Diff tab.
+const SPELLING_VARIANT_PAIRS = new Set<string>([
+  "toward|towards", "color|colour", "honor|honour", "favor|favour",
+  "labor|labour", "center|centre", "theater|theatre",
+  "organize|organise", "realize|realise", "recognize|recognise",
+  "analyze|analyse", "traveled|travelled", "canceled|cancelled",
+  "modeling|modelling",
+]);
+
+// Treat two words as cosmetically equal if either side normalizes to
+// the other after applying number-word and spelling-variant rules.
+// Used by buildDiff so the Diff tab doesn't gold-highlight noise.
+function surfaceEqual(a: string, b: string): boolean {
+  const ca = surfaceCore(a);
+  const cb = surfaceCore(b);
+  if (ca === cb) return true;
+  if (NUMBER_WORDS_TO_DIGITS[ca] === cb) return true;
+  if (NUMBER_WORDS_TO_DIGITS[cb] === ca) return true;
+  // Spelling variants are direction-symmetric; sort the pair before
+  // looking up so we only need one entry per pair.
+  const [low, high] = ca < cb ? [ca, cb] : [cb, ca];
+  if (SPELLING_VARIANT_PAIRS.has(`${low}|${high}`)) return true;
+  return false;
 }
 
 export function buildDiff(
@@ -343,7 +402,7 @@ export function buildDiff(
       if (runKind !== "match" || runSection !== sec) { flush(); runKind = "match"; runSection = sec; }
       const written = scriptTokens[p.s].raw;
       const spoken = transcriptWords[transcriptTokens[p.t].idx]?.word ?? transcriptTokens[p.t].token;
-      if (surfaceCore(written) === surfaceCore(spoken)) {
+      if (surfaceEqual(written, spoken)) {
         // Same word — keep the spoken surface so casing/punctuation
         // tracks what was actually said.
         runOps.push({ kind: "equal", text: spoken });
