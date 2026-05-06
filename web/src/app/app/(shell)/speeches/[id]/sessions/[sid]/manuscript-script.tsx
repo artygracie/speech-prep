@@ -30,6 +30,7 @@
 
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   applySuggestions,
   applySuggestionsAndRecord,
@@ -87,8 +88,21 @@ type SectionInput = {
     deltaSeconds: number;
   };
   memoryBand?: "word-perfect" | "mostly-there" | "rough" | "blank" | "not-reached";
+  // Freestyle-only recall signals. recallPct is 0..1 from
+  // computeMemoryCheck; spokenSnippet is the first-spoken-words for
+  // a "you got this far:" treatment on rough sections; hadLongPause
+  // surfaces a small icon on the recall map tile when the user paused
+  // for more than ~4 seconds in this section.
+  recallPct?: number;
+  spokenSnippet?: string | null;
+  hadLongPause?: boolean;
 };
 
+// Two-mode tab system. With-script reports show editorial controls
+// (coach edits, what you said, both); freestyle reports show recall-
+// focused controls (recall view, transcript, edits). Internally they
+// map onto the same three layer toggles — coach/spoken/both — but the
+// labels and default change based on session mode.
 type ViewMode = "coach" | "spoken" | "both";
 type AcceptanceState = "accepted" | "pending" | "rejected";
 
@@ -401,6 +415,12 @@ export function ManuscriptScript({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Default tab differs by mode. With-script users come here to edit
+  // and want the coach edits inline; freestyle users come here to see
+  // how memorization went and want the recall view (which renders
+  // band-appropriate per-section cards instead of the full manuscript).
+  // We map the freestyle "recall" tab onto the existing "coach" view
+  // mode internally — there's only one layer toggle under the hood.
   const [viewMode, setViewMode] = useState<ViewMode>("coach");
   const [activeEditId, setActiveEditId] = useState<string | null>(null);
 
@@ -1223,6 +1243,22 @@ export function ManuscriptScript({
       <div className={`ms-grid ${showRail ? "has-rail" : ""}`}>
         {/* ─── Left column: manuscript ─────────────────────────── */}
         <div>
+          {/* Recall map. Freestyle reports only — top-of-page strip
+              showing one tile per section, colored by recall band, with
+              a quick-drill button per section. The recall view below
+              repeats the same drill button inline; the map is the
+              at-a-glance "what happened in this take" answer. */}
+          {mode === "freestyle" && (
+            <RecallMap
+              speechId={speechId}
+              sections={sections}
+            />
+          )}
+
+          {/* Tabs — mode-aware. With-script reports keep the editorial
+              labels (Coach edits / What you said / Both); freestyle
+              reports use recall-focused labels (Recall / Transcript /
+              Edits) but route to the same internal viewMode states. */}
           <div className="ms-toggle" role="tablist" aria-label="View">
             <button
               role="tab"
@@ -1230,7 +1266,7 @@ export function ManuscriptScript({
               className="ms-toggle-pill"
               onClick={() => setViewMode("coach")}
             >
-              Coach edits
+              {mode === "freestyle" ? "Recall" : "Coach edits"}
             </button>
             <button
               role="tab"
@@ -1238,20 +1274,27 @@ export function ManuscriptScript({
               className="ms-toggle-pill"
               onClick={() => setViewMode("spoken")}
             >
-              What you said
+              {mode === "freestyle" ? "Transcript" : "What you said"}
             </button>
-            <button
-              role="tab"
-              aria-selected={viewMode === "both"}
-              className="ms-toggle-pill"
-              onClick={() => setViewMode("both")}
-            >
-              Both
-            </button>
+            {/* Hide "Both" / "Edits" tab on freestyle when there are
+                no coach edits — it'd just show the script. With-script
+                reports always show all three tabs. */}
+            {(mode !== "freestyle" || scriptEditItems.length > 0) && (
+              <button
+                role="tab"
+                aria-selected={viewMode === "both"}
+                className="ms-toggle-pill"
+                onClick={() => setViewMode("both")}
+              >
+                {mode === "freestyle" ? "Edits" : "Both"}
+              </button>
+            )}
             <span className="ms-toggle-spacer" />
             <span className="ms-toggle-meta">
               {viewMode === "coach"
-                ? `${acceptedEdits.length} of ${scriptEditItems.length} script edits accepted`
+                ? mode === "freestyle"
+                  ? "How memory held, section by section"
+                  : `${acceptedEdits.length} of ${scriptEditItems.length} script edits accepted`
                 : viewMode === "spoken"
                 ? "How your delivery diverged"
                 : "Coach + speaker layers overlaid"}
@@ -1261,6 +1304,23 @@ export function ManuscriptScript({
           {sections.map((section) => {
             const sectionEdits = editsBySection.get(section.id) ?? [];
             const inlineEdits = sectionEdits.filter((e) => e.kind !== "drill");
+
+            // Freestyle's "Recall" tab gets a band-appropriate card per
+            // section instead of the standard manuscript treatment.
+            // The other two tabs (Transcript / Edits) keep the
+            // existing manuscript layout so power users can still see
+            // overlays when they want them.
+            if (mode === "freestyle" && viewMode === "coach") {
+              return (
+                <RecallSection
+                  key={section.id}
+                  speechId={speechId}
+                  section={section}
+                  diffRows={diffRows}
+                />
+              );
+            }
+
             const showCoach = viewMode === "coach" || viewMode === "both";
             const showSpoken = viewMode === "spoken" || viewMode === "both";
             const coachTokens = showCoach
@@ -1921,4 +1981,425 @@ function fmtSec(s: number): string {
   const mins = Math.floor(s / 60);
   const secs = Math.floor(s % 60);
   return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+// ─── Recall map ──────────────────────────────────────────────────────
+//
+// Top-of-page strip on freestyle reports. One tile per section, colored
+// by recall band, sized to give earlier short sections enough room to
+// label cleanly. Each tile has a quick-drill button so the user can
+// jump into a section-scoped freestyle take with one click.
+//
+// The colors reuse pacing pills' palette so the map reads at a glance
+// to anyone who's already used to that vocabulary on the page.
+
+const BAND_COLORS: Record<
+  NonNullable<SectionInput["memoryBand"]>,
+  { fill: string; stroke: string; text: string; label: string }
+> = {
+  "word-perfect": {
+    fill: "rgba(70,182,141,0.16)",
+    stroke: "rgba(70,182,141,0.42)",
+    text: "var(--color-deliver-green, #2c8c61)",
+    label: "Word-perfect",
+  },
+  "mostly-there": {
+    fill: "rgba(70,182,141,0.08)",
+    stroke: "rgba(70,182,141,0.28)",
+    text: "var(--color-deliver-green, #2c8c61)",
+    label: "Mostly there",
+  },
+  rough: {
+    fill: "rgba(232,182,77,0.16)",
+    stroke: "rgba(232,182,77,0.42)",
+    text: "var(--color-engagement-gold, #a37413)",
+    label: "Rough",
+  },
+  blank: {
+    fill: "rgba(225,101,64,0.12)",
+    stroke: "rgba(225,101,64,0.36)",
+    text: "var(--color-leadgen-red, #c44a26)",
+    label: "Blanked",
+  },
+  "not-reached": {
+    fill: "rgba(17,17,17,0.04)",
+    stroke: "rgba(17,17,17,0.10)",
+    text: "var(--color-muted-ash, #6e6e72)",
+    label: "Not reached",
+  },
+};
+
+function RecallMap({
+  speechId,
+  sections,
+}: {
+  speechId: string;
+  sections: SectionInput[];
+}) {
+  // Recall map only meaningful when we have at least one band.
+  const anyBand = sections.some((s) => !!s.memoryBand);
+  if (!anyBand) return null;
+
+  return (
+    <div
+      className="ms-recall-map"
+      role="group"
+      aria-label="Recall map"
+      style={{ marginBottom: 18 }}
+    >
+      <style>{`
+        .ms-recall-map {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+          gap: 8px;
+        }
+        .ms-recall-tile {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          border: 1px solid;
+          font-size: 12px;
+          line-height: 1.3;
+        }
+        .ms-recall-tile-name {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .ms-recall-tile-band {
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .ms-recall-tile-meta {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          color: var(--color-muted-ash);
+          font-size: 10.5px;
+          margin-top: auto;
+        }
+        .ms-recall-tile-actions {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 6px;
+        }
+        .ms-recall-tile-drill {
+          font-size: 11px;
+          padding: 4px 8px;
+          border-radius: 6px;
+          background: var(--color-canvas-white);
+          border: 1px solid rgba(17,17,17,0.14);
+          color: var(--color-midnight-ink);
+          text-decoration: none;
+          font-weight: 500;
+        }
+        .ms-recall-tile-drill:hover {
+          border-color: rgba(17,17,17,0.32);
+        }
+      `}</style>
+      {sections.map((section) => {
+        const band = section.memoryBand ?? "not-reached";
+        const colors = BAND_COLORS[band];
+        const recallPctText =
+          typeof section.recallPct === "number"
+            ? `${Math.round(section.recallPct * 100)}%`
+            : null;
+        return (
+          <a
+            key={section.id}
+            href={`#section-${section.id}`}
+            className="ms-recall-tile"
+            style={{
+              background: colors.fill,
+              borderColor: colors.stroke,
+              color: colors.text,
+              textDecoration: "none",
+            }}
+          >
+            <span
+              className="ms-recall-tile-name"
+              style={{ color: "var(--color-midnight-ink)" }}
+            >
+              {section.name}
+            </span>
+            <span className="ms-recall-tile-band" style={{ color: colors.text }}>
+              {colors.label}
+              {recallPctText ? ` · ${recallPctText}` : ""}
+            </span>
+            <div
+              className="ms-recall-tile-meta"
+              style={{ visibility: section.hadLongPause ? "visible" : "hidden" }}
+            >
+              {/* Inline pause icon — no external dep. */}
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                <rect x="2" y="1.5" width="2" height="7" rx="0.5" fill="currentColor" />
+                <rect x="6" y="1.5" width="2" height="7" rx="0.5" fill="currentColor" />
+              </svg>
+              <span>Long pause</span>
+            </div>
+            <div className="ms-recall-tile-actions">
+              <Link
+                href={`/app/speeches/${speechId}/record?mode=freestyle&section=${section.id}`}
+                className="ms-recall-tile-drill"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Drill →
+              </Link>
+            </div>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Recall section card ─────────────────────────────────────────────
+//
+// Per-section card on freestyle reports. Renders content appropriate
+// to the section's memory band:
+//   - word-perfect / mostly-there: collapsed by default, expand to see
+//     the standard manuscript-with-overlay treatment.
+//   - rough:   script body + "you got this far:" snippet from spoken.
+//   - blank:   script body framed as "what you should have said."
+//   - not-reached: dimmed, just the section name; expand to see body.
+//
+// Each card has a Drill button anchored to that section's drill route.
+
+function RecallSection({
+  speechId,
+  section,
+  diffRows,
+}: {
+  speechId: string;
+  section: SectionInput;
+  diffRows: DiffRow[];
+}) {
+  const band = section.memoryBand ?? "not-reached";
+  const colors = BAND_COLORS[band];
+  const recallPctText =
+    typeof section.recallPct === "number"
+      ? `${Math.round(section.recallPct * 100)}%`
+      : null;
+
+  // Word-perfect & mostly-there sections collapse to a tight summary
+  // by default; the user can expand to see the standard manuscript
+  // treatment with overlays. We use a controlled <details> so we get
+  // accessible disclosure for free.
+  const collapseByDefault =
+    band === "word-perfect" ||
+    band === "mostly-there" ||
+    band === "not-reached";
+
+  return (
+    <section
+      id={`section-${section.id}`}
+      className="ms-section ms-recall-section"
+      style={{
+        // Subtle band-tinted left border so the user can scan vertically
+        // and see the band shape without reading the chip.
+        borderLeft: `3px solid ${colors.stroke}`,
+        paddingLeft: 16,
+        marginLeft: -16,
+      }}
+    >
+      <header
+        className="ms-section-head"
+        style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
+      >
+        <span className="ms-section-name">{section.name}</span>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "2px 8px",
+            borderRadius: 999,
+            background: colors.fill,
+            border: `1px solid ${colors.stroke}`,
+            color: colors.text,
+            fontSize: 11,
+            fontWeight: 500,
+          }}
+        >
+          {colors.label}
+          {recallPctText ? ` · ${recallPctText}` : ""}
+        </span>
+        {section.hadLongPause && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              fontSize: 11,
+              color: "var(--color-muted-ash)",
+            }}
+            title="You paused for more than 4 seconds in this section"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <rect x="2" y="1.5" width="2" height="7" rx="0.5" fill="currentColor" />
+              <rect x="6" y="1.5" width="2" height="7" rx="0.5" fill="currentColor" />
+            </svg>
+            Long pause
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+        <Link
+          href={`/app/speeches/${speechId}/record?mode=freestyle&section=${section.id}`}
+          className="btn-light"
+          style={{ fontSize: 12, padding: "4px 10px" }}
+        >
+          Drill →
+        </Link>
+      </header>
+
+      {collapseByDefault ? (
+        <details style={{ marginTop: 8 }}>
+          <summary
+            style={{
+              cursor: "pointer",
+              fontSize: 13,
+              color: "var(--color-muted-ash)",
+              padding: "4px 0",
+            }}
+          >
+            {band === "word-perfect"
+              ? "Show full text"
+              : band === "mostly-there"
+                ? "Show what you said vs. the script"
+                : "Show section body"}
+          </summary>
+          <RecallSectionBody
+            section={section}
+            diffRows={diffRows}
+            band={band}
+          />
+        </details>
+      ) : (
+        <RecallSectionBody section={section} diffRows={diffRows} band={band} />
+      )}
+    </section>
+  );
+}
+
+function RecallSectionBody({
+  section,
+  diffRows,
+  band,
+}: {
+  section: SectionInput;
+  diffRows: DiffRow[];
+  band: NonNullable<SectionInput["memoryBand"]>;
+}) {
+  // Mostly-there gets the standard "Both" treatment (script + diff
+  // overlay) — the user wants to see exactly what slipped. Rough adds
+  // a "you got this far" snippet. Blank shows just the script as a
+  // re-anchor. Not-reached shows the script unstyled.
+  if (band === "word-perfect" || band === "mostly-there") {
+    const spokenTokens = tokeniseSpokenDeviations(diffRows, section.id);
+    return (
+      <>
+        <p className="ms-body">{section.body}</p>
+        {spokenTokens.length > 0 && (
+          <p
+            className="ms-body"
+            style={{
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: "1px dashed rgba(17,17,17,0.10)",
+              fontSize: 16,
+              color: "rgba(17,17,17,0.78)",
+            }}
+          >
+            <span
+              style={{
+                display: "block",
+                fontFamily: "Inter, sans-serif",
+                fontSize: 11,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "var(--color-muted-ash)",
+                marginBottom: 6,
+              }}
+            >
+              What you said
+            </span>
+            {spokenTokens.map((tok, i) => (
+              <SpokenTokenSpan key={i} token={tok} />
+            ))}
+          </p>
+        )}
+      </>
+    );
+  }
+
+  if (band === "rough") {
+    return (
+      <>
+        <p className="ms-body">{section.body}</p>
+        {section.spokenSnippet ? (
+          <p
+            style={{
+              marginTop: 10,
+              paddingLeft: 12,
+              borderLeft: "2px solid rgba(232,182,77,0.42)",
+              fontSize: 14,
+              fontStyle: "italic",
+              color: "rgba(17,17,17,0.66)",
+            }}
+          >
+            <span
+              style={{
+                display: "block",
+                fontFamily: "Inter, sans-serif",
+                fontStyle: "normal",
+                fontSize: 10.5,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "var(--color-muted-ash)",
+                marginBottom: 4,
+              }}
+            >
+              You got this far
+            </span>
+            {section.spokenSnippet}
+            {section.spokenSnippet.length > 60 ? "…" : ""}
+          </p>
+        ) : null}
+      </>
+    );
+  }
+
+  if (band === "blank") {
+    return (
+      <>
+        <p
+          style={{
+            fontFamily: "Inter, sans-serif",
+            fontSize: 11,
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+            color: "var(--color-muted-ash)",
+            marginTop: 8,
+            marginBottom: 6,
+          }}
+        >
+          What you should have said
+        </p>
+        <p className="ms-body" style={{ opacity: 0.92 }}>
+          {section.body}
+        </p>
+      </>
+    );
+  }
+
+  // not-reached: full script, dimmed, no special framing.
+  return (
+    <p className="ms-body" style={{ opacity: 0.62 }}>
+      {section.body}
+    </p>
+  );
 }
