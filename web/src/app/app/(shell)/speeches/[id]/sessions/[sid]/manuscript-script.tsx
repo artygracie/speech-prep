@@ -500,8 +500,28 @@ export function ManuscriptScript({
     const out: ObservationItem[] = [];
     let i = 0;
 
+    // In freestyle mode, suppress observations on sections the user
+    // blanked or barely reached. Showing "you skipped this" or "you
+    // phrased this differently" on a blanked section is rubbing the
+    // failure in — the user already knows they didn't have it. The
+    // recall scoreboard / memory-band chip carries that signal more
+    // gently. The drill plan tells them what to do next.
+    const suppressedSections = new Set<string>();
+    if (mode === "freestyle") {
+      for (const sec of sections) {
+        if (
+          sec.memoryBand === "blank" ||
+          sec.memoryBand === "rough" ||
+          sec.memoryBand === "not-reached"
+        ) {
+          suppressedSections.add(sec.id);
+        }
+      }
+    }
+
     for (const row of diffRows) {
       if (row.kind !== "skipped" && row.kind !== "paraphrase") continue;
+      if (suppressedSections.has(row.sectionId)) continue;
 
       // Quick filter: very short paraphrases are noise (the / a, etc.).
       // Use the count of *changed* word ops, not total — a long row
@@ -575,7 +595,7 @@ export function ManuscriptScript({
       }
     }
     return out;
-  }, [diffRows, editsBySection, sectionTokensById]);
+  }, [diffRows, editsBySection, sectionTokensById, mode, sections]);
 
   // Combined rail content: proposed edits (with Accept/Reject) followed
   // by observations (informational only). Ordered by section position
