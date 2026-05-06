@@ -319,7 +319,9 @@ export default async function SessionReportPage({
         </div>
       </div>
 
-      {/* Tiny CSS for the pulsing status dot. */}
+      {/* Tiny CSS for the pulsing status dot + the loading-panel gradient.
+          The gradient panel slowly drifts its origin to feel alive while
+          the coach is processing — no spinner, just light moving. */}
       <style>{`
         .badge .dot.pulse {
           animation: report-pulse 1.4s ease-out infinite;
@@ -328,6 +330,30 @@ export default async function SessionReportPage({
           0%   { opacity: 1; }
           50%  { opacity: 0.35; }
           100% { opacity: 1; }
+        }
+        .loading-panel {
+          position: relative;
+          border-radius: 16px;
+          padding: 56px 48px;
+          text-align: center;
+          overflow: hidden;
+          color: var(--color-midnight-ink);
+          background:
+            radial-gradient(386.06% 162.79% at -13.1926% -17.1008%,
+              rgb(232, 64, 13) 0%,
+              rgb(255, 238, 216) 26.1559%,
+              rgb(208, 178, 255) 84.1533%);
+          background-size: 180% 180%;
+          animation: loading-drift 14s ease-in-out infinite;
+          box-shadow: 0 1px 2px rgba(17,17,17,0.04), 0 12px 40px rgba(232,64,13,0.08);
+        }
+        @keyframes loading-drift {
+          0%   { background-position: 0% 0%; }
+          50%  { background-position: 100% 60%; }
+          100% { background-position: 0% 0%; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .loading-panel { animation: none; }
         }
       `}</style>
 
@@ -380,7 +406,7 @@ export default async function SessionReportPage({
       {/* ===== Pipeline still working ===== */}
       {!pipelineDone && (
         <div className="mt-10">
-          <div className="empty-state" style={{ maxWidth: 720 }}>
+          <div className="loading-panel" style={{ maxWidth: 720 }}>
             <p className="text-subheading">
               {hasTranscript
                 ? "Reading the transcript and writing your notes…"
@@ -388,7 +414,7 @@ export default async function SessionReportPage({
             </p>
             <p
               className="text-body mt-3"
-              style={{ color: "var(--color-muted-ash)" }}
+              style={{ color: "rgba(17,17,17,0.62)" }}
             >
               This page refreshes itself — you don&rsquo;t need to do anything.
             </p>
