@@ -61,12 +61,20 @@ function fmtTime(ms: number) {
 export function Recorder({
   speechId,
   sections,
+  initialMode = null,
+  initialSectionId = null,
 }: {
   speechId: string;
   sections: Section[];
+  // Pre-selected mode from a lifecycle recommendation or query param.
+  // The user can still toggle inside the recorder.
+  initialMode?: SessionMode | null;
+  // Pre-scoped section from a "drill this section" recommendation.
+  // Only honoured when the section actually exists on the speech.
+  initialSectionId?: string | null;
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<SessionMode>("with-script");
+  const [mode, setMode] = useState<SessionMode>(initialMode ?? "with-script");
   const [state, setState] = useState<State>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -77,7 +85,11 @@ export function Recorder({
   // section. The script panel hides everything else, the alignment
   // tokens come from this section only, and the bottom bar's pacing
   // shows just this section's target.
-  const [practicingSectionId, setPracticingSectionId] = useState<string | null>(null);
+  const [practicingSectionId, setPracticingSectionId] = useState<string | null>(
+    initialSectionId && sections.some((s) => s.id === initialSectionId)
+      ? initialSectionId
+      : null,
+  );
 
   // Live alignment state. Refs (mutable) drive the work; we mirror onto
   // state every ~150ms so React re-renders the bottom bar without us

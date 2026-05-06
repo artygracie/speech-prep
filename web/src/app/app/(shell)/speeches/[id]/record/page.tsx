@@ -24,6 +24,12 @@ export default async function RecordPage({
   const fromSessionId = typeof sp.from_session === "string" ? sp.from_session : null;
   const fromVersion = typeof sp.from_v === "string" ? Number(sp.from_v) : null;
   const isDrilling = sp.drilling === "1";
+  // Lifecycle recommendation params: which mode to pre-select, and
+  // (optionally) which section to scope practice to. Both default to
+  // null, in which case the recorder uses its own defaults.
+  const initialMode =
+    sp.mode === "with-script" || sp.mode === "freestyle" ? sp.mode : null;
+  const initialSectionId = typeof sp.section === "string" ? sp.section : null;
   const supabase = await createClient();
 
   const { data: speech } = await supabase
@@ -118,13 +124,12 @@ export default async function RecordPage({
         />
       ) : (
         <>
-          {/* "Recording v3 — 2 edits applied since v2" banner. Shows
-              when the user just applied coach edits and was redirected
-              here for the next take. Or "Drilling weak sections" when
-              the user clicked a drill action and there's no version
-              bump. Renders inline so it doesn't push the recorder
-              down on a clean session. */}
-          {(fromSessionId || isDrilling) && (
+          {/* Status banner. Shows up if we got here from a session
+              report's "Apply & record again" CTA, a drill action, or
+              a lifecycle recommendation. The recommendation case
+              prefers to render its banner from the lifecycle copy
+              above the recorder rather than re-derive it client-side. */}
+          {(fromSessionId || isDrilling || initialMode || initialSectionId) && (
             <div
               role="status"
               style={{
@@ -143,7 +148,13 @@ export default async function RecordPage({
               }}
             >
               <span>
-                {isDrilling
+                {initialSectionId
+                  ? `Drilling one section from memory.`
+                  : initialMode === "freestyle"
+                  ? `Recording from memory — script hidden.`
+                  : initialMode === "with-script"
+                  ? `Recording with the script visible.`
+                  : isDrilling
                   ? `Drilling weak sections from your last take.`
                   : fromVersion != null
                   ? `Recording v${fromVersion} — edits applied since your last take.`
@@ -168,6 +179,8 @@ export default async function RecordPage({
           <Recorder
             speechId={speech.id}
             sections={sections}
+            initialMode={initialMode}
+            initialSectionId={initialSectionId}
           />
 
           {/* First-run coach-mark. Renders only when the user arrived from
