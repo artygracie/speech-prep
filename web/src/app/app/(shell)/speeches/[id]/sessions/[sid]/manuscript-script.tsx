@@ -46,11 +46,36 @@ export type SuggestedEdit = {
   section_id: string;
   before?: string;
   after?: string;
+  // adopt-only (prompt v3+): the new text being inserted at the
+  // `before` anchor. Pre-v3 reports may have only `after` (sometimes
+  // a full revised passage). The renderer uses adoptInsertionFor()
+  // to resolve which text to show.
+  insertion?: string;
   reason: string;
   line_target?: string;
   tactic?: string;
   provenance?: "coach" | "user-flag" | "alignment";
 };
+
+// Pull the "what's being added" text out of an adopt edit.
+// Mirrors the server-side resolveAdoptInsertion() but without the
+// body-walking fallback (we don't have the body here when rendering
+// rail cards). For pre-v3 adopts where `after` starts with `before`,
+// we strip the prefix; otherwise show `after` as-is. The actual
+// apply path uses the more thorough server-side recovery.
+export function adoptInsertionFor(edit: SuggestedEdit): string {
+  if (edit.insertion && edit.insertion.trim()) return edit.insertion.trim();
+  const after = (edit.after ?? "").trim();
+  if (!after) return "";
+  if (edit.before) {
+    const beforeLower = edit.before.trim().toLowerCase();
+    const afterStart = after.toLowerCase().slice(0, beforeLower.length);
+    if (afterStart === beforeLower) {
+      return after.slice(beforeLower.length).replace(/^[\s.,;:!?]+/, "").trim();
+    }
+  }
+  return after;
+}
 
 type SectionInput = {
   id: string;
@@ -935,6 +960,16 @@ export function ManuscriptScript({
           padding: 1px 6px;
           display: inline-block;
           font-style: italic;
+          margin-top: 6px;
+        }
+        /* Adopt anchor preview — shows the script line that the new
+           text follows. Quiet, plain serif, smaller than the redline. */
+        .ms-card-anchor {
+          font-family: var(--font-script);
+          font-size: 13px;
+          line-height: 1.5;
+          color: var(--color-muted-ash);
+          margin: 0 0 6px;
         }
         .ms-card-redline.drill {
           color: var(--color-midnight-ink);
@@ -1320,6 +1355,8 @@ function CoachTokenSpan({
     );
   }
   if (edit.kind === "adopt") {
+    const insertionText = adoptInsertionFor(edit);
+    if (!insertionText) return null;
     return (
       <span
         ref={(el) => setAnchorRef(edit.id, el)}
@@ -1328,7 +1365,7 @@ function CoachTokenSpan({
         onMouseEnter={() => onActivate(edit.id)}
       >
         {" "}
-        <span className={`ms-adopt ${stateClass}`}>{edit.after}</span>
+        <span className={`ms-adopt ${stateClass}`}>{insertionText}</span>
       </span>
     );
   }
@@ -1427,9 +1464,22 @@ function EditCard({
       {edit.kind === "cut" && edit.before && (
         <p className="ms-card-redline cut">&ldquo;{edit.before}&rdquo;</p>
       )}
-      {edit.kind === "adopt" && edit.after && (
-        <p className="ms-card-redline adopt">&ldquo;{edit.after}&rdquo;</p>
-      )}
+      {edit.kind === "adopt" && (() => {
+        const insertionText = adoptInsertionFor(edit);
+        if (!insertionText) return null;
+        return (
+          <>
+            {/* If the coach gave us an anchor, show it as a quiet
+                "after this line:" reference so the user knows where in
+                the script the addition lands. The actual new text is
+                the highlighted bit underneath. */}
+            {edit.before && (
+              <p className="ms-card-anchor">After: &ldquo;{edit.before}&rdquo;</p>
+            )}
+            <p className="ms-card-redline adopt">&ldquo;{insertionText}&rdquo;</p>
+          </>
+        );
+      })()}
       {edit.kind === "rephrase" && (
         <>
           {/* Defensive rephrase: coach is recommending KEEP THE SCRIPT.

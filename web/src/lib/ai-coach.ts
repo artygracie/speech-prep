@@ -91,8 +91,19 @@ export type CoachReport = {
     id: string;
     kind: SuggestedEditKind;
     section_id: string;
+    // For "cut" / "rephrase": the verbatim script substring to operate on.
+    // For "adopt": the script line that ANCHORS the new insertion — the
+    //   apply path inserts `insertion` immediately after `before` in
+    //   the body. (Required for adopt as of prompt v3.)
     before?: string;
+    // For "rephrase": the new text to swap in.
+    // For "adopt" pre-v3 reports: may contain the full revised passage
+    //   (legacy). We extract the actual insertion at apply time.
     after?: string;
+    // For "adopt" v3+: ONLY the new text being inserted, not the full
+    // revised passage. Lets the apply path do a clean targeted insert
+    // instead of a brittle tail-append.
+    insertion?: string;
     reason: string;
     // Practice-action fields, used when kind === "drill"
     line_target?: string;
@@ -110,7 +121,7 @@ export type CoachReport = {
 // Bump this when the SYSTEM_PROMPT or persona blocks change.
 // ai_reports.prompt_version uses a numeric column so we can range-query
 // or chart by version.
-const PROMPT_VERSION = 2;
+const PROMPT_VERSION = 3;
 
 // Static system prompt — cached. The dynamic per-session content goes
 // in the user message so the cache hits on every call.
@@ -148,10 +159,13 @@ In BOTH modes, you also produce:
 3. Per-section notes — for each section: one short headline, one line on what landed, one line on what to work on. Severity is "high" if the section was skipped or rushed >30%, "med" if it ran long or had fillers, "low" otherwise.
 
 4. Suggested edits — at most 5, ordered by impact. Schema:
-   - kind: "cut"      → remove a written passage (before required, verbatim from script)
-   - kind: "adopt"    → add a phrase the speaker said live (after required)
-   - kind: "rephrase" → swap a written passage for the spoken phrasing (before + after both required, before verbatim from script)
-   - kind: "drill"    → no script change. Target a section/line and tell the user how to practice it. Set line_target (a quoted snippet from the script, optional) and tactic (one sentence on the practice approach, optional).
+   - kind: "cut"      → remove a written passage. Set "before" to the verbatim script substring to remove.
+   - kind: "adopt"    → INSERT a new phrase into the script at a specific anchor.
+                        Set "before" to a verbatim script sentence that already exists in the body — this is the ANCHOR. The new phrase will be inserted immediately AFTER "before" in the script.
+                        Set "insertion" to ONLY the new words being added — do NOT include the existing script text. Example: if "before" is "but here we are." and you want the script to read "but here we are. Are you really sure? You've heard me in meetings.", set "insertion" to "Are you really sure? You've heard me in meetings."
+                        Do NOT put the full revised paragraph in "insertion". Just the new words.
+   - kind: "rephrase" → swap a written passage for new wording. Set "before" to the verbatim script substring being replaced, "after" to the replacement text.
+   - kind: "drill"    → no script change. Target a section/line and tell the user how to practice it. Set "line_target" (a quoted snippet from the script, optional) and "tactic" (one sentence on the practice approach, optional).
 
 Voice: direct, specific, encouraging. Don't lecture about public speaking in general; only react to this take. No therapy speak. No "great job" without specifics.
 
@@ -160,13 +174,14 @@ Output STRICT JSON, no prose, no markdown:
   "headline": "...",
   "summary": "...",
   "per_section": [{"section_id": "...", "headline": "...", "what_landed": "...", "what_to_work_on": "...", "severity": "low|med|high"}],
-  "suggested_edits": [{"id": "edit-1", "kind": "cut|adopt|rephrase|drill", "section_id": "...", "before": "...", "after": "...", "line_target": "...", "tactic": "...", "reason": "..."}]
+  "suggested_edits": [{"id": "edit-1", "kind": "cut|adopt|rephrase|drill", "section_id": "...", "before": "...", "after": "...", "insertion": "...", "line_target": "...", "tactic": "...", "reason": "..."}]
 }
 
 Hard rules:
-- "before" for "cut" and "rephrase" MUST be a verbatim substring of the section body. If you can't quote verbatim, omit the suggestion.
-- "after" for "rephrase" and "adopt" should be the speaker's actual spoken phrasing where possible.
-- For "drill", omit before/after; include tactic.
+- "before" for "cut", "rephrase", and "adopt" MUST be a verbatim substring of the section body. If you can't quote verbatim, omit the suggestion.
+- "after" for "rephrase" is the replacement text.
+- "insertion" for "adopt" is ONLY the new words to add — never the full revised paragraph. The "insertion" text MUST NOT already appear in the script body.
+- For "drill", omit before/after/insertion; include tactic.
 - Section ids are opaque — copy unchanged from input.
 - Edit ids are opaque strings you choose, like "edit-1". Unique within the response.
 - headline ≤ 90 characters. If you can't fit, prefer specificity over completeness.`;
