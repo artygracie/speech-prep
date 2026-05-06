@@ -9,16 +9,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import {
-  buildDiff,
-  coalesceDiff,
-  type ScriptSection,
-  type TranscriptWord,
-} from "@/lib/alignment";
-import {
-  promoteParaphrases,
-  mergeSuggestedEdits,
-} from "@/lib/paraphrase-suggestions";
+import { mergeSuggestedEdits } from "@/lib/paraphrase-suggestions";
 
 type SuggestedEdit = {
   id: string;
@@ -213,40 +204,17 @@ export async function applySuggestions(
     .maybeSingle();
   const coachEdits = (report?.suggested_edits ?? []) as unknown as SuggestedEdit[];
 
-  const { data: transcript } = await supabase
-    .from("transcripts")
-    .select("words")
-    .eq("session_id", sessionId)
-    .maybeSingle();
   const { data: secRows } = await supabase
     .from("sections")
     .select("id, position, name, target_seconds, body")
     .eq("script_version_id", session.script_version_id)
     .order("position", { ascending: true });
-  let promoted: ReturnType<typeof promoteParaphrases> = [];
-  if (
-    transcript?.words &&
-    Array.isArray(transcript.words) &&
-    secRows &&
-    secRows.length > 0
-  ) {
-    const sections: ScriptSection[] = secRows.map((s) => ({
-      id: s.id,
-      body: s.body ?? "",
-      targetSeconds: s.target_seconds ?? 0,
-      position: s.position,
-    }));
-    const diff = coalesceDiff(
-      buildDiff(sections, transcript.words as unknown as TranscriptWord[]),
-    );
-    promoted = promoteParaphrases(diff, sessionId);
-  }
   const recordedBodyMap = new Map<string, string>(
     (secRows ?? []).map((s) => [s.id, s.body ?? ""]),
   );
   const allEdits = mergeSuggestedEdits(
     coachEdits,
-    promoted,
+    [],
     recordedBodyMap,
   ) as unknown as SuggestedEdit[];
   // Drills don't mutate the script — they're practice actions. Filter
@@ -527,11 +495,6 @@ async function classifyAcceptedEdits(
     .maybeSingle();
   const coachEdits = (report?.suggested_edits ?? []) as unknown as SuggestedEdit[];
 
-  // Paraphrase-promoted edits never include "drill", so we don't need
-  // to recompute them here for classification — coach edits are the
-  // sole source of drills. But we do still need to recognise their ids
-  // when classifying script-mutating picks. Recompute the merge against
-  // the session's session id namespace so paraphrase ids match.
   const { data: secRows } = await supabase
     .from("sections")
     .select("id, body, target_seconds, position")
@@ -546,37 +509,13 @@ async function classifyAcceptedEdits(
       ).data?.script_version_id ?? "",
     )
     .order("position", { ascending: true });
-  const { data: transcript } = await supabase
-    .from("transcripts")
-    .select("words")
-    .eq("session_id", sessionId)
-    .maybeSingle();
-
-  let promoted: ReturnType<typeof promoteParaphrases> = [];
-  if (
-    transcript?.words &&
-    Array.isArray(transcript.words) &&
-    secRows &&
-    secRows.length > 0
-  ) {
-    const sections: ScriptSection[] = secRows.map((s) => ({
-      id: s.id,
-      body: s.body ?? "",
-      targetSeconds: s.target_seconds ?? 0,
-      position: s.position,
-    }));
-    const diff = coalesceDiff(
-      buildDiff(sections, transcript.words as unknown as TranscriptWord[]),
-    );
-    promoted = promoteParaphrases(diff, sessionId);
-  }
 
   const recordedBodyMap = new Map<string, string>(
     (secRows ?? []).map((s) => [s.id, s.body ?? ""]),
   );
   const allEdits = mergeSuggestedEdits(
     coachEdits,
-    promoted,
+    [],
     recordedBodyMap,
   ) as unknown as SuggestedEdit[];
   const accepted = allEdits.filter((e) => acceptedIds.includes(e.id));
@@ -650,7 +589,7 @@ export async function previewAutoDraft(sessionId: string): Promise<{
   if (!sections || sections.length === 0) throw new Error("No sections to draft");
 
   // Compose suggestions the same way applySuggestions does — coach
-  // edits + promoted paraphrases, deduped.
+  // edits only, with overlap dedupe.
   const { data: report } = await supabase
     .from("ai_reports")
     .select("suggested_edits")
@@ -658,34 +597,12 @@ export async function previewAutoDraft(sessionId: string): Promise<{
     .maybeSingle();
   const coachEdits = (report?.suggested_edits ?? []) as unknown as SuggestedEdit[];
 
-  const { data: transcript } = await supabase
-    .from("transcripts")
-    .select("words")
-    .eq("session_id", sessionId)
-    .maybeSingle();
-  let promoted: ReturnType<typeof promoteParaphrases> = [];
-  if (
-    transcript?.words &&
-    Array.isArray(transcript.words) &&
-    sections.length > 0
-  ) {
-    const scriptSecs: ScriptSection[] = sections.map((s) => ({
-      id: s.id,
-      body: s.body ?? "",
-      targetSeconds: s.target_seconds ?? 0,
-      position: s.position,
-    }));
-    const diff = coalesceDiff(
-      buildDiff(scriptSecs, transcript.words as unknown as TranscriptWord[]),
-    );
-    promoted = promoteParaphrases(diff, sessionId);
-  }
   const proposedBodyMap = new Map<string, string>(
     sections.map((s) => [s.id, s.body ?? ""]),
   );
   const allEdits = mergeSuggestedEdits(
     coachEdits,
-    promoted,
+    [],
     proposedBodyMap,
   ) as SuggestedEdit[];
 
