@@ -2029,6 +2029,28 @@ const BAND_COLORS: Record<
   },
 };
 
+// Prose recall reading. The user doesn't think in percentages; they
+// think "I got nothing" or "most of it." Map (band, recall) to a
+// short human description we can sit alongside the section name.
+function recallReading(
+  band: NonNullable<SectionInput["memoryBand"]>,
+  recall: number | undefined,
+): string {
+  const r = recall ?? 0;
+  switch (band) {
+    case "word-perfect":
+      return "Word-perfect.";
+    case "mostly-there":
+      return "Most of it — a few slips.";
+    case "rough":
+      return r >= 0.3 ? "Got the first part, then drifted." : "Got the opening, then lost it.";
+    case "blank":
+      return r > 0.1 ? "Got a few words." : "Blanked.";
+    case "not-reached":
+      return "Didn't get here.";
+  }
+}
+
 function RecallMap({
   speechId,
   sections,
@@ -2042,114 +2064,108 @@ function RecallMap({
 
   return (
     <div
-      className="ms-recall-map"
+      className="ms-recall-list"
       role="group"
       aria-label="Recall map"
       style={{ marginBottom: 18 }}
     >
       <style>{`
-        .ms-recall-map {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-          gap: 8px;
-        }
-        .ms-recall-tile {
+        .ms-recall-list {
           display: flex;
           flex-direction: column;
-          gap: 6px;
-          padding: 10px 12px;
-          border-radius: 10px;
-          border: 1px solid;
-          font-size: 12px;
-          line-height: 1.3;
         }
-        .ms-recall-tile-name {
+        .ms-recall-row {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 10px 12px 10px 14px;
+          border-bottom: 1px solid rgba(17,17,17,0.06);
+          text-decoration: none;
+          color: inherit;
+          position: relative;
+          transition: background 120ms;
+        }
+        .ms-recall-row:last-child { border-bottom: 0; }
+        .ms-recall-row:hover { background: rgba(17,17,17,0.02); }
+        .ms-recall-row:hover .ms-recall-drill { opacity: 1; }
+
+        /* Colored band rail running the full height of the row. */
+        .ms-recall-row::before {
+          content: "";
+          position: absolute;
+          left: 0; top: 6px; bottom: 6px;
+          width: 3px;
+          border-radius: 2px;
+          background: var(--rail-color, transparent);
+        }
+
+        .ms-recall-name {
+          flex: 0 0 auto;
+          min-width: 88px;
           font-size: 11px;
           font-weight: 600;
           letter-spacing: 0.08em;
           text-transform: uppercase;
+          color: var(--color-midnight-ink);
         }
-        .ms-recall-tile-band {
-          font-size: 11px;
-          font-weight: 500;
+        .ms-recall-reading {
+          flex: 1;
+          font-size: 13.5px;
+          color: var(--color-midnight-ink);
         }
-        .ms-recall-tile-meta {
-          display: flex;
+        .ms-recall-meta {
+          display: inline-flex;
           align-items: center;
-          gap: 6px;
+          gap: 4px;
+          margin-left: 10px;
+          font-size: 11px;
           color: var(--color-muted-ash);
-          font-size: 10.5px;
-          margin-top: auto;
         }
-        .ms-recall-tile-actions {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          margin-top: 6px;
-        }
-        .ms-recall-tile-drill {
-          font-size: 11px;
-          padding: 4px 8px;
+        .ms-recall-drill {
+          flex: 0 0 auto;
+          font-size: 12px;
+          padding: 4px 10px;
           border-radius: 6px;
-          background: var(--color-canvas-white);
-          border: 1px solid rgba(17,17,17,0.14);
+          background: transparent;
+          border: 1px solid rgba(17,17,17,0.12);
           color: var(--color-midnight-ink);
           text-decoration: none;
           font-weight: 500;
+          opacity: 0.55;
+          transition: opacity 120ms, border-color 120ms;
         }
-        .ms-recall-tile-drill:hover {
-          border-color: rgba(17,17,17,0.32);
-        }
+        .ms-recall-drill:hover { border-color: rgba(17,17,17,0.32); opacity: 1; }
       `}</style>
       {sections.map((section) => {
         const band = section.memoryBand ?? "not-reached";
         const colors = BAND_COLORS[band];
-        const recallPctText =
-          typeof section.recallPct === "number"
-            ? `${Math.round(section.recallPct * 100)}%`
-            : null;
         return (
           <a
             key={section.id}
             href={`#section-${section.id}`}
-            className="ms-recall-tile"
-            style={{
-              background: colors.fill,
-              borderColor: colors.stroke,
-              color: colors.text,
-              textDecoration: "none",
-            }}
+            className="ms-recall-row"
+            style={{ ["--rail-color" as string]: colors.stroke }}
           >
-            <span
-              className="ms-recall-tile-name"
-              style={{ color: "var(--color-midnight-ink)" }}
-            >
-              {section.name}
+            <span className="ms-recall-name">{section.name}</span>
+            <span className="ms-recall-reading">
+              {recallReading(band, section.recallPct)}
             </span>
-            <span className="ms-recall-tile-band" style={{ color: colors.text }}>
-              {colors.label}
-              {recallPctText ? ` · ${recallPctText}` : ""}
-            </span>
-            <div
-              className="ms-recall-tile-meta"
-              style={{ visibility: section.hadLongPause ? "visible" : "hidden" }}
+            {section.hadLongPause && (
+              <span className="ms-recall-meta" title="You paused for more than 4 seconds">
+                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                  <rect x="2" y="1.5" width="2" height="7" rx="0.5" fill="currentColor" />
+                  <rect x="6" y="1.5" width="2" height="7" rx="0.5" fill="currentColor" />
+                </svg>
+                <span>Long pause</span>
+              </span>
+            )}
+            <Link
+              href={`/app/speeches/${speechId}/record?mode=freestyle&section=${section.id}`}
+              className="ms-recall-drill"
+              onClick={(e) => e.stopPropagation()}
             >
-              {/* Inline pause icon — no external dep. */}
-              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                <rect x="2" y="1.5" width="2" height="7" rx="0.5" fill="currentColor" />
-                <rect x="6" y="1.5" width="2" height="7" rx="0.5" fill="currentColor" />
-              </svg>
-              <span>Long pause</span>
-            </div>
-            <div className="ms-recall-tile-actions">
-              <Link
-                href={`/app/speeches/${speechId}/record?mode=freestyle&section=${section.id}`}
-                className="ms-recall-tile-drill"
-                onClick={(e) => e.stopPropagation()}
-              >
-                Drill →
-              </Link>
-            </div>
+              Drill →
+            </Link>
           </a>
         );
       })}
