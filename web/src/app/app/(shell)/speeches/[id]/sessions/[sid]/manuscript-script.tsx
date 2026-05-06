@@ -286,6 +286,84 @@ function sharesMeaningfulPhrase(a: string, b: string): boolean {
   return false;
 }
 
+// Word-level diff between a coach rephrase's `before` (script wording)
+// and `after` (proposed wording). Produces the same WordOp[] shape the
+// alignment library emits, so we can render rephrase cards with the
+// exact same inline track-changes treatment as paraphrase observations
+// — only the actually-changed words are highlighted.
+//
+// LCS-based: find the longest common subsequence of normalised tokens,
+// then walk both arrays emitting equal/sub/del/ins ops. Two consecutive
+// del+ins ops at the same position get coalesced into a single sub so
+// the renderer shows them inline ("fourteen → twelve") rather than
+// stacked.
+function diffWordsToOps(before: string, after: string): WordOp[] {
+  const splitWithSurface = (s: string) =>
+    s
+      .split(/(\s+)/)
+      .filter((p) => p && !/^\s+$/.test(p))
+      .map((surface) => ({ surface, key: surface.toLowerCase().replace(/[‘’']/g, "").replace(/[^\p{L}\p{N}]+/gu, "") }))
+      .filter((t) => t.key.length > 0);
+
+  const a = splitWithSurface(before);
+  const b = splitWithSurface(after);
+
+  // Standard LCS DP.
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      if (a[i].key === b[j].key) dp[i][j] = dp[i + 1][j + 1] + 1;
+      else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const ops: WordOp[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < m && j < n) {
+    if (a[i].key === b[j].key) {
+      ops.push({ kind: "equal", text: a[i].surface });
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      ops.push({ kind: "del", written: a[i].surface });
+      i++;
+    } else {
+      ops.push({ kind: "ins", spoken: b[j].surface });
+      j++;
+    }
+  }
+  while (i < m) ops.push({ kind: "del", written: a[i++].surface });
+  while (j < n) ops.push({ kind: "ins", spoken: b[j++].surface });
+
+  // Coalesce adjacent del+ins (or ins+del) into a single sub so the
+  // renderer shows the swap inline.
+  const coalesced: WordOp[] = [];
+  for (const op of ops) {
+    const last = coalesced[coalesced.length - 1];
+    if (last && last.kind === "del" && op.kind === "ins") {
+      coalesced[coalesced.length - 1] = {
+        kind: "sub",
+        written: last.written,
+        spoken: op.spoken,
+      };
+      continue;
+    }
+    if (last && last.kind === "ins" && op.kind === "del") {
+      coalesced[coalesced.length - 1] = {
+        kind: "sub",
+        written: op.written,
+        spoken: last.spoken,
+      };
+      continue;
+    }
+    coalesced.push(op);
+  }
+  return coalesced;
+}
+
 function tokeniseSpokenDeviations(diffRows: DiffRow[], sectionId: string): Token[] {
   const rows = diffRows.filter((r) => r.sectionId === sectionId);
   const tokens: Token[] = [];
@@ -1581,8 +1659,9 @@ function EditCard({
               Render the script version as the "winning" text (not
               struck through) and the spoken version as a small "you
               said" annotation, so the visual matches the prose intent.
-              Otherwise render normally: script struck → spoken
-              highlighted as the proposed swap. */}
+              Otherwise show a word-level inline diff so only the
+              actually-changed words are highlighted — matches the
+              treatment of paraphrase observations. */}
           {isDefensiveRephrase(edit.reason) ? (
             <>
               {edit.before && (
@@ -1596,6 +1675,14 @@ function EditCard({
                 </span>
               )}
             </>
+          ) : edit.before && edit.after ? (
+            <p className="ms-card-paraphrase" style={{ marginTop: 4 }}>
+              &ldquo;
+              {diffWordsToOps(edit.before, edit.after).map((op, i) => (
+                <ObsOpSpan key={i} op={op} />
+              ))}
+              &rdquo;
+            </p>
           ) : (
             <>
               {edit.before && (

@@ -21,10 +21,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getPlaybackUrl } from "@/app/app/sessions-actions";
 import { buildDiff, coalesceDiff, computeMemoryCheck } from "@/lib/alignment";
 import type { TranscriptWord, ScriptSection, MemoryBand } from "@/lib/alignment";
-import {
-  promoteParaphrases,
-  mergeSuggestedEdits,
-} from "@/lib/paraphrase-suggestions";
+import { mergeSuggestedEdits } from "@/lib/paraphrase-suggestions";
 import { AutoRefresh } from "./auto-refresh";
 import { PlaybackDock } from "./playback-dock";
 import { ManuscriptScript, type SuggestedEdit } from "./manuscript-script";
@@ -158,18 +155,43 @@ export default async function SessionReportPage({
   const hasTranscript = !!transcript?.words && Array.isArray(transcript.words);
   const hasCoach = !!aiReport;
 
-  // Suggested edits — coach-generated + paraphrase-promoted, deduped
-  // by interval overlap.
-  const coachEdits = (Array.isArray(aiReport?.suggested_edits)
+  // Suggested edits — coach-only. We previously promoted alignment
+  // paraphrases into rephrase cards, but those duplicate what the
+  // inline "what you said" annotations and Delivery-notes observation
+  // cards already show, and they read like edits when they're really
+  // just observations. The rail now shows only coach-authored edits.
+  const coachEditsRaw = (Array.isArray(aiReport?.suggested_edits)
     ? aiReport.suggested_edits
     : []) as unknown as SuggestedEdit[];
-  const promoted = diff.length > 0 ? promoteParaphrases(diff, sessionId) : [];
   const sectionBodyById = new Map<string, string>(
     (secRows ?? []).map((s) => [s.id, s.body ?? ""]),
   );
+
+  // Defensive filter: drop "rephrase" suggestions whose section was a
+  // memory failure (blank / rough / not-reached) in freestyle mode.
+  // The coach prompt already forbids these, but legacy reports and
+  // the occasional miss slip through, and the user shouldn't be asked
+  // to "Accept" a rewrite of a section they blanked on. Same logic
+  // for rephrases whose `before` doesn't appear verbatim in the
+  // section body — those are reconstructed from the transcript and
+  // don't represent actual script text to swap.
+  const MEMORY_FAILURE_BANDS = new Set<MemoryBand>(["blank", "rough", "not-reached"]);
+  const coachEdits = coachEditsRaw.filter((e) => {
+    if (e.kind !== "rephrase") return true;
+    if (isFreestyle) {
+      const band = memoryBandById.get(e.section_id);
+      if (band && MEMORY_FAILURE_BANDS.has(band)) return false;
+    }
+    if (e.before) {
+      const body = sectionBodyById.get(e.section_id) ?? "";
+      if (!body.toLowerCase().includes(e.before.toLowerCase())) return false;
+    }
+    return true;
+  });
+
   const allEdits = mergeSuggestedEdits(
     coachEdits,
-    promoted,
+    [],
     sectionBodyById,
   ) as SuggestedEdit[];
 
