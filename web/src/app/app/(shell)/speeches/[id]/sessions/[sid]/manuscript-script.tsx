@@ -497,6 +497,43 @@ export function ManuscriptScript({
     });
   }, [suggestedEdits, observations, sections]);
 
+  // Partition the rail into two clearly-labeled groups:
+  //
+  //   Script edits  = cut / adopt / rephrase suggestions. These are
+  //                   the only items the Apply & record button acts
+  //                   on. Each card has Accept / Reject (or "Keep
+  //                   as written" for defensive rephrases).
+  //
+  //   Delivery notes = drill suggestions + observations (skips,
+  //                    paraphrases the coach didn't propose an edit
+  //                    for). Drills are actionable but don't change
+  //                    the script; observations are pure information.
+  //                    The Apply button never includes these.
+  //
+  // The partition makes the user's question — "what's the difference
+  // between an Adopt and a 'You phrased differently' note?" — answer
+  // itself: one group changes the script, the other doesn't.
+  const scriptEditItems = useMemo(
+    () =>
+      railItems.filter(
+        (item): item is { kind: "edit"; edit: SuggestedEdit } =>
+          item.kind === "edit" &&
+          (item.edit.kind === "cut" ||
+            item.edit.kind === "adopt" ||
+            item.edit.kind === "rephrase"),
+      ),
+    [railItems],
+  );
+  const deliveryNoteItems = useMemo(
+    () =>
+      railItems.filter(
+        (item) =>
+          item.kind === "observation" ||
+          (item.kind === "edit" && item.edit.kind === "drill"),
+      ),
+    [railItems],
+  );
+
   // Activate an edit: scroll the corresponding rail card and manuscript
   // anchor into view, mark it active for highlighting.
   const activateEdit = useCallback((editId: string, source: "manuscript" | "rail") => {
@@ -806,6 +843,27 @@ export function ManuscriptScript({
           color: var(--color-midnight-ink);
           margin: 0 0 4px;
         }
+        /* Two groups in the rail: Script edits + Delivery notes. The
+           outer .ms-rail uses gap: 12px between cards; we want a
+           bigger break BETWEEN groups so the eye sees two columns of
+           content, not one. */
+        .ms-rail-group {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .ms-rail-group + .ms-rail-group {
+          margin-top: 28px;
+          padding-top: 20px;
+          border-top: 1px solid rgba(17,17,17,0.08);
+        }
+        .ms-rail-subhead {
+          font-size: 12px;
+          line-height: 1.45;
+          color: var(--color-muted-ash);
+          margin: 0 0 8px;
+          font-family: 'Inter', sans-serif;
+        }
 
         /* ─── Edit card ─────────────────────────────────────────── */
         .ms-card {
@@ -1060,7 +1118,7 @@ export function ManuscriptScript({
             <span className="ms-toggle-spacer" />
             <span className="ms-toggle-meta">
               {viewMode === "coach"
-                ? `${acceptedEdits.length} of ${suggestedEdits.filter((e) => e.kind !== "drill").length} accepted`
+                ? `${acceptedEdits.length} of ${scriptEditItems.length} script edits accepted`
                 : viewMode === "spoken"
                 ? "How your delivery diverged"
                 : "Coach + speaker layers overlaid"}
@@ -1161,17 +1219,22 @@ export function ManuscriptScript({
           )}
         </div>
 
-        {/* ─── Right column: comments rail ─────────────────────── */}
+        {/* ─── Right column: comments rail ─────────────────────────
+             Split into two groups so the user knows what each card
+             is for. Script edits are proposed changes to the script
+             (Accept/Reject; the only thing the Apply button cares
+             about). Delivery notes are observations and practice
+             suggestions about how the user delivered (no Apply,
+             only Drill on drill cards). */}
         {showRail && (
-          <aside className="ms-rail" aria-labelledby="ms-rail-heading">
-            <h3 id="ms-rail-heading" className="ms-rail-heading">
-              Adjustments
-            </h3>
-            {railItems.length === 0 ? (
-              <div className="ms-rail-empty">No adjustments for this take.</div>
-            ) : (
-              railItems.map((item) =>
-                item.kind === "edit" ? (
+          <aside className="ms-rail" aria-label="Coach feedback">
+            {scriptEditItems.length > 0 && (
+              <div className="ms-rail-group">
+                <h3 className="ms-rail-heading">Script edits</h3>
+                <p className="ms-rail-subhead">
+                  Changes to your script. Apply the ones you want.
+                </p>
+                {scriptEditItems.map((item) => (
                   <EditCard
                     key={item.edit.id}
                     edit={item.edit}
@@ -1187,17 +1250,49 @@ export function ManuscriptScript({
                     drillPending={pending}
                     setCardRef={setCardRef}
                   />
-                ) : (
-                  <ObservationCard
-                    key={item.id}
-                    observation={item}
-                    sectionName={
-                      sections.find((s) => s.id === item.sectionId)?.name ??
-                      "Section"
-                    }
-                  />
-                ),
-              )
+                ))}
+              </div>
+            )}
+
+            {deliveryNoteItems.length > 0 && (
+              <div className="ms-rail-group">
+                <h3 className="ms-rail-heading">Delivery notes</h3>
+                <p className="ms-rail-subhead">
+                  Observations on how you delivered. No script changes.
+                </p>
+                {deliveryNoteItems.map((item) =>
+                  item.kind === "edit" ? (
+                    <EditCard
+                      key={item.edit.id}
+                      edit={item.edit}
+                      sectionName={
+                        sections.find((s) => s.id === item.edit.section_id)?.name ??
+                        "Section"
+                      }
+                      state={acceptance.get(item.edit.id) ?? "pending"}
+                      isActive={activeEditId === item.edit.id}
+                      onSetState={(s) => setEdit(item.edit.id, s)}
+                      onActivate={() => activateEdit(item.edit.id, "rail")}
+                      onDrill={() => startDrill(item.edit.id)}
+                      drillPending={pending}
+                      setCardRef={setCardRef}
+                    />
+                  ) : (
+                    <ObservationCard
+                      key={item.id}
+                      observation={item}
+                      sectionName={
+                        sections.find((s) => s.id === item.sectionId)?.name ??
+                        "Section"
+                      }
+                    />
+                  ),
+                )}
+              </div>
+            )}
+
+            {scriptEditItems.length === 0 && deliveryNoteItems.length === 0 && (
+              <div className="ms-rail-empty">No coach feedback for this take.</div>
             )}
           </aside>
         )}
