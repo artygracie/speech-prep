@@ -26,6 +26,10 @@ type SuggestedEdit = {
   section_id: string;
   before?: string;
   after?: string;
+  // adopt-only (prompt v3+): the new text being inserted at the
+  // `before` anchor. Pre-v3 reports may omit this; the apply path
+  // recovers an insertion from `after` when possible.
+  insertion?: string;
   reason: string;
   // drill-only fields
   line_target?: string;
@@ -46,10 +50,53 @@ function applyEditToBody(body: string, edit: SuggestedEdit): string {
       return [before, after].filter(Boolean).join(" ");
     }
     case "adopt": {
-      if (!edit.after) return body;
-      // Append at the end of the section. Real version would use a more
-      // careful insertion point.
-      return body.trim() + " " + edit.after.trim();
+      // ADOPT = insert NEW text into the script at a specific anchor.
+      //
+      // Prompt v3+ contract:
+      //   - `before`    = verbatim script substring that ANCHORS the
+      //                   insertion. New text is inserted directly
+      //                   after this substring.
+      //   - `insertion` = ONLY the new words to add (not the full
+      //                   revised passage).
+      //
+      // Pre-v3 (legacy) reports often used `after` as the entire
+      // revised passage with no `before`. We try to recover them
+      // safely by extracting the part of `after` that doesn't already
+      // appear in the body.
+      const insertionText = resolveAdoptInsertion(body, edit);
+      if (!insertionText) return body;
+
+      // Safety: if the insertion text already appears in the body,
+      // don't add it again. (Belt-and-suspenders for the case where
+      // the user accepts the same edit twice, or the model's
+      // insertion happens to already be in the script.)
+      if (body.toLowerCase().includes(insertionText.toLowerCase())) {
+        return body;
+      }
+
+      // Insert at the anchor if we have one; otherwise append to tail
+      // as a last resort. The anchor path is the v3 contract.
+      if (edit.before) {
+        const idx = body.toLowerCase().indexOf(edit.before.toLowerCase());
+        if (idx >= 0) {
+          const anchorEnd = idx + edit.before.length;
+          const head = body.slice(0, anchorEnd);
+          const tail = body.slice(anchorEnd);
+          // Ensure single space between anchor and insertion, and
+          // between insertion and the rest of the body.
+          const headTrimmed = head.replace(/\s+$/, "");
+          const tailTrimmed = tail.replace(/^\s+/, "");
+          return (
+            headTrimmed +
+            " " +
+            insertionText.trim() +
+            (tailTrimmed ? " " + tailTrimmed : "")
+          );
+        }
+      }
+      // Last-resort tail append. Only happens for legacy adopts
+      // without a usable anchor.
+      return body.trim() + " " + insertionText.trim();
     }
     case "rephrase": {
       if (!edit.before || !edit.after) return body;
@@ -64,6 +111,75 @@ function applyEditToBody(body: string, edit: SuggestedEdit): string {
       return body;
     }
   }
+}
+
+// Pull the actual NEW text out of an adopt edit. Three cases:
+//
+//   1. v3 contract: `insertion` is set → use it directly.
+//   2. Legacy with `before` set: `after` may be a full revised passage
+//      that starts with `before`. Strip `before` to recover the new
+//      tail. Example:
+//        before    = "but here we are."
+//        after     = "but here we are. Are you really sure?…"
+//        insertion = "Are you really sure?…"  (recovered)
+//   3. Legacy fallback: `after` may be a full revision with no clean
+//      prefix match. Walk both strings token-by-token, find the
+//      longest common prefix that appears in `body`, and keep only
+//      what's left of `after`. If even that's empty (everything
+//      already in body), return null — there's nothing to add.
+function resolveAdoptInsertion(
+  body: string,
+  edit: { before?: string; after?: string; insertion?: string },
+): string | null {
+  if (edit.insertion && edit.insertion.trim()) {
+    return edit.insertion.trim();
+  }
+  if (!edit.after || !edit.after.trim()) return null;
+  const after = edit.after.trim();
+
+  // Case 2: after starts with before — strip the prefix.
+  if (edit.before) {
+    const beforeNorm = edit.before.trim().toLowerCase();
+    const afterLowerStart = after.toLowerCase().slice(0, beforeNorm.length);
+    if (afterLowerStart === beforeNorm) {
+      const remainder = after.slice(beforeNorm.length).replace(/^[\s.,;:!?]+/, "");
+      return remainder ? remainder : null;
+    }
+  }
+
+  // Case 3: walk word-by-word and strip whatever already appears in
+  // the body. We tokenise loosely to allow for casing/punct drift.
+  const bodyTokens = body.toLowerCase().split(/\s+/).filter(Boolean);
+  const afterWords = after.split(/(\s+)/); // keep separators
+  const afterTokens = after.toLowerCase().split(/\s+/).filter(Boolean);
+
+  // Find the longest prefix of afterTokens that appears verbatim
+  // in bodyTokens (anywhere, not just at start).
+  let longestPrefix = 0;
+  for (let len = afterTokens.length; len > 0; len--) {
+    const slice = afterTokens.slice(0, len).join(" ");
+    if (bodyTokens.join(" ").includes(slice)) {
+      longestPrefix = len;
+      break;
+    }
+  }
+  if (longestPrefix === 0) return after; // nothing matched, return whole
+
+  // Walk afterWords (which preserves whitespace) and skip the first
+  // `longestPrefix` content tokens.
+  let skipped = 0;
+  let remainderStart = 0;
+  for (let i = 0; i < afterWords.length; i++) {
+    if (afterWords[i].trim() === "") continue;
+    skipped += 1;
+    if (skipped > longestPrefix) {
+      remainderStart = i;
+      break;
+    }
+    remainderStart = i + 1;
+  }
+  const remainder = afterWords.slice(remainderStart).join("").replace(/^[\s.,;:!?]+/, "");
+  return remainder.trim() ? remainder.trim() : null;
 }
 
 export async function applySuggestions(
