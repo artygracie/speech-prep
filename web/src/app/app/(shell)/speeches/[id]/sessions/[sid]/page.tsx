@@ -111,7 +111,7 @@ export default async function SessionReportPage({
   // Pacing rows.
   const { data: metricsRaw } = await supabase
     .from("section_metrics")
-    .select("section_id, position, actual_seconds, target_seconds, delta_seconds, wpm, filler_count, word_start_idx, word_end_idx")
+    .select("section_id, position, actual_seconds, target_seconds, delta_seconds, wpm, filler_count, pause_ms_total, word_start_idx, word_end_idx")
     .eq("session_id", sessionId)
     .order("position", { ascending: true });
   const metrics = metricsRaw ?? [];
@@ -144,12 +144,50 @@ export default async function SessionReportPage({
     diff = coalesceDiff(buildDiff(sections, transcript.words as TranscriptWord[]));
   }
 
-  // Per-section memory band (From-memory mode only). We index by
-  // section id so the manuscript can render the chip on each heading.
+  // Per-section memory check (From-memory mode only). The recall map
+  // and per-section recall cards on the freestyle report read multiple
+  // signals off this — band, recall %, plus first-spoken-words for a
+  // "you got this far" snippet on rough sections.
   const memoryBandById = new Map<string, MemoryBand>();
+  const recallPctById = new Map<string, number>();
   if (isFreestyle && diff.length > 0) {
     for (const r of computeMemoryCheck(sections, diff)) {
       memoryBandById.set(r.sectionId, r.band);
+      recallPctById.set(r.sectionId, r.recall);
+    }
+  }
+
+  // First spoken words per section, derived from diff rows. Used on
+  // rough / blanked sections to render a "you got this far:" snippet
+  // — it shows the user where the wheels came off without dumping
+  // the entire mangled transcript on them.
+  const spokenSnippetById = new Map<string, string>();
+  if (isFreestyle && diff.length > 0) {
+    for (const row of diff) {
+      if (!row.sectionId) continue;
+      if (spokenSnippetById.has(row.sectionId)) continue;
+      let firstSpoken = "";
+      if (row.kind === "match") firstSpoken = row.spoken;
+      else if (row.kind === "improv") firstSpoken = row.spoken;
+      else if (row.kind === "paraphrase") {
+        // Reconstruct the spoken side of the paraphrase from ops.
+        firstSpoken = row.ops
+          .filter((o) => o.kind === "equal" || o.kind === "ins" || o.kind === "sub")
+          .map((o) =>
+            o.kind === "equal"
+              ? o.text
+              : "spoken" in o
+                ? o.spoken
+                : "",
+          )
+          .join(" ")
+          .trim();
+      }
+      // skipped rows have no spoken text — keep the map entry empty
+      // so we don't fall back to a later row's text.
+      if (firstSpoken) {
+        spokenSnippetById.set(row.sectionId, firstSpoken);
+      }
     }
   }
 
@@ -204,7 +242,10 @@ export default async function SessionReportPage({
   const needsCoach = hasTranscript && !hasCoach;
 
   // Sections shaped for the manuscript renderer — id, name, body,
-  // optional pacing + memory band per section.
+  // optional pacing + memory band + per-section recall signals.
+  // The freestyle report uses these for the recall map at the top of
+  // the page and band-appropriate rendering of each section card.
+  const LONG_PAUSE_MS = 4000;
   const manuscriptSections = (secRows ?? []).map((s) => {
     const m = metrics.find((x) => x.section_id === s.id);
     const pacing = m
@@ -220,6 +261,10 @@ export default async function SessionReportPage({
       body: s.body ?? "",
       pacing,
       memoryBand: memoryBandById.get(s.id),
+      recallPct: recallPctById.get(s.id),
+      spokenSnippet: spokenSnippetById.get(s.id) ?? null,
+      hadLongPause:
+        (m?.pause_ms_total ?? 0) > LONG_PAUSE_MS,
     };
   });
 
