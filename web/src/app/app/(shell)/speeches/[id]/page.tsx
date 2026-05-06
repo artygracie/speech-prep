@@ -5,6 +5,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { UpgradeCard } from "@/components/upgrade-card";
+import { NextStepCard } from "@/components/next-step-card";
+import { gatherSpeechSignals, recommendNext } from "@/lib/lifecycle";
 import DraftsPanel from "./drafts-panel";
 import { SessionRowActions } from "./session-row-actions";
 import { ConvergenceChart } from "./convergence-chart";
@@ -145,6 +147,22 @@ export default async function SpeechDetailPage({
   const isWalled =
     (isFreePlan && freeSessionsRemaining <= 0) || isWrongSpeechPass;
 
+  // Lifecycle recommendation. We compute it server-side off the same
+  // queries the page already does (plus a small amount more) and
+  // render a NextStepCard that tells the user what to do next. We
+  // suppress when walled — the upgrade flow takes precedence — and
+  // when the speech has no sections (the recommendation handles that
+  // case but it's redundant with the Edit script CTA).
+  let recommendation: ReturnType<typeof recommendNext> | null = null;
+  if (!isWalled) {
+    try {
+      const signals = await gatherSpeechSignals(supabase, speech.id);
+      recommendation = recommendNext(signals);
+    } catch (err) {
+      console.error("[lifecycle] recommendation failed", err);
+    }
+  }
+
   function fmtRel(iso: string | null) {
     if (!iso) return "";
     const d = new Date(iso);
@@ -219,6 +237,17 @@ export default async function SpeechDetailPage({
             returnTo={`/app/speeches/${speech.id}`}
             context="speech-detail"
           />
+        </div>
+      )}
+
+      {/* Lifecycle recommendation. The card tells the user what to do
+          next given where they are in the prep arc — a fresh speech
+          gets "read it aloud first," a speech with applied edits gets
+          "drill the opening from memory," etc. The big "Record
+          session" button stays as a top-right escape hatch. */}
+      {recommendation && (
+        <div className="mt-8">
+          <NextStepCard recommendation={recommendation} speechId={speech.id} variant="primary" />
         </div>
       )}
 
