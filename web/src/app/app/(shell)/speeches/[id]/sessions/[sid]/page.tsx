@@ -26,6 +26,8 @@ import { AutoRefresh } from "./auto-refresh";
 import { PlaybackDock } from "./playback-dock";
 import { ManuscriptScript, type SuggestedEdit } from "./manuscript-script";
 import { UpgradeCard } from "@/components/upgrade-card";
+import { NextStepCard } from "@/components/next-step-card";
+import { gatherSpeechSignals, recommendNext } from "@/lib/lifecycle";
 import { resolveMode, MODE_LABEL } from "@/lib/modes";
 
 function fmtTime(seconds: number) {
@@ -227,6 +229,21 @@ export default async function SessionReportPage({
     firstSentence(aiReport?.summary ?? "");
   const summary = aiReport?.summary ?? "";
 
+  // Lifecycle recommendation. Computed off the same speech, so the
+  // post-take card tells the user what's next given everything that's
+  // happened — including this take. We only render the card when the
+  // pipeline has finished (otherwise the recommendation is based on
+  // partial data and might oscillate as transcription/coach land).
+  let recommendation: ReturnType<typeof recommendNext> | null = null;
+  if (pipelineDone) {
+    try {
+      const signals = await gatherSpeechSignals(supabase, speechId);
+      recommendation = recommendNext(signals);
+    } catch (err) {
+      console.error("[lifecycle] recommendation failed", err);
+    }
+  }
+
   return (
     <div>
       {/* Polls the page until everything's landed. Renders nothing. */}
@@ -399,6 +416,22 @@ export default async function SessionReportPage({
             />
           </div>
         </section>
+      )}
+
+      {/* Lifecycle "what's next" card. Renders below the manuscript so
+          the user finishes reading the report and lands on a single
+          contextual recommendation. The Apply-edits buttons in the
+          manuscript footer are still the right call when the user
+          wants to commit edits; the NextStepCard answers "where do I
+          go after this?" */}
+      {recommendation && (
+        <div className="mt-12" style={{ maxWidth: 760 }}>
+          <NextStepCard
+            recommendation={recommendation}
+            speechId={speechId}
+            variant="compact"
+          />
+        </div>
       )}
 
       {/* ===== Upgrade nudge — bottom of page, after value ===== */}
