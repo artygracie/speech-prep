@@ -8,8 +8,8 @@ import { redirect } from "next/navigation";
 import { stripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import { applyEntitlementFromCheckoutSession, safeReturnTo } from "@/lib/entitlements";
-import { ConversionPixel } from "../conversion-pixel";
 import { SuccessRedirect } from "./success-redirect";
+import { ConversionPixelBridge } from "./conversion-pixel-bridge";
 
 export const metadata = { title: "Payment received — SpeechPrep" };
 
@@ -74,7 +74,7 @@ export default async function BillingSuccessPage({
       }}
     >
       {conversion && (
-        <ConversionPixel
+        <ConversionPixelBridge
           transactionId={conversion.transactionId}
           value={conversion.value}
           currency={conversion.currency}
@@ -84,7 +84,7 @@ export default async function BillingSuccessPage({
       <p className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
         Taking you back to your speech&hellip;
       </p>
-      <SuccessRedirect to={returnTo} />
+      <SuccessRedirect to={returnTo} waitForPixel={!!conversion} />
     </div>
   );
 }
