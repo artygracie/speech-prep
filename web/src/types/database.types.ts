@@ -16,6 +16,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      draft_revisions: {
+        Row: {
+          content: string
+          created_at: string
+          draft_id: string
+          id: string
+          kind: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          draft_id: string
+          id?: string
+          kind: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          draft_id?: string
+          id?: string
+          kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "draft_revisions_draft_id_fkey"
+            columns: ["draft_id"]
+            isOneToOne: false
+            referencedRelation: "drafts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      drafts: {
+        Row: {
+          created_at: string
+          email_sent_at: string
+          id: string
+          pr_number: number | null
+          reminder_sent_at: string | null
+          status: string
+          status_reason: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email_sent_at?: string
+          id?: string
+          pr_number?: number | null
+          reminder_sent_at?: string | null
+          status?: string
+          status_reason?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email_sent_at?: string
+          id?: string
+          pr_number?: number | null
+          reminder_sent_at?: string | null
+          status?: string
+          status_reason?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_reports: {
         Row: {
           cached_input_tokens: number | null
