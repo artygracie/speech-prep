@@ -677,6 +677,16 @@ export function ManuscriptScript({
     [railItems],
   );
 
+  // Worst section by recall band — used in freestyle's layered view to
+  // elevate that section's "Drill this section" button to a primary
+  // black-filled CTA. Only set when the worst section is genuinely
+  // weak (rough or worse); a word-perfect "worst" doesn't deserve
+  // primary treatment.
+  const worstSectionId = useMemo(
+    () => pickWorstSectionId(sections),
+    [sections],
+  );
+
   // Activate an edit: scroll the corresponding rail card and manuscript
   // anchor into view, mark it active for highlighting.
   const activateEdit = useCallback((editId: string, source: "manuscript" | "rail") => {
@@ -739,7 +749,7 @@ export function ManuscriptScript({
     ? "Working…"
     : acceptedEdits.length === 0
     ? mode === "freestyle"
-      ? "Drill again →"
+      ? "Practice again →"
       : "Record again →"
     : MODE_PRIMARY_CTA[mode];
 
@@ -1243,60 +1253,71 @@ export function ManuscriptScript({
       <div className={`ms-grid ${showRail ? "has-rail" : ""}`}>
         {/* ─── Left column: manuscript ─────────────────────────── */}
         <div>
-          {/* Recall map. Freestyle reports only — top-of-page strip
-              showing one tile per section, colored by recall band, with
-              a quick-drill button per section. The recall view below
-              repeats the same drill button inline; the map is the
-              at-a-glance "what happened in this take" answer. */}
-          {mode === "freestyle" && (
-            <RecallMap
-              speechId={speechId}
-              sections={sections}
-            />
-          )}
-
-          {/* Tabs — mode-aware. With-script reports keep the editorial
-              labels (Coach edits / What you said / Both); freestyle
-              reports use recall-focused labels (Recall / Transcript /
-              Edits) but route to the same internal viewMode states. */}
+          {/* Tabs — mode-aware.
+              With-script reports keep the editorial labels (Coach
+              edits / What you said / Both).
+              Freestyle reports collapse to a two-state Layered /
+              Side-by-side toggle. Internally Layered uses the "coach"
+              view mode and Side-by-side uses "both" — they're the
+              same state machine, different presentation. */}
           <div className="ms-toggle" role="tablist" aria-label="View">
-            <button
-              role="tab"
-              aria-selected={viewMode === "coach"}
-              className="ms-toggle-pill"
-              onClick={() => setViewMode("coach")}
-            >
-              {mode === "freestyle" ? "Recall" : "Coach edits"}
-            </button>
-            <button
-              role="tab"
-              aria-selected={viewMode === "spoken"}
-              className="ms-toggle-pill"
-              onClick={() => setViewMode("spoken")}
-            >
-              {mode === "freestyle" ? "Transcript" : "What you said"}
-            </button>
-            {/* Hide "Both" / "Edits" tab on freestyle when there are
-                no coach edits — it'd just show the script. With-script
-                reports always show all three tabs. */}
-            {(mode !== "freestyle" || scriptEditItems.length > 0) && (
-              <button
-                role="tab"
-                aria-selected={viewMode === "both"}
-                className="ms-toggle-pill"
-                onClick={() => setViewMode("both")}
-              >
-                {mode === "freestyle" ? "Edits" : "Both"}
-              </button>
+            {mode === "freestyle" ? (
+              <>
+                <button
+                  role="tab"
+                  aria-selected={viewMode === "coach"}
+                  className="ms-toggle-pill"
+                  onClick={() => setViewMode("coach")}
+                >
+                  Layered
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={viewMode === "both"}
+                  className="ms-toggle-pill"
+                  onClick={() => setViewMode("both")}
+                >
+                  Side-by-side
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  role="tab"
+                  aria-selected={viewMode === "coach"}
+                  className="ms-toggle-pill"
+                  onClick={() => setViewMode("coach")}
+                >
+                  Coach edits
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={viewMode === "spoken"}
+                  className="ms-toggle-pill"
+                  onClick={() => setViewMode("spoken")}
+                >
+                  What you said
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={viewMode === "both"}
+                  className="ms-toggle-pill"
+                  onClick={() => setViewMode("both")}
+                >
+                  Both
+                </button>
+              </>
             )}
             <span className="ms-toggle-spacer" />
             <span className="ms-toggle-meta">
               {viewMode === "coach"
                 ? mode === "freestyle"
-                  ? "How memory held, section by section"
+                  ? "Script with what you said layered on top"
                   : `${acceptedEdits.length} of ${scriptEditItems.length} script edits accepted`
                 : viewMode === "spoken"
                 ? "How your delivery diverged"
+                : mode === "freestyle"
+                ? "Script and transcript side-by-side for line-by-line comparison"
                 : "Coach + speaker layers overlaid"}
             </span>
           </div>
@@ -1305,18 +1326,19 @@ export function ManuscriptScript({
             const sectionEdits = editsBySection.get(section.id) ?? [];
             const inlineEdits = sectionEdits.filter((e) => e.kind !== "drill");
 
-            // Freestyle's "Recall" tab gets a band-appropriate card per
-            // section instead of the standard manuscript treatment.
-            // The other two tabs (Transcript / Edits) keep the
-            // existing manuscript layout so power users can still see
-            // overlays when they want them.
+            // Freestyle's primary "Layered" view gets the inline
+            // word-level diff treatment — script as spine with
+            // strikethrough + highlight where the speaker swapped
+            // words. The Side-by-side view falls through to the
+            // standard "both" manuscript layout below.
             if (mode === "freestyle" && viewMode === "coach") {
               return (
-                <RecallSection
+                <LayeredSection
                   key={section.id}
                   speechId={speechId}
                   section={section}
                   diffRows={diffRows}
+                  isWorst={section.id === worstSectionId}
                 />
               );
             }
@@ -1495,7 +1517,14 @@ export function ManuscriptScript({
       <div className="ms-bar">
         <div className="ms-bar-inner">
           <span className="ms-bar-count">
-            {acceptedEdits.length === 0
+            {/* Freestyle reports rarely have edits to accept; the
+                "No edits accepted yet" copy is editorial framing that
+                doesn't apply when the user is memorizing. We hide it
+                on freestyle and only surface the count when edits
+                exist (e.g. a defensive rephrase). */}
+            {mode === "freestyle" && acceptedEdits.length === 0
+              ? null
+              : acceptedEdits.length === 0
               ? `No edits accepted yet`
               : `${acceptedEdits.length} ${
                   acceptedEdits.length === 1 ? "edit" : "edits"
@@ -1983,15 +2012,12 @@ function fmtSec(s: number): string {
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
-// ─── Recall map ──────────────────────────────────────────────────────
+// ─── Band palette ────────────────────────────────────────────────────
 //
-// Top-of-page strip on freestyle reports. One tile per section, colored
-// by recall band, sized to give earlier short sections enough room to
-// label cleanly. Each tile has a quick-drill button so the user can
-// jump into a section-scoped freestyle take with one click.
-//
-// The colors reuse pacing pills' palette so the map reads at a glance
-// to anyone who's already used to that vocabulary on the page.
+// Shared palette for the per-section recall band — the section's
+// LayeredSection card uses these for the band rail (left border),
+// chip background/border/text, and matching states. The colors reuse
+// the pacing pills' palette so the page reads consistently.
 
 const BAND_COLORS: Record<
   NonNullable<SectionInput["memoryBand"]>,
@@ -2029,170 +2055,64 @@ const BAND_COLORS: Record<
   },
 };
 
-// Prose recall reading. The user doesn't think in percentages; they
-// think "I got nothing" or "most of it." Map (band, recall) to a
-// short human description we can sit alongside the section name.
-function recallReading(
-  band: NonNullable<SectionInput["memoryBand"]>,
-  recall: number | undefined,
-): string {
-  const r = recall ?? 0;
-  switch (band) {
-    case "word-perfect":
-      return "Word-perfect.";
-    case "mostly-there":
-      return "Most of it — a few slips.";
-    case "rough":
-      return r >= 0.3 ? "Got the first part, then drifted." : "Got the opening, then lost it.";
-    case "blank":
-      return r > 0.1 ? "Got a few words." : "Blanked.";
-    case "not-reached":
-      return "Didn't get here.";
+// ─── Layered diff (default freestyle view) ──────────────────────────
+//
+// One paragraph per section, script-as-spine, with inline word-level
+// strikethrough + highlight where the speaker swapped words. The
+// rendering reuses the existing speaker-layer CSS (ms-spoken-*) so
+// blanked words read struck-and-faded, paraphrased words read
+// gold-highlighted next to their struck script counterparts.
+//
+// Per band:
+//   word-perfect       → clean script paragraph
+//   mostly-there       → script with inline swap pairs
+//   rough              → spoken text + "switch to side-by-side" tip
+//                        (heavy paraphrase doesn't fit inline diffs)
+//   blank              → "— SILENT —" chip + entire script struck
+//   not-reached        → script in italic, dimmed, "didn't get here" tag
+
+function paraphraseCount(diffRows: DiffRow[], sectionId: string): number {
+  let n = 0;
+  for (const row of diffRows) {
+    if (row.sectionId !== sectionId) continue;
+    if (row.kind !== "paraphrase") continue;
+    // Each paraphrase row may contain several substitutions; count
+    // only the "real" word swaps (sub or del+ins pairs).
+    for (const op of row.ops) {
+      if (op.kind === "sub" || op.kind === "ins" || op.kind === "del") n += 1;
+    }
   }
+  return n;
 }
 
-function RecallMap({
-  speechId,
-  sections,
-}: {
-  speechId: string;
-  sections: SectionInput[];
-}) {
-  // Recall map only meaningful when we have at least one band.
-  const anyBand = sections.some((s) => !!s.memoryBand);
-  if (!anyBand) return null;
-
-  return (
-    <div
-      className="ms-recall-list"
-      role="group"
-      aria-label="Recall map"
-      style={{ marginBottom: 18 }}
-    >
-      <style>{`
-        .ms-recall-list {
-          display: flex;
-          flex-direction: column;
-        }
-        .ms-recall-row {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          padding: 10px 12px 10px 14px;
-          border-bottom: 1px solid rgba(17,17,17,0.06);
-          text-decoration: none;
-          color: inherit;
-          position: relative;
-          transition: background 120ms;
-        }
-        .ms-recall-row:last-child { border-bottom: 0; }
-        .ms-recall-row:hover { background: rgba(17,17,17,0.02); }
-        .ms-recall-row:hover .ms-recall-drill { opacity: 1; }
-
-        /* Colored band rail running the full height of the row. */
-        .ms-recall-row::before {
-          content: "";
-          position: absolute;
-          left: 0; top: 6px; bottom: 6px;
-          width: 3px;
-          border-radius: 2px;
-          background: var(--rail-color, transparent);
-        }
-
-        .ms-recall-name {
-          flex: 0 0 auto;
-          min-width: 88px;
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          color: var(--color-midnight-ink);
-        }
-        .ms-recall-reading {
-          flex: 1;
-          font-size: 13.5px;
-          color: var(--color-midnight-ink);
-        }
-        .ms-recall-meta {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          margin-left: 10px;
-          font-size: 11px;
-          color: var(--color-muted-ash);
-        }
-        .ms-recall-drill {
-          flex: 0 0 auto;
-          font-size: 12px;
-          padding: 4px 10px;
-          border-radius: 6px;
-          background: transparent;
-          border: 1px solid rgba(17,17,17,0.12);
-          color: var(--color-midnight-ink);
-          text-decoration: none;
-          font-weight: 500;
-          opacity: 0.55;
-          transition: opacity 120ms, border-color 120ms;
-        }
-        .ms-recall-drill:hover { border-color: rgba(17,17,17,0.32); opacity: 1; }
-      `}</style>
-      {sections.map((section) => {
-        const band = section.memoryBand ?? "not-reached";
-        const colors = BAND_COLORS[band];
-        return (
-          <a
-            key={section.id}
-            href={`#section-${section.id}`}
-            className="ms-recall-row"
-            style={{ ["--rail-color" as string]: colors.stroke }}
-          >
-            <span className="ms-recall-name">{section.name}</span>
-            <span className="ms-recall-reading">
-              {recallReading(band, section.recallPct)}
-            </span>
-            {section.hadLongPause && (
-              <span className="ms-recall-meta" title="You paused for more than 4 seconds">
-                <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-                  <rect x="2" y="1.5" width="2" height="7" rx="0.5" fill="currentColor" />
-                  <rect x="6" y="1.5" width="2" height="7" rx="0.5" fill="currentColor" />
-                </svg>
-                <span>Long pause</span>
-              </span>
-            )}
-            <Link
-              href={`/app/speeches/${speechId}/record?mode=freestyle&section=${section.id}`}
-              className="ms-recall-drill"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Drill →
-            </Link>
-          </a>
-        );
-      })}
-    </div>
-  );
+// Spoken text reconstruction for rough sections — pulls everything the
+// speaker said in this section out of the diff rows.
+function reconstructSpoken(diffRows: DiffRow[], sectionId: string): string {
+  const parts: string[] = [];
+  for (const row of diffRows) {
+    if (row.sectionId !== sectionId) continue;
+    if (row.kind === "match") parts.push(row.spoken);
+    else if (row.kind === "improv") parts.push(row.spoken);
+    else if (row.kind === "paraphrase") {
+      for (const op of row.ops) {
+        if (op.kind === "equal") parts.push(op.text);
+        else if (op.kind === "ins" || op.kind === "sub") parts.push(op.spoken);
+      }
+    }
+  }
+  return parts.join(" ").trim();
 }
 
-// ─── Recall section card ─────────────────────────────────────────────
-//
-// Per-section card on freestyle reports. Renders content appropriate
-// to the section's memory band:
-//   - word-perfect / mostly-there: collapsed by default, expand to see
-//     the standard manuscript-with-overlay treatment.
-//   - rough:   script body + "you got this far:" snippet from spoken.
-//   - blank:   script body framed as "what you should have said."
-//   - not-reached: dimmed, just the section name; expand to see body.
-//
-// Each card has a Drill button anchored to that section's drill route.
-
-function RecallSection({
+function LayeredSection({
   speechId,
   section,
   diffRows,
+  isWorst,
 }: {
   speechId: string;
   section: SectionInput;
   diffRows: DiffRow[];
+  isWorst: boolean;
 }) {
   const band = section.memoryBand ?? "not-reached";
   const colors = BAND_COLORS[band];
@@ -2200,23 +2120,14 @@ function RecallSection({
     typeof section.recallPct === "number"
       ? `${Math.round(section.recallPct * 100)}%`
       : null;
-
-  // Word-perfect & mostly-there sections collapse to a tight summary
-  // by default; the user can expand to see the standard manuscript
-  // treatment with overlays. We use a controlled <details> so we get
-  // accessible disclosure for free.
-  const collapseByDefault =
-    band === "word-perfect" ||
-    band === "mostly-there" ||
-    band === "not-reached";
+  const paraCount = paraphraseCount(diffRows, section.id);
+  const drillHref = `/app/speeches/${speechId}/record?mode=freestyle&section=${section.id}`;
 
   return (
     <section
       id={`section-${section.id}`}
-      className="ms-section ms-recall-section"
+      className="ms-section ms-layered-section"
       style={{
-        // Subtle band-tinted left border so the user can scan vertically
-        // and see the band shape without reading the chip.
         borderLeft: `3px solid ${colors.stroke}`,
         paddingLeft: 16,
         marginLeft: -16,
@@ -2232,7 +2143,7 @@ function RecallSection({
             display: "inline-flex",
             alignItems: "center",
             gap: 4,
-            padding: "2px 8px",
+            padding: "2px 10px",
             borderRadius: 999,
             background: colors.fill,
             border: `1px solid ${colors.stroke}`,
@@ -2244,6 +2155,38 @@ function RecallSection({
           {colors.label}
           {recallPctText ? ` · ${recallPctText}` : ""}
         </span>
+        {paraCount > 0 && band !== "rough" && band !== "blank" && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "2px 10px",
+              borderRadius: 999,
+              background: "rgba(232,182,77,0.14)",
+              color: "#a37413",
+              fontSize: 11,
+              fontWeight: 500,
+            }}
+          >
+            {paraCount} {paraCount === 1 ? "paraphrase" : "paraphrases"}
+          </span>
+        )}
+        {band === "rough" && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "2px 10px",
+              borderRadius: 999,
+              background: "rgba(17,17,17,0.04)",
+              color: "var(--color-muted-ash)",
+              fontSize: 11,
+              fontWeight: 500,
+            }}
+          >
+            Heavily paraphrased
+          </span>
+        )}
         {section.hadLongPause && (
           <span
             style={{
@@ -2264,44 +2207,23 @@ function RecallSection({
         )}
         <span style={{ flex: 1 }} />
         <Link
-          href={`/app/speeches/${speechId}/record?mode=freestyle&section=${section.id}`}
-          className="btn-light"
-          style={{ fontSize: 12, padding: "4px 10px" }}
+          href={drillHref}
+          className={isWorst ? "btn-primary" : "btn-light"}
+          style={{
+            fontSize: 12,
+            padding: isWorst ? "5px 12px" : "4px 10px",
+          }}
         >
-          Drill →
+          {isWorst ? "Drill this section →" : "Drill this section"}
         </Link>
       </header>
 
-      {collapseByDefault ? (
-        <details style={{ marginTop: 8 }}>
-          <summary
-            style={{
-              cursor: "pointer",
-              fontSize: 13,
-              color: "var(--color-muted-ash)",
-              padding: "4px 0",
-            }}
-          >
-            {band === "word-perfect"
-              ? "Show full text"
-              : band === "mostly-there"
-                ? "Show what you said vs. the script"
-                : "Show section body"}
-          </summary>
-          <RecallSectionBody
-            section={section}
-            diffRows={diffRows}
-            band={band}
-          />
-        </details>
-      ) : (
-        <RecallSectionBody section={section} diffRows={diffRows} band={band} />
-      )}
+      <LayeredBody section={section} diffRows={diffRows} band={band} />
     </section>
   );
 }
 
-function RecallSectionBody({
+function LayeredBody({
   section,
   diffRows,
   band,
@@ -2310,112 +2232,173 @@ function RecallSectionBody({
   diffRows: DiffRow[];
   band: NonNullable<SectionInput["memoryBand"]>;
 }) {
-  // Mostly-there gets the standard "Both" treatment (script + diff
-  // overlay) — the user wants to see exactly what slipped. Rough adds
-  // a "you got this far" snippet. Blank shows just the script as a
-  // re-anchor. Not-reached shows the script unstyled.
-  if (band === "word-perfect" || band === "mostly-there") {
-    const spokenTokens = tokeniseSpokenDeviations(diffRows, section.id);
+  // Word-perfect: just render the script. No annotations needed.
+  if (band === "word-perfect") {
+    return <p className="ms-body">{section.body}</p>;
+  }
+
+  // Mostly-there: render the script with inline word-level swaps from
+  // paraphrase rows. Walk the diff rows in order; each row produces
+  // either plain text (match) or a sequence of word-level spans that
+  // mix struck-script + highlighted-spoken (paraphrase).
+  if (band === "mostly-there") {
+    const rows = diffRows.filter((r) => r.sectionId === section.id);
     return (
-      <>
-        <p className="ms-body">{section.body}</p>
-        {spokenTokens.length > 0 && (
-          <p
-            className="ms-body"
-            style={{
-              marginTop: 12,
-              paddingTop: 12,
-              borderTop: "1px dashed rgba(17,17,17,0.10)",
-              fontSize: 16,
-              color: "rgba(17,17,17,0.78)",
-            }}
-          >
-            <span
-              style={{
-                display: "block",
-                fontFamily: "Inter, sans-serif",
-                fontSize: 11,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: "var(--color-muted-ash)",
-                marginBottom: 6,
-              }}
-            >
-              What you said
-            </span>
-            {spokenTokens.map((tok, i) => (
-              <SpokenTokenSpan key={i} token={tok} />
-            ))}
-          </p>
-        )}
-      </>
+      <p className="ms-body">
+        {rows.map((row, i) => {
+          if (row.kind === "match") {
+            return <span key={i}>{row.written} </span>;
+          }
+          if (row.kind === "skipped") {
+            return (
+              <span key={i} className="ms-spoken-skipped">
+                {row.written}{" "}
+              </span>
+            );
+          }
+          if (row.kind === "paraphrase") {
+            return (
+              <span key={i}>
+                {row.ops.map((op, j) => {
+                  if (op.kind === "equal") return <span key={j}>{op.text} </span>;
+                  if (op.kind === "del") {
+                    return (
+                      <span key={j} className="ms-spoken-paraphrase-old">
+                        {op.written}{" "}
+                      </span>
+                    );
+                  }
+                  if (op.kind === "ins") {
+                    return (
+                      <span key={j} className="ms-spoken-paraphrase-new">
+                        {op.spoken}{" "}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span key={j}>
+                      <span className="ms-spoken-paraphrase-old">
+                        {op.written}
+                      </span>
+                      <span className="ms-spoken-paraphrase-new">
+                        {op.spoken}
+                      </span>{" "}
+                    </span>
+                  );
+                })}
+              </span>
+            );
+          }
+          return null;
+        })}
+      </p>
     );
   }
 
+  // Rough: too many word swaps to inline-diff cleanly. Show what they
+  // said, with a tip that side-by-side is the better view here.
   if (band === "rough") {
+    const spoken = reconstructSpoken(diffRows, section.id);
     return (
       <>
-        <p className="ms-body">{section.body}</p>
-        {section.spokenSnippet ? (
-          <p
-            style={{
-              marginTop: 10,
-              paddingLeft: 12,
-              borderLeft: "2px solid rgba(232,182,77,0.42)",
-              fontSize: 14,
-              fontStyle: "italic",
-              color: "rgba(17,17,17,0.66)",
-            }}
-          >
-            <span
-              style={{
-                display: "block",
-                fontFamily: "Inter, sans-serif",
-                fontStyle: "normal",
-                fontSize: 10.5,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: "var(--color-muted-ash)",
-                marginBottom: 4,
-              }}
-            >
-              You got this far
-            </span>
-            {section.spokenSnippet}
-            {section.spokenSnippet.length > 60 ? "…" : ""}
-          </p>
-        ) : null}
-      </>
-    );
-  }
-
-  if (band === "blank") {
-    return (
-      <>
+        <p className="ms-body">
+          {spoken || section.spokenSnippet || section.body}
+        </p>
         <p
           style={{
+            marginTop: 6,
             fontFamily: "Inter, sans-serif",
-            fontSize: 11,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
+            fontSize: 12,
             color: "var(--color-muted-ash)",
-            marginTop: 8,
-            marginBottom: 6,
+            fontStyle: "italic",
           }}
         >
-          What you should have said
-        </p>
-        <p className="ms-body" style={{ opacity: 0.92 }}>
-          {section.body}
+          close to script — switch to side-by-side to compare line by line
         </p>
       </>
     );
   }
 
-  // not-reached: full script, dimmed, no special framing.
+  // Blank: red "— SILENT —" chip at the start of the line, followed
+  // by the entire script struck-through and faded. Reads as "you
+  // said nothing; here's the line you owe yourself."
+  if (band === "blank") {
+    return (
+      <p className="ms-body">
+        <span
+          style={{
+            display: "inline-block",
+            padding: "1px 8px",
+            marginRight: 8,
+            borderRadius: 4,
+            background: "rgba(225,101,64,0.12)",
+            color: "#c44a26",
+            fontFamily: "Inter, sans-serif",
+            fontSize: 11,
+            fontStyle: "italic",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            verticalAlign: "middle",
+          }}
+        >
+          — silent —
+        </span>
+        <span className="ms-spoken-skipped">{section.body}</span>
+      </p>
+    );
+  }
+
+  // Not-reached: dimmed script, italic, with a "didn't get here" tag.
   return (
-    <p className="ms-body" style={{ opacity: 0.62 }}>
-      {section.body}
+    <p
+      className="ms-body"
+      style={{ opacity: 0.55, fontStyle: "italic" }}
+    >
+      <span
+        style={{
+          display: "inline-block",
+          padding: "1px 8px",
+          marginRight: 8,
+          borderRadius: 4,
+          background: "rgba(17,17,17,0.04)",
+          color: "var(--color-muted-ash)",
+          fontFamily: "Inter, sans-serif",
+          fontSize: 11,
+          fontStyle: "normal",
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          verticalAlign: "middle",
+        }}
+      >
+        didn&rsquo;t get here
+      </span>
+      <span>{section.body}</span>
     </p>
   );
+}
+
+// Pick the worst section to elevate its drill button. Severity ordering
+// matches lifecycle.ts: not-reached > blank > rough > mostly-there >
+// word-perfect. Ties broken by position (earlier wins).
+function pickWorstSectionId(sections: SectionInput[]): string | null {
+  const severity: Record<NonNullable<SectionInput["memoryBand"]>, number> = {
+    "word-perfect": 0,
+    "mostly-there": 1,
+    "rough": 2,
+    "blank": 3,
+    "not-reached": 4,
+  };
+  let bestId: string | null = null;
+  let bestSev = 0;
+  for (const s of sections) {
+    if (!s.memoryBand) continue;
+    const sev = severity[s.memoryBand];
+    if (sev > bestSev) {
+      bestSev = sev;
+      bestId = s.id;
+    }
+  }
+  // Only elevate when the worst section is genuinely weak — drill on a
+  // word-perfect section isn't a primary action.
+  return bestSev >= 2 ? bestId : null;
 }
