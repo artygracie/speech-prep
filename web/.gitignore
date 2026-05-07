@@ -20,6 +20,9 @@
 # production
 /build
 
+# rendered email templates (regenerate via `pnpm run emails:render`)
+/dist
+
 # misc
 .DS_Store
 *.pem
