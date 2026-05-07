@@ -5,7 +5,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { LoginForm } from "./login-form";
 
-export const metadata = { title: "Sign in — SpeechPrep" };
+export const metadata = {
+  title: "Sign in — SpeechPrep",
+  robots: { index: false, follow: false },
+};
 
 export default function LoginPage() {
   return (

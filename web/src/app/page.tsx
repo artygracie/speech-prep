@@ -7,10 +7,103 @@
 import Image from "next/image";
 import Link from "next/link";
 import { LiveTranscript } from "./_landing/live-transcript";
+import { SITE_URL } from "@/lib/site";
+
+const softwareApplicationSchema = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "SpeechPrep",
+  url: SITE_URL,
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  description:
+    "Practice your speech with AI feedback. Upload the script, record yourself, and see — to the second — which sections ran long, which lines you skipped, and which off-script moments landed better than what you wrote.",
+  offers: [
+    {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+      description: "Three free sessions — pacing reports, said-vs-written diff, audio recording",
+    },
+    {
+      "@type": "Offer",
+      price: "12",
+      priceCurrency: "USD",
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: "12",
+        priceCurrency: "USD",
+        unitCode: "MON",
+      },
+      description: "Practiced — unlimited sessions, video, script versioning",
+    },
+    {
+      "@type": "Offer",
+      price: "19",
+      priceCurrency: "USD",
+      description: "Single speech pass — 7 days, one speech, no subscription",
+    },
+  ],
+};
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: [
+    {
+      "@type": "Question",
+      name: "What is SpeechPrep?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "SpeechPrep is an AI-powered speech rehearsal tool. You upload your script, record yourself giving it, and get back a per-section pacing report, a diff of what you said vs. what you wrote, and specific coaching notes.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "How does SpeechPrep work?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Upload or paste your script and mark sections. Record yourself giving the speech. SpeechPrep transcribes your recording, times each section, compares it to your script word-by-word, and returns coaching notes on what to cut, keep, or rewrite.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "Is SpeechPrep free?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Yes — you get three full sessions free with no credit card required. After that, plans start at $12/month (Practiced) or $19 as a one-time single-speech pass.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "What kinds of speeches work with SpeechPrep?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Any prepared speech where you have a written script — investor pitches, conference talks, TEDx presentations, wedding speeches, keynotes, and class presentations.",
+      },
+    },
+    {
+      "@type": "Question",
+      name: "How is SpeechPrep different from other speech coaching apps?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Most speech apps give generic delivery feedback (pace, filler words). SpeechPrep is built around your specific script — it diffs what you actually said against what you wrote, times each section individually, and gives you notes tied to your exact lines.",
+      },
+    },
+  ],
+};
 
 export default function LandingPage() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
       {/* ===== Sticky nav ===== */}
       <header
         className="sticky top-0 z-50"
