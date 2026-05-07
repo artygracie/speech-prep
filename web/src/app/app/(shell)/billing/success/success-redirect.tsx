@@ -25,20 +25,25 @@ export function SuccessRedirect({
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const go = () => {
+      console.log("[success-redirect] navigating to", to);
       router.replace(to);
       router.refresh();
     };
+
+    console.log("[success-redirect] mounted, waitForPixel=", waitForPixel);
 
     if (released.current) {
       timer = setTimeout(go, 1200);
     } else {
       // Wait for the pixel to release us, but cap at 3s so a blocked
       // gtag never strands the user on the success page.
-      timer = setTimeout(go, 3000);
+      timer = setTimeout(() => {
+        console.warn("[success-redirect] 3s cap hit without pixel-fired event");
+        go();
+      }, 3000);
       const handler = () => {
+        console.log("[success-redirect] pixel-fired received, redirecting after 400ms");
         if (timer) clearTimeout(timer);
-        // Small grace period after the pixel reports done so the request
-        // is fully out the door before navigation tears down the page.
         timer = setTimeout(go, 400);
       };
       window.addEventListener("speechprep:pixel-fired", handler, { once: true });
@@ -51,6 +56,6 @@ export function SuccessRedirect({
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [router, to]);
+  }, [router, to, waitForPixel]);
   return null;
 }

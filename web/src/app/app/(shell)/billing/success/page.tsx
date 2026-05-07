@@ -55,6 +55,9 @@ export default async function BillingSuccessPage({
         currency: session.currency.toUpperCase(),
       };
     }
+    // Log to Vercel so we can confirm the conversion object is being built.
+    // Remove once Google Ads conversion verification stops failing.
+    console.log("[billing/success] conversion=", conversion, "amount_total=", session.amount_total, "currency=", session.currency);
   } catch {
     // If Stripe lookup fails, the webhook is still the source of truth
     // — fall through to the billing page so the user sees something.
