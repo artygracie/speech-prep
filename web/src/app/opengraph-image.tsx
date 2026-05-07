@@ -12,17 +12,19 @@ const INSTRUMENT_SERIF_REGULAR =
   "https://fonts.googleapis.com/css2?family=Instrument+Serif&display=swap";
 const INSTRUMENT_SERIF_ITALIC =
   "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@1&display=swap";
-const GEIST_MONO_MEDIUM =
-  "https://fonts.googleapis.com/css2?family=Geist+Mono:wght@500&display=swap";
+// JetBrains Mono stands in for Geist Mono here. Satori (next/og's font
+// engine) chokes on Geist Mono's GSUB lookupType 6 — JetBrains Mono is
+// visually the closest grotesk-style mono on Google Fonts that parses
+// cleanly. The pill text is short and uppercase so the substitution is
+// visually invisible at thumbnail sizes.
+const PILL_MONO_MEDIUM =
+  "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&display=swap";
 
 async function loadGoogleFont(cssUrl: string): Promise<ArrayBuffer> {
+  // Modern UAs get woff2 from Google Fonts, which Satori can't consume.
+  // An ancient UA forces Google to serve a single consolidated TTF.
   const css = await fetch(cssUrl, {
-    // Google serves a different .ttf payload per UA. A modern Chrome UA
-    // gets us a single static TTF that Satori can consume.
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    },
+    headers: { "User-Agent": "Mozilla/4.0" },
   }).then((r) => r.text());
   const match = css.match(/src:\s*url\((https:[^)]+\.ttf)\)/);
   if (!match) throw new Error(`Could not find .ttf in ${cssUrl}`);
@@ -31,10 +33,10 @@ async function loadGoogleFont(cssUrl: string): Promise<ArrayBuffer> {
 }
 
 export default async function Image() {
-  const [serifRegular, serifItalic, monoMedium] = await Promise.all([
+  const [serifRegular, serifItalic, pillMono] = await Promise.all([
     loadGoogleFont(INSTRUMENT_SERIF_REGULAR),
     loadGoogleFont(INSTRUMENT_SERIF_ITALIC),
-    loadGoogleFont(GEIST_MONO_MEDIUM),
+    loadGoogleFont(PILL_MONO_MEDIUM),
   ]);
 
   return new ImageResponse(
@@ -79,7 +81,7 @@ export default async function Image() {
           />
           <div
             style={{
-              fontFamily: "Geist Mono, monospace",
+              fontFamily: "JetBrains Mono, monospace",
               fontSize: 22,
               fontWeight: 500,
               letterSpacing: "0.08em",
@@ -117,12 +119,17 @@ export default async function Image() {
                 fontSize: 168,
                 fontStyle: "italic",
                 letterSpacing: "-0.02em",
+                // The italic glyphs slope right and visually fuse with
+                // the next word. Satori's flex layout swallows a string
+                // that starts with whitespace, so use an explicit margin
+                // to keep "the" and "room" apart.
+                marginRight: "0.28em",
               }}
             >
               the
             </div>
             <div style={{ fontSize: 168, letterSpacing: "-0.02em" }}>
-              {" room."}
+              room.
             </div>
           </div>
         </div>
@@ -144,8 +151,8 @@ export default async function Image() {
           style: "italic",
         },
         {
-          name: "Geist Mono",
-          data: monoMedium,
+          name: "JetBrains Mono",
+          data: pillMono,
           weight: 500,
           style: "normal",
         },
