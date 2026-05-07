@@ -16,6 +16,7 @@ export function ConversionPixelBridge({
   currency: string;
 }) {
   const onComplete = useCallback(() => {
+    console.log("[conversion-pixel-bridge] dispatching speechprep:pixel-fired");
     window.dispatchEvent(new Event("speechprep:pixel-fired"));
   }, []);
 
