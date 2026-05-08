@@ -42,7 +42,7 @@ export default async function SpeechesDashboard() {
         <div>
           <h1 className="text-display">Your speeches</h1>
           <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)", maxWidth: 540 }}>
-            The room before the room. Pick up where you left off, or start something new.
+            Pick up where you left off, or start something new.
           </p>
         </div>
         {/* 'New speech' is the only affordance on the dashboard. We don't

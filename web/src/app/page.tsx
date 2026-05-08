@@ -174,11 +174,9 @@ export default function LandingPage() {
               Practice your speech before you give it
             </span>
             <h1 className="text-display mt-7">
-              The room before
+              Don&rsquo;t just give a speech.
               <br />
-              {/* "the" set in italic Instrument Serif — the page's accent
-                  face. The italic alone carries the emphasis; underline
-                  treatment was overkill. */}
+              Give{" "}
               <span
                 className="serif"
                 style={{
@@ -191,7 +189,7 @@ export default function LandingPage() {
               >
                 the
               </span>{" "}
-              room.
+              speech.
             </h1>
             <p
               className="mt-8 text-body md:text-subheading max-w-xl"
