@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "SpeechPrep — The room before the room.";
+export const alt = "SpeechPrep — Don't just give a speech. Give the speech.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -111,25 +111,24 @@ export default async function Image() {
               letterSpacing: "-0.02em",
             }}
           >
-            The room before
+            Don&rsquo;t just give a speech.
           </div>
           <div style={{ display: "flex", alignItems: "baseline" }}>
+            <div style={{ fontSize: 168, letterSpacing: "-0.02em", marginRight: "0.28em" }}>
+              Give
+            </div>
             <div
               style={{
                 fontSize: 168,
                 fontStyle: "italic",
                 letterSpacing: "-0.02em",
-                // The italic glyphs slope right and visually fuse with
-                // the next word. Satori's flex layout swallows a string
-                // that starts with whitespace, so use an explicit margin
-                // to keep "the" and "room" apart.
                 marginRight: "0.28em",
               }}
             >
               the
             </div>
             <div style={{ fontSize: 168, letterSpacing: "-0.02em" }}>
-              room.
+              speech.
             </div>
           </div>
         </div>
