@@ -461,6 +461,16 @@ export default function LandingPage() {
                   hello@speechprep.ai
                 </a>
               </li>
+              <li>
+                <a
+                  href="https://artygroup.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--color-midnight-ink)" }}
+                >
+                  An Artygroup product
+                </a>
+              </li>
             </ul>
           </div>
         </div>
