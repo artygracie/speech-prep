@@ -59,6 +59,29 @@ function fmtDuration(words: number) {
   return `~${minutes.toFixed(1).replace(".0", "")} min`;
 }
 
+// Returns the range [start, end) in newText that differs from oldText.
+// Used to highlight what the AI changed after a chat refinement.
+function findChangedRange(
+  oldText: string,
+  newText: string,
+): { start: number; end: number } | null {
+  if (oldText === newText) return null;
+  let start = 0;
+  while (
+    start < oldText.length &&
+    start < newText.length &&
+    oldText[start] === newText[start]
+  ) start++;
+  let endOld = oldText.length;
+  let endNew = newText.length;
+  while (
+    endOld > start &&
+    endNew > start &&
+    oldText[endOld - 1] === newText[endNew - 1]
+  ) { endOld--; endNew--; }
+  return { start, end: endNew };
+}
+
 async function readStream(
   response: Response,
   onChunk: (chunk: string) => void,
@@ -264,35 +287,64 @@ export function SpeechWriter() {
     const userMsg: ChatMessage = { role: "user", text: msg };
     setChatHistory((prev) => [...prev, userMsg]);
 
+    const prevText = speechText;
+
     try {
-      const res = await fetch("/api/refine-speech", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch(“/api/refine-speech”, {
+        method: “POST”,
+        headers: { “Content-Type”: “application/json” },
         body: JSON.stringify({
-          mode: "chat",
+          mode: “chat”,
           currentText: speechText,
           instruction: msg,
         }),
       });
 
-      if (!res.ok) throw new Error("Chat refinement failed");
+      if (!res.ok) throw new Error(“Chat refinement failed”);
 
-      // Stream the updated speech into the doc
-      let updated = "";
-      await readStream(res, (chunk) => {
-        updated += chunk;
+      // Buffer the full response — don’t trickle it into the textarea
+      // so the user doesn’t see a confusing full-doc rewrite when only
+      // one paragraph changed.
+      let updated = “”;
+      await readStream(res, (chunk) => { updated += chunk; });
+      updated = updated.trim();
+
+      if (updated && updated !== prevText) {
         setSpeechText(updated);
-      });
 
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "assistant", text: "Done — I've updated the speech above. Keep going or click “Start practicing” when you’re happy." },
-      ]);
+        // Find what changed and select it so the user can see exactly
+        // which part was touched.
+        const range = findChangedRange(prevText, updated);
+        if (range && range.end > range.start) {
+          requestAnimationFrame(() => {
+            const el = textareaRef.current;
+            if (!el) return;
+            el.focus();
+            el.setSelectionRange(range.start, range.end);
+            // Scroll to put the changed region near the top of the viewport
+            const linesBefore = updated.slice(0, range.start).split(“\n”).length;
+            el.scrollTop = Math.max(0, (linesBefore - 3) * 33);
+          });
+        }
+      }
+
+      const rangeSize = updated && prevText ? findChangedRange(prevText, updated) : null;
+      const changedWords = rangeSize
+        ? updated.slice(rangeSize.start, rangeSize.end).trim().split(/\s+/).filter(Boolean).length
+        : 0;
+      const feedback =
+        changedWords === 0
+          ? “Nothing changed — try being more specific.”
+          : changedWords < 60
+          ? “Updated — the changed part is highlighted above.”
+          : “Updated the speech — changes are highlighted above.”;
+
+      setChatHistory((prev) => [...prev, { role: “assistant”, text: feedback }]);
     } catch (err) {
-      console.error("[writer] chat refine failed", err);
+      console.error(“[writer] chat refine failed”, err);
       setChatHistory((prev) => [
         ...prev,
-        { role: "assistant", text: "Something went wrong. Try again." },
+        { role: “assistant”, text: “Something went wrong. Try again.” },
       ]);
     } finally {
       setChatPending(false);
@@ -488,6 +540,7 @@ export function SpeechWriter() {
       <div className="writer-body">
         {/* Speech doc */}
         <div className="writer-doc-col">
+          <h1 className="writer-doc-title">{title || "Untitled speech"}</h1>
           <div className="writer-doc-wrap">
             <textarea
               ref={textareaRef}
@@ -675,6 +728,18 @@ const editorStyles = `
   }
   @media (max-width: 640px) {
     .writer-doc-col { padding: 24px 20px 32px; }
+  }
+
+  .writer-doc-title {
+    font-family: var(--font-script);
+    font-size: clamp(26px, 3.2vw, 36px);
+    font-weight: 500;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    color: var(--color-midnight-ink);
+    margin: 0 0 28px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid rgba(17,17,17,0.07);
   }
 
   .writer-doc-wrap {
