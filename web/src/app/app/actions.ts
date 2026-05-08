@@ -274,6 +274,52 @@ export async function saveScript(
   return { newVersion: newV };
 }
 
+// Create a speech from the AI writer flow. Takes the finished text
+// directly (no FormData) so the writer client can call it from a
+// useTransition. Auto-sections with the same AI path as createFirstSpeech
+// and redirects to the recorder.
+export async function createSpeechFromWriter(
+  title: string,
+  body: string,
+): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: speech, error: speechErr } = await supabase
+    .from("speeches")
+    .insert({ user_id: user.id, title: title.trim() || "Untitled speech", current_version: 1 })
+    .select("id")
+    .single();
+  if (speechErr || !speech) throw speechErr ?? new Error("Failed to create speech");
+
+  const { data: version, error: versionErr } = await supabase
+    .from("script_versions")
+    .insert({ speech_id: speech.id, v: 1, summary: "AI-written draft" })
+    .select("id")
+    .single();
+  if (versionErr || !version) throw versionErr ?? new Error("Failed to create version");
+
+  const proposed = body.trim()
+    ? await aiOrHeuristicSection(body)
+    : [{ name: "Open", target_seconds: 60, body: "" }];
+  const { error: secErr } = await supabase.from("sections").insert(
+    proposed.map((s, i) => ({
+      script_version_id: version.id,
+      position: i,
+      name: s.name,
+      target_seconds: s.target_seconds,
+      body: s.body,
+    })),
+  );
+  if (secErr) throw secErr;
+
+  revalidatePath("/app");
+  redirect(`/app/speeches/${speech.id}/record?firstRun=1`);
+}
+
 // Restore a prior version. Implemented additively: copy the chosen
 // version's sections into a brand-new version (v = current+1) with a
 // summary of "Rolled back to v{N}". The original version stays in place,
