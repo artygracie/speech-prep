@@ -37,7 +37,7 @@ Last updated:        2026-05-07
 **Status key:** ⬜ Not Started → 🔄 In Progress → ✅ Complete → 🚫 Blocked
 
 **Current sprint:** Phase 0 — Pre-Launch
-**Next agent action:** After Phase 0 tasks 3–7 are done by Gracie, run keyword research at outrank.so/seotools/keyword-research using seed terms: "speech practice app", "rehearse speech", "speech coaching tool", "pitch practice", "presentation rehearsal". Fill in keyword tracker and bring list to Gracie for approval.
+**Next agent action:** 🙋 Keyword list compiled — needs Gracie approval (see S1-B tracker). Once approved, write the 5 priority content pieces. Start with "speech rehearsal app" landing page and "how to rehearse a speech" blog post.
 
 ---
 
@@ -51,9 +51,9 @@ Last updated:        2026-05-07
 | --- | ------------------------------------------------------------ | ------ | ------ |
 | 1   | Set meta tags on every page (title, description, OG image)   | ✅      | Confirmed via metadata checker |
 | 2   | Add `SoftwareApplication` + FAQ schema on homepage           | ✅      | Added to page.tsx as JSON-LD — 5 FAQs + full SoftwareApplication with all 3 pricing offers |
-| 3   | Verify site in Google Search Console                         | ⬜      | GSC open — check verification status |
-| 4   | Submit `sitemap.xml` to GSC                                  | ⬜      | sitemap.xml fixed (removed llms.txt + pricing.txt — not web pages) |
-| 5   | Manually request indexing for 5 core pages in GSC            | ⬜      | Pages: TBD |
+| 3   | Verify site in Google Search Console                         | ✅      | Verified |
+| 4   | Submit `sitemap.xml` to GSC                                  | ✅      | Submitted speechprep.ai/sitemap.xml |
+| 5   | Manually request indexing for 5 core pages in GSC            | ✅      | Homepage requested |
 | 6   | Set up Bing Webmaster Tools (import from GSC — 2 min)        | ⬜      |        |
 | 7   | Cross-link from any existing Artygroup property to this site | ⬜      | From:  |
 
@@ -85,7 +85,7 @@ Last updated:        2026-05-07
 | 3 | Page speed checked at pagespeed.web.dev | ⬜ | LCP score: |
 | 4 | Core Web Vitals: LCP < 2.5s, CLS minimal | ⬜ | |
 | 5 | Canonical tags confirmed on all key pages | ⬜ | Root layout has `canonical: "/"` — need to verify other pages once they exist |
-| 6 | Alt text added to all images | ⬜ | Logo has alt="SpeechPrep" — need to audit LiveTranscript and other components |
+| 6 | Alt text added to all images | ✅ | All public Image components have alt text. LiveTranscript has no images. |
 | 7 | `noindex` added to login / dashboard / onboarding pages | ✅ | Added `robots: { index: false, follow: false }` to /login metadata and /app layout |
 
 ### S1-B: Keyword Strategy
@@ -101,22 +101,45 @@ Last updated:        2026-05-07
 
 #### Keyword Tracker
 
-| Keyword | Vol/mo | Top 3 DR | Intent Bucket | Target Page URL | Pos Now | Pos S1 | Pos S2 | Pos S3 | Status |
-|---------|--------|----------|---------------|-----------------|---------|--------|--------|--------|--------|
-| | | | | | | | | | |
-| | | | | | | | | | |
-| | | | | | | | | | |
-| | | | | | | | | | |
-| | | | | | | | | | |
-| | | | | | | | | | |
-| | | | | | | | | | |
-| | | | | | | | | | |
-| | | | | | | | | | |
-| | | | | | | | | | |
+> Vol/mo and DR estimates based on SERP analysis (May 2026). Verify exact numbers in outrank.so before writing. ⚠️ = needs Gracie approval before content is written.
+
+| Keyword | Vol/mo est. | Top 3 DR est. | Intent Bucket | Notes / SERP signal | Target Page URL | Status |
+|---------|-------------|---------------|---------------|---------------------|-----------------|--------|
+| **SOLUTION-AWARE — highest conversion priority** | | | | | | |
+| speech rehearsal app | ~200 | LOW | Solution-Aware | 🔥 Gap — actors' line-learning apps (Script Rehearser, Rehearsal Pro) are ranking. Zero prepared-speech product in top 3. Easiest win on the list. | /blog/speech-rehearsal-app | ⬜ |
+| speech practice app | ~500 | LOW-MED | Solution-Aware | Mix of generic speaking apps (Orai, Speeko). Yoodli gone B2B. Winnable with a product-focused page. | / or /blog/speech-practice-app | ⬜ |
+| pitch practice app | ~200 | LOW | Solution-Aware | Pitch deck tools (Slidebean, Pitch.com) ranking — none are rehearsal tools. Clear gap. | /blog/pitch-practice-app | ⬜ |
+| presentation rehearsal app | ~100 | LOW | Solution-Aware | Very thin SERP. Mostly generic articles. Easy win. | /blog/presentation-rehearsal-app | ⬜ |
+| AI speech coach | ~800 | MED | Solution-Aware | More competitive. Yoodli, Orai, Speeko ranking. Attack later once DR builds. | — | ⬜ |
+| speech coaching app | ~600 | MED | Solution-Aware | Similar to above — attack in Sprint 2 | — | ⬜ |
+| practice speech online | ~400 | MED | Solution-Aware | Teleprompter tools (VEED) ranking. Sprint 2. | — | ⬜ |
+| **PROBLEM-AWARE — volume plays, blog content** | | | | | | |
+| how to rehearse a speech | ~1,000 | LOW | Problem-Aware | 🔥 Top results: coaching blogs, university pages (UNR, MIT). No product ranking. Winnable blog post. | /blog/how-to-rehearse-a-speech | ⬜ |
+| how to practice a speech | ~2,000 | LOW-MED | Problem-Aware | 🔥 Harvard DCE, Toastmasters, study.com ranking. All editorial. Strong SpeechPrep blog opportunity. | /blog/how-to-practice-a-speech | ⬜ |
+| how to practice a pitch | ~500 | LOW | Problem-Aware | Blog posts + Qubit Capital guide. No dedicated tool ranking. | /blog/how-to-practice-a-pitch | ⬜ |
+| how to rehearse a presentation | ~500 | LOW | Problem-Aware | Similar SERP to "how to rehearse a speech". Easy win. | /blog/how-to-rehearse-a-presentation | ⬜ |
+| how to practice a presentation | ~1,500 | LOW-MED | Problem-Aware | Educational content dominating. Good blog target. | /blog/how-to-practice-a-presentation | ⬜ |
+| speech rehearsal tips | ~300 | LOW | Problem-Aware | Thin SERP, coaching blogs. Very winnable. | /blog/speech-rehearsal-tips | ⬜ |
+| how to prepare for a speech | ~2,000 | MED | Problem-Aware | More competitive — bigger sites. Sprint 2. | — | ⬜ |
+| how to practice for a ted talk | ~300 | LOW | Problem-Aware | Very specific, great intent, low competition. | /blog/how-to-practice-ted-talk | ⬜ |
+| presentation rehearsal tips | ~200 | LOW | Problem-Aware | Thin SERP. Easy win. | /blog/presentation-rehearsal-tips | ⬜ |
+| how to memorize a speech | ~3,000 | MED-HIGH | Problem-Aware | High volume but competitive (wikihow, masterclass ranking). Sprint 3 at earliest. | — | ⬜ |
+| **BRAND-AWARE — comparison / alternative pages** | | | | | | |
+| yoodli alternative | ~400 | MED | Brand-Aware | 🔥 Yoodli pivoted to enterprise/B2B sales. Individuals looking for alternatives = perfect SpeechPrep fit. Sales tool blogs currently ranking — easy to outrank for the individual-user angle. | /yoodli-alternative | ⬜ |
+| orai alternative | ~200 | LOW | Brand-Aware | Low volume but low competition. Orai is generic delivery coaching — SpeechPrep's script-diff angle is a strong differentiator. | /orai-alternative | ⬜ |
+| speechprep vs yoodli | — | — | Brand-Aware | Not searched yet — build after brand awareness grows. | — | ⬜ |
+| best speech practice app | ~600 | MED | Brand-Aware | Listicle format. Target Sprint 2 when we have DR. | — | ⬜ |
 
 **Status key:** ⬜ Not Yet / 🔄 Climbing (pos 11–20) / ✅ Top 10 / 🏆 Top 3
 
-Identify 5 keywords for first content pieces (Solution-Aware first): ___________
+**🙋 Human Decision Point — Gracie approves before anything is written.**
+
+**Recommended 5 for immediate content (Sprint 1, solution-aware first):**
+1. `speech rehearsal app` — biggest SERP gap, actors' apps ranking instead of a real rehearsal product
+2. `how to rehearse a speech` — 1k/mo, blog post, university pages ranking (beatable)
+3. `pitch practice app` — pitch deck tools ranking, no rehearsal tool, founder audience
+4. `yoodli alternative` — Yoodli went B2B, individual users are stranded, SpeechPrep fits perfectly
+5. `how to practice a speech` — 2k/mo, Harvard/Toastmasters ranking (beatable with a better product-native post)
 
 ### S1-C: Core Pages
 
