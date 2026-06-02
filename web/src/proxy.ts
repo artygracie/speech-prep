@@ -9,8 +9,9 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Run on every request except static assets and image optimization.
+  // Run on every request except static assets, image optimization, and
+  // inbound webhooks (which carry no auth cookies and must not be redirected).
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|assets/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|assets/|api/stripe/webhook|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

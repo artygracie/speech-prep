@@ -55,19 +55,29 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${instrumentSerif.variable}`}>
       <body>
+        {/* Google Tag Manager (noscript) */}
+        <noscript>
+          <iframe
+            src="https://www.googletagmanager.com/ns.html?id=GTM-NHXRLNBQ"
+            height="0"
+            width="0"
+            style={{ display: "none", visibility: "hidden" }}
+          />
+        </noscript>
+        {/* End Google Tag Manager (noscript) */}
         {children}
         <Analytics />
-      </body>
-      <Script
-        src="https://www.googletagmanager.com/gtag/js?id=AW-18139578575"
-        strategy="afterInteractive"
-      />
-      <Script id="google-ads" strategy="afterInteractive">
-        {`window.dataLayer = window.dataLayer || [];
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=AW-18139578575"
+          strategy="afterInteractive"
+        />
+        <Script id="google-ads" strategy="afterInteractive">
+          {`window.dataLayer = window.dataLayer || [];
 function gtag(){dataLayer.push(arguments);}
 gtag('js', new Date());
 gtag('config', 'AW-18139578575');`}
-      </Script>
+        </Script>
+      </body>
     </html>
   );
 }
