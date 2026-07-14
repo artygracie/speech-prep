@@ -101,6 +101,13 @@ function normaliseToken(raw: string): string {
     .replace(/[^a-z0-9]+/g, "");            // strip punctuation
 }
 
+// True when a raw word normalises to a recognised filler. Exported so
+// the coach's audio-signal derivation shares this list instead of
+// keeping its own copy.
+export function isFillerWord(raw: string): boolean {
+  return FILLERS.has(normaliseToken(raw));
+}
+
 export type ScriptToken = { sectionId: string; position: number; token: string; raw: string };
 
 export function tokeniseScript(sections: ScriptSection[]): ScriptToken[] {

@@ -235,12 +235,15 @@ async function requestTranscription(sessionId: string): Promise<void> {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!supabaseUrl) return;
     const fnUrl = `${supabaseUrl}/functions/v1/transcribe`;
-    // We don't pass auth headers — the edge function uses the service role
-    // key to bypass RLS server-to-server. The session_id alone is enough
-    // because the function checks ownership via that row.
+    // The edge function requires the shared pipeline secret — it's no
+    // longer an open endpoint. It uses the service role key server-to-
+    // server, so no user JWT is forwarded.
     await fetch(fnUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-coach-trigger": process.env.COACH_TRIGGER_SECRET ?? "",
+      },
       body: JSON.stringify({ session_id: sessionId }),
       // Don't block on a slow ASR.
       signal: AbortSignal.timeout(2000),

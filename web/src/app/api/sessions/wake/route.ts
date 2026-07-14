@@ -84,7 +84,12 @@ export async function POST(req: Request): Promise<Response> {
     tasks.push(
       fetch(url, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          // The transcribe function requires the shared pipeline
+          // secret; ownership was already verified above.
+          "x-coach-trigger": process.env.COACH_TRIGGER_SECRET ?? "",
+        },
         body: JSON.stringify({ session_id: sessionId }),
       }).catch((err) => {
         console.error("[wake] transcribe call failed", err);

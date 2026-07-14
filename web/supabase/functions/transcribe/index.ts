@@ -9,18 +9,24 @@
 //   5. Runs Needleman–Wunsch alignment, computes per-section metrics,
 //      writes `section_metrics` rows
 //   6. Updates the session status to 'transcribed'
-//   7. Fires the `coach` edge function in the background so the AI
-//      report shows up shortly after the pacing report
+//   7. Triggers the app's /api/coach/run route (the unified coach in
+//      web/src/lib/ai-coach.ts) so the AI report follows the pacing
+//      report. The old edge `coach` function is retired.
 //
-// Auth: this function runs unauthenticated (verify_jwt: false). It uses
-// the service role key server-to-server so RLS doesn't apply, and it
-// only takes a session_id — it doesn't expose data to the caller.
+// Auth: verify_jwt stays false (callers hold no user JWT), but every
+// request must carry the shared pipeline secret in the
+// `x-coach-trigger` header — without it this was an open endpoint
+// where anyone with a session_id could trigger Deepgram spend.
+// Callers: finalizeSession (server action) and /api/sessions/wake.
 //
 // Required env vars on the edge function (Supabase → Project settings
 // → Edge Functions → Secrets):
 //   - SUPABASE_URL                (auto-injected)
 //   - SUPABASE_SERVICE_ROLE_KEY   (auto-injected)
 //   - DEEPGRAM_API_KEY            (you add this)
+//   - SITE_URL                    app origin, e.g. https://speechprep.ai
+//   - COACH_TRIGGER_SECRET        shared pipeline trigger secret; must
+//                                 match the app's env var of the same name
 //
 // If DEEPGRAM_API_KEY is missing, the function returns 503 quickly so
 // the recording flow doesn't appear to hang.
@@ -320,22 +326,68 @@ async function transcribeWithDeepgram(
 }
 
 // ============================================================
-// Chain into the coach edge function. Best-effort, fire-and-forget.
+// Shared-secret guard + timing-safe compare.
+// ============================================================
+
+// Constant-time string comparison so the secret can't be probed
+// byte-by-byte via response timing.
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
+}
+
+function isAuthorized(req: Request): boolean {
+  const secret = Deno.env.get("COACH_TRIGGER_SECRET");
+  const header = req.headers.get("x-coach-trigger");
+  if (!secret || !header) return false;
+  return timingSafeEqualStr(header, secret);
+}
+
+// ============================================================
+// Chain into the app's coach route (/api/coach/run — the unified
+// coach). The report takes 15-30s to generate, so we await the full
+// response and hand the promise to EdgeRuntime.waitUntil: the runtime
+// keeps it alive after our own response returns. If the call is lost
+// anyway, the AutoRefresh/wake flow on the report page retries.
 // ============================================================
 async function fireCoach(sessionId: string): Promise<void> {
-  try {
-    const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/coach`;
-    await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId }),
-      // Don't tie the transcribe response to the coach response.
-      signal: AbortSignal.timeout(2000),
-    });
-  } catch {
-    // Coach not deployed or ANTHROPIC_API_KEY not set — fine, the
-    // transcript + pacing report still ship.
+  const siteUrl = Deno.env.get("SITE_URL");
+  const secret = Deno.env.get("COACH_TRIGGER_SECRET");
+  if (!siteUrl || !secret) {
+    logError("SITE_URL or COACH_TRIGGER_SECRET not set — coach not triggered", { sessionId });
+    return;
   }
+  try {
+    const resp = await fetch(`${siteUrl.replace(/\/$/, "")}/api/coach/run`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-coach-trigger": secret,
+      },
+      body: JSON.stringify({ session_id: sessionId }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      logError("coach trigger failed", { sessionId, status: resp.status, body: body.slice(0, 200) });
+    }
+  } catch (err) {
+    logError("coach trigger errored", { sessionId, err: String(err) });
+  }
+}
+
+function scheduleCoach(sessionId: string): void {
+  const pending = fireCoach(sessionId);
+  const runtime = (globalThis as {
+    EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  if (runtime?.waitUntil) runtime.waitUntil(pending);
+  // No waitUntil (local dev): the promise just runs detached.
 }
 
 // ============================================================
@@ -345,6 +397,13 @@ async function fireCoach(sessionId: string): Promise<void> {
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
+  }
+
+  if (!isAuthorized(req)) {
+    return new Response(JSON.stringify({ error: "unauthorized" }), {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    });
   }
 
   const { session_id } = (await req.json().catch(() => ({}))) as {
@@ -382,7 +441,7 @@ Deno.serve(async (req: Request) => {
     if (!session.audio_path) throw new Error("session has no audio_path");
     if (session.status === "transcribed") {
       // Idempotent re-run — just fire the coach again.
-      void fireCoach(session_id);
+      scheduleCoach(session_id);
       return new Response(JSON.stringify({ already: true }), {
         headers: { "content-type": "application/json" },
       });
@@ -465,8 +524,8 @@ Deno.serve(async (req: Request) => {
     // 6) Mark session done.
     await supabase.from("sessions").update({ status: "transcribed" }).eq("id", session_id);
 
-    // 7) Kick off the coach.
-    void fireCoach(session_id);
+    // 7) Kick off the unified coach via the app route.
+    scheduleCoach(session_id);
 
     return new Response(
       JSON.stringify({ ok: true, words: words.length, sections: sections.length }),
