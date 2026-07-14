@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -21,8 +22,9 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (!draftId) return new Response("missing draftId", { status: 400 });
 
-  const admin = createAdminClient();
-  // @ts-expect-error — drafts not yet in generated types
+  // The drafts tables aren't in the generated Database types yet, so we
+  // go through an untyped client for these queries.
+  const admin = createAdminClient() as unknown as SupabaseClient;
   const { data: draft, error } = await admin
     .from("drafts")
     .select("id, title, pr_number")
