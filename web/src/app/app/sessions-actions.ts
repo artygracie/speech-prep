@@ -100,7 +100,7 @@ export async function createSession(
         ok: false,
         reason: "paywall_no_sessions",
         message:
-          "You're out of free sessions. Subscribe to keep practicing, or buy a $19 pass for this speech.",
+          "You've used your free rehearsal. Get the Event Pass — $24 once for 30 days of unlimited rehearsals on this speech — or subscribe to rehearse everything.",
       };
     }
     if (
@@ -112,7 +112,7 @@ export async function createSession(
         ok: false,
         reason: "paywall_wrong_speech",
         message:
-          "Your $19 pass is for a different speech. Subscribe to record any speech.",
+          "Your Event Pass covers a different speech. Buy a pass for this one, or subscribe to rehearse any speech.",
       };
     }
 

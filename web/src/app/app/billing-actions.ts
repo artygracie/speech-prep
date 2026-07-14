@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 import { stripe, PRICES, SITE_URL } from "@/lib/stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { safeReturnTo } from "@/lib/entitlements";
+import { eventPassPriceData } from "@/lib/plan-limits";
 
 // Reuse a customer if we have one; otherwise mint a new one and write
 // the id back to the profile so we don't create duplicates on every
@@ -75,12 +76,12 @@ export async function startSubscriptionCheckout(formData: FormData): Promise<voi
   redirect(session.url);
 }
 
-// One-shot $19 pass. Optionally scoped to a specific speech_id (so the
-// webhook can mark which speech the pass is locked to).
+// One-shot Event Pass ($24 once — one speech, 30 days). Optionally scoped
+// to a specific speech_id (so the webhook can mark which speech the pass
+// is locked to). The price is inline price_data, not a dashboard price
+// object: entitlements key off metadata.plan, never the price ID, so the
+// env-configured PRICES.single_speech is superseded and unused here.
 export async function startOneShotCheckout(formData: FormData): Promise<void> {
-  const priceId = PRICES.single_speech;
-  if (!priceId) throw new Error("SINGLE_SPEECH_PRICE not configured");
-
   const speechId = String(formData.get("speech_id") ?? "");
   const returnTo = safeReturnTo(formData.get("return_to")?.toString() ?? null);
 
@@ -95,7 +96,7 @@ export async function startOneShotCheckout(formData: FormData): Promise<void> {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer: customerId,
-    line_items: [{ price: priceId, quantity: 1 }],
+    line_items: [{ price_data: eventPassPriceData(), quantity: 1 }],
     metadata: {
       user_id: user.id,
       plan: "single_speech",

@@ -9,6 +9,7 @@
 import "server-only";
 import type Stripe from "stripe";
 import { stripe, PLAN_FOR_PRICE } from "@/lib/stripe";
+import { EVENT_PASS_DAYS } from "@/lib/plan-limits";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function applyEntitlementFromCheckoutSession(
@@ -32,8 +33,9 @@ export async function applyEntitlementFromCheckoutSession(
   }
 
   if (session.mode === "payment" && planTag === "single_speech") {
+    // Event Pass: one speech, unlimited rehearsals + coaching for 30 days.
     const periodEnd = new Date();
-    periodEnd.setDate(periodEnd.getDate() + 7);
+    periodEnd.setDate(periodEnd.getDate() + EVENT_PASS_DAYS);
     const { error } = await admin
       .from("profiles")
       .update({
