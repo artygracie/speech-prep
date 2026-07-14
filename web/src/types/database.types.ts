@@ -1,6 +1,10 @@
 // Generated from the live Supabase schema via the Supabase MCP
 // `generate_typescript_types` tool. To regenerate after a migration: call
 // the MCP tool again and replace this file's body. Do not edit by hand.
+//
+// PENDING REGEN: `speeches.event_date` was hand-added ahead of applying
+// supabase/migrations/20260714120000_speeches_event_date.sql. Regenerate
+// this file once that migration is applied at integration.
 
 export type Json =
   | string
@@ -275,6 +279,7 @@ export type Database = {
         Row: {
           created_at: string
           current_version: number
+          event_date: string | null
           id: string
           occasion: string | null
           title: string
@@ -284,6 +289,7 @@ export type Database = {
         Insert: {
           created_at?: string
           current_version?: number
+          event_date?: string | null
           id?: string
           occasion?: string | null
           title: string
@@ -293,6 +299,7 @@ export type Database = {
         Update: {
           created_at?: string
           current_version?: number
+          event_date?: string | null
           id?: string
           occasion?: string | null
           title?: string
