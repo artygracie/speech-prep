@@ -4,6 +4,7 @@ import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { IS_INDEXABLE, SITE_URL } from "@/lib/site";
+import { ATTRIBUTION_SNIPPET } from "@/lib/attribution";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -65,6 +66,12 @@ export default function RootLayout({
           ></iframe>
         </noscript>
         {/* End Google Tag Manager (noscript) */}
+        {/* First-touch attribution — writes utm params, gclid, and referrer
+            into the 30-day sp_attr cookie on first visit. Persisted to
+            profiles.attribution after signup (see src/lib/attribution.ts). */}
+        <Script id="sp-attribution" strategy="afterInteractive">
+          {ATTRIBUTION_SNIPPET}
+        </Script>
         <Script id="google-tag-manager" strategy="afterInteractive">
           {`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
 new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
