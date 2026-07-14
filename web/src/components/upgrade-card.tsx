@@ -1,13 +1,13 @@
 // Inline conversion card. Surfaces in places where the user's intent
 // is highest — right after a session, on the speech detail page when
-// they're out of free runs — instead of a permanent sidebar counter.
+// the free rehearsal is spent — instead of a permanent sidebar counter.
 //
-// Three variants based on `freeSessionsRemaining`:
-//   - "soft"  (2 left): low-pressure nudge after a successful session
-//   - "firm"  (1 left): "this is your last one" — last cheap moment to
-//                       commit before the wall
-//   - "wall"  (0 left): the user can't record again until they upgrade;
-//                       no dismiss, this is the gate
+// The free tier is ONE full rehearsal, so the ladder has two rungs
+// based on `freeSessionsRemaining`:
+//   - "firm" (1 left): the user hasn't spent the free rehearsal yet —
+//                      set the expectation, don't sell hard
+//   - "wall" (0 left): they've seen the full report; sell the Event
+//                      Pass on the strength of what just landed
 //
 // Built as a server component so the Stripe Checkout server actions can
 // be called directly from the form `action` prop with no client glue.
@@ -17,12 +17,12 @@ import {
   startSubscriptionCheckout,
 } from "@/app/app/billing-actions";
 
-type Variant = "soft" | "firm" | "wall";
+type Variant = "firm" | "wall";
 
 type Props = {
   /** From `entitlements.free_sessions_remaining`. */
   freeSessionsRemaining: number;
-  /** Speech id, threaded into the one-shot checkout so the $19 pass
+  /** Speech id, threaded into the Event Pass checkout so the $24 pass
    *  locks to this speech. Optional — the post-session card and detail
    *  page both have it; the recorder gate also has it. */
   speechId?: string;
@@ -34,36 +34,27 @@ type Props = {
 };
 
 function pickVariant(remaining: number): Variant {
-  if (remaining <= 0) return "wall";
-  if (remaining === 1) return "firm";
-  return "soft";
+  return remaining <= 0 ? "wall" : "firm";
 }
 
 const HEADLINES: Record<Variant, Record<NonNullable<Props["context"]>, string>> = {
-  soft: {
-    "post-session": "Your second pass usually shows the biggest jump.",
-    "speech-detail": "Two free sessions left.",
-    "recorder-gate": "Two free sessions left.",
-  },
   firm: {
-    "post-session": "One free session left after this.",
-    "speech-detail": "One free session left.",
-    "recorder-gate": "One free session left.",
+    "post-session": "This is what one full rehearsal finds.",
+    "speech-detail": "Your free rehearsal is waiting.",
+    "recorder-gate": "This one's free — the full rehearsal, the full report.",
   },
   wall: {
-    "post-session": "You're out of free sessions.",
-    "speech-detail": "You're out of free sessions on this account.",
-    "recorder-gate": "You'll need to upgrade to record again.",
+    "post-session": "You've seen what one rehearsal finds.",
+    "speech-detail": "Your free rehearsal is spent.",
+    "recorder-gate": "You'll need a pass to record again.",
   },
 };
 
 const SUBHEADS: Record<Variant, string> = {
-  soft:
-    "If this speech matters, lock in unlimited rehearsals across every speech for $12/mo. Or grab a one-off pass if you're only doing this one.",
   firm:
-    "Most speakers want the next two or three rehearsals to feel cheap. Go unlimited for $12/mo, or pay $19 once for this speech.",
+    "One full rehearsal with the complete coach report is on the house. After that, the Event Pass covers this speech — $24 once, 30 days, no subscription.",
   wall:
-    "Pick a plan to keep practicing. Unlimited is $12/mo across every speech; the single-speech pass is $19, one-time.",
+    "Every note in that report gets sharper with repetition. Your next 30 days of rehearsals: $24, once. Or go unlimited across every speech for $12/mo.",
 };
 
 export function UpgradeCard({
@@ -76,10 +67,9 @@ export function UpgradeCard({
   const headline = HEADLINES[variant][context];
   const sub = SUBHEADS[variant];
 
-  // Visual weight escalates with the variant. "soft" stays warm and
+  // Visual weight escalates with the variant. "firm" stays warm and
   // unobtrusive; "wall" goes ink-dark so it reads as a real gate.
   const isWall = variant === "wall";
-  const isFirm = variant === "firm";
 
   return (
     <>
@@ -90,14 +80,9 @@ export function UpgradeCard({
           display: grid;
           gap: 18px;
         }
-        .uc-card.is-soft {
+        .uc-card.is-firm {
           background: rgba(251,199,104,0.10);
           border: 1px solid rgba(251,199,104,0.32);
-          color: var(--color-midnight-ink);
-        }
-        .uc-card.is-firm {
-          background: rgba(225,101,64,0.08);
-          border: 1px solid rgba(225,101,64,0.24);
           color: var(--color-midnight-ink);
         }
         .uc-card.is-wall {
@@ -156,13 +141,6 @@ export function UpgradeCard({
           color: var(--color-canvas-white);
           border: 1px solid rgba(255,255,255,0.32);
         }
-        .uc-btn-ghost {
-          background: transparent;
-          color: var(--color-muted-ash);
-          padding: 12px 8px;
-          font-size: 13px;
-        }
-        .uc-card.is-wall .uc-btn-ghost { color: rgba(255,255,255,0.68); }
         .uc-divider {
           color: var(--color-muted-ash);
           font-size: 13px;
@@ -176,7 +154,7 @@ export function UpgradeCard({
       >
         <div>
           <div className="uc-eyebrow">
-            {isWall ? "Upgrade to keep recording" : isFirm ? "Last free run" : "Free plan"}
+            {isWall ? "Keep rehearsing" : "Free rehearsal"}
           </div>
           <h3 className="uc-headline">{headline}</h3>
           <p className="uc-sub" style={{ marginTop: 8 }}>
@@ -185,24 +163,24 @@ export function UpgradeCard({
         </div>
 
         <div className="uc-actions">
-          {/* Primary: Practiced monthly. */}
-          <form action={startSubscriptionCheckout}>
-            <input type="hidden" name="cadence" value="monthly" />
+          {/* Primary: the Event Pass. Threading speechId ensures the
+              pass locks to *this* speech in the webhook. */}
+          <form action={startOneShotCheckout}>
+            {speechId && <input type="hidden" name="speech_id" value={speechId} />}
             {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
             <button type="submit" className="uc-btn uc-btn-primary">
-              Go unlimited · $12/mo
+              Event Pass · $24 once
             </button>
           </form>
 
           <span className="uc-divider" aria-hidden="true">or</span>
 
-          {/* Secondary: $19 single-speech pass. Threading speechId
-              ensures the pass locks to *this* speech in the webhook. */}
-          <form action={startOneShotCheckout}>
-            {speechId && <input type="hidden" name="speech_id" value={speechId} />}
+          {/* Secondary: Practiced, for repeat speakers. */}
+          <form action={startSubscriptionCheckout}>
+            <input type="hidden" name="cadence" value="monthly" />
             {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
             <button type="submit" className="uc-btn uc-btn-secondary">
-              Just this speech · $19
+              Every speech · $12/mo
             </button>
           </form>
         </div>

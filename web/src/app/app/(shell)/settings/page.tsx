@@ -36,8 +36,8 @@ export default async function SettingsPage() {
         <div className="card-bordered" style={{ padding: 28 }}>
           <h3 className="text-heading-sm">Privacy</h3>
           <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-            Real recording lands in Phase 2. When it does, recordings will be encrypted at rest,
-            never used for training, and yours to delete on demand.
+            Your recordings are encrypted at rest, never used for training, and yours to
+            delete on demand — remove any session from its speech page whenever you like.
           </p>
         </div>
       </div>

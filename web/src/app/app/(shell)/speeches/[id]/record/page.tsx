@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Recorder } from "./recorder";
 import { FirstRunCoach } from "./first-run-coach";
 import { UpgradeCard } from "@/components/upgrade-card";
+import { FREE_SESSION_LIMIT } from "@/lib/plan-limits";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -54,7 +55,7 @@ export default async function RecordPage({
         .maybeSingle()
     : { data: null };
   const plan = ent?.plan ?? "free";
-  const freeSessionsRemaining = ent?.free_sessions_remaining ?? 3;
+  const freeSessionsRemaining = ent?.free_sessions_remaining ?? FREE_SESSION_LIMIT;
   const isWrongSpeechPass =
     plan === "single_speech" &&
     ent?.one_shot_speech_id != null &&

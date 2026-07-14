@@ -2,7 +2,6 @@
 // or buy a one-shot pass, and links to the Stripe customer portal for
 // subscription management.
 
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -10,6 +9,7 @@ import {
   startOneShotCheckout,
   openCustomerPortal,
 } from "@/app/app/billing-actions";
+import { FREE_SESSION_LIMIT } from "@/lib/plan-limits";
 
 export const metadata = { title: "Billing — SpeechPrep" };
 
@@ -43,7 +43,7 @@ export default async function BillingPage({
 
   const plan = ent?.plan ?? "free";
   const isPaid = plan === "practiced" || plan === "single_speech";
-  const sessionsLeft = ent?.free_sessions_remaining ?? 3;
+  const sessionsLeft = ent?.free_sessions_remaining ?? FREE_SESSION_LIMIT;
 
   return (
     <div style={{ maxWidth: 880 }}>
@@ -77,7 +77,7 @@ export default async function BillingPage({
             fontSize: 14,
           }}
         >
-          You&rsquo;re out of free sessions. Pick an option below to keep practicing.
+          You&rsquo;ve used your free rehearsal. Pick an option below to keep practicing.
         </div>
       )}
 
@@ -91,7 +91,7 @@ export default async function BillingPage({
             Current plan
           </div>
           <div className="text-heading-sm mt-2" style={{ textTransform: "capitalize" }}>
-            {plan === "practiced" ? "Practiced" : plan === "single_speech" ? "Single speech pass" : "Free"}
+            {plan === "practiced" ? "Practiced" : plan === "single_speech" ? "Event Pass" : "Free"}
           </div>
           <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
             {plan === "practiced" && ent?.subscription_status
@@ -105,7 +105,9 @@ export default async function BillingPage({
                     ? new Date(ent.current_period_end).toLocaleDateString()
                     : "(unknown)"
                 }`
-              : `${sessionsLeft} free session${sessionsLeft === 1 ? "" : "s"} remaining`}
+              : sessionsLeft > 0
+              ? "Your free rehearsal — with the complete coach report — is waiting."
+              : "Free rehearsal used."}
           </p>
         </div>
         {isPaid && (
@@ -129,7 +131,7 @@ export default async function BillingPage({
               marginTop: 16,
             }}
           >
-            {/* Practiced — monthly */}
+            {/* Event Pass — the hero option */}
             <div
               className="card-bordered"
               style={{
@@ -144,7 +146,7 @@ export default async function BillingPage({
             >
               <div>
                 <div className="text-caption" style={{ opacity: 0.6 }}>
-                  Practiced · monthly
+                  Event Pass · one-time
                 </div>
                 <div
                   style={{
@@ -155,14 +157,17 @@ export default async function BillingPage({
                     marginTop: 14,
                   }}
                 >
-                  $12<span style={{ fontSize: 16, opacity: 0.6 }}> / mo</span>
+                  $24<span style={{ fontSize: 16, opacity: 0.6 }}> once</span>
                 </div>
                 <p className="text-body-sm mt-2" style={{ opacity: 0.7 }}>
-                  Unlimited sessions across every speech.
+                  One speech. Unlimited rehearsals and coaching for 30 days. No
+                  subscription — and we delete the recordings after, if you want.
                 </p>
               </div>
-              <form action={startSubscriptionCheckout} style={{ marginTop: "auto" }}>
-                <input type="hidden" name="cadence" value="monthly" />
+              <form action={startOneShotCheckout} style={{ marginTop: "auto" }}>
+                {fromRecordSpeechId && (
+                  <input type="hidden" name="speech_id" value={fromRecordSpeechId} />
+                )}
                 {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
                 <button
                   type="submit"
@@ -173,6 +178,39 @@ export default async function BillingPage({
                     color: "var(--color-midnight-ink)",
                   }}
                 >
+                  {fromRecordSpeechId ? "Get the Event Pass for this speech" : "Get the Event Pass"}
+                </button>
+              </form>
+            </div>
+
+            {/* Practiced — for repeat speakers */}
+            <div
+              className="card-bordered"
+              style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}
+            >
+              <div>
+                <div className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+                  Practiced · for repeat speakers
+                </div>
+                <div
+                  style={{
+                    fontFamily: "var(--font-serif)",
+                    fontStyle: "italic",
+                    fontSize: 56,
+                    lineHeight: 1,
+                    marginTop: 14,
+                  }}
+                >
+                  $12<span style={{ fontSize: 16, color: "var(--color-muted-ash)" }}> / mo</span>
+                </div>
+                <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
+                  Unlimited rehearsals across every speech.
+                </p>
+              </div>
+              <form action={startSubscriptionCheckout} style={{ marginTop: "auto" }}>
+                <input type="hidden" name="cadence" value="monthly" />
+                {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
+                <button type="submit" className="btn-light" style={{ width: "100%" }}>
                   Subscribe monthly
                 </button>
               </form>
@@ -184,8 +222,7 @@ export default async function BillingPage({
                   className="btn-ghost"
                   style={{
                     width: "100%",
-                    color: "var(--color-canvas-white)",
-                    opacity: 0.85,
+                    color: "var(--color-muted-ash)",
                     fontSize: 13,
                   }}
                 >
@@ -193,50 +230,12 @@ export default async function BillingPage({
                 </button>
               </form>
             </div>
-
-            {/* Single speech pass */}
-            <div
-              className="card-bordered"
-              style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}
-            >
-              <div>
-                <div className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-                  Single speech · one-time
-                </div>
-                <div
-                  style={{
-                    fontFamily: "var(--font-serif)",
-                    fontStyle: "italic",
-                    fontSize: 56,
-                    lineHeight: 1,
-                    marginTop: 14,
-                  }}
-                >
-                  $19
-                </div>
-                <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
-                  Seven days, one speech, no card after.
-                </p>
-              </div>
-              <form action={startOneShotCheckout} style={{ marginTop: "auto" }}>
-                {fromRecordSpeechId && (
-                  <input type="hidden" name="speech_id" value={fromRecordSpeechId} />
-                )}
-                {returnTo && <input type="hidden" name="return_to" value={returnTo} />}
-                <button type="submit" className="btn-light" style={{ width: "100%" }}>
-                  {fromRecordSpeechId ? "Buy pass for this speech" : "Buy a single-speech pass"}
-                </button>
-              </form>
-            </div>
           </div>
 
           <p className="text-body-sm mt-6" style={{ color: "var(--color-muted-ash)" }}>
-            Both options charge securely through Stripe. Subscriptions can be
-            cancelled any time from{" "}
-            <Link href="/app/billing" style={{ color: "var(--color-midnight-ink)", textDecoration: "underline" }}>
-              this page
-            </Link>
-            .
+            For scale: a human coach runs about $50 per half hour, and speechwriters
+            start at $200. Both options charge securely through Stripe, and
+            subscriptions can be cancelled any time from this page.
           </p>
         </section>
       )}

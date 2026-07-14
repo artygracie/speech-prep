@@ -91,8 +91,8 @@ export function FirstRunCoach() {
             },
             {
               n: "03",
-              title: "The first session is a throwaway.",
-              body: "Pause, restart, abandon. Three sessions are free. Get a feel for it.",
+              title: "Give it a real run.",
+              body: "Your first full rehearsal is free, coach report included. Speak like the room is listening.",
             },
           ].map((step) => (
             <li

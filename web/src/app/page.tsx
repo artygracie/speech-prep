@@ -21,9 +21,10 @@ const softwareApplicationSchema = {
   offers: [
     {
       "@type": "Offer",
-      price: "0",
+      price: "24",
       priceCurrency: "USD",
-      description: "Three free sessions — pacing reports, said-vs-written diff, audio recording",
+      description:
+        "Event Pass — $24 once. One speech, unlimited rehearsals and coaching for 30 days. No subscription.",
     },
     {
       "@type": "Offer",
@@ -35,13 +36,15 @@ const softwareApplicationSchema = {
         priceCurrency: "USD",
         unitCode: "MON",
       },
-      description: "Practiced — unlimited sessions, video, script versioning",
+      description:
+        "Practiced — unlimited rehearsals across every speech, script versioning, memory recall maps. For repeat speakers.",
     },
     {
       "@type": "Offer",
-      price: "19",
+      price: "0",
       priceCurrency: "USD",
-      description: "Single speech pass — 7 days, one speech, no subscription",
+      description:
+        "One full rehearsal with the complete coach report — pacing, said-vs-written diff, coaching notes. Free, no card.",
     },
   ],
 };
@@ -71,7 +74,7 @@ const faqSchema = {
       name: "Is SpeechPrep free?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Yes — you get three full sessions free with no credit card required. After that, plans start at $12/month (Practiced) or $19 as a one-time single-speech pass.",
+        text: "Your first full rehearsal — with the complete coach report — is free, no card required. After that, the Event Pass is $24 one-time: one speech, unlimited rehearsals and coaching for 30 days. Repeat speakers can subscribe to Practiced for $12/month.",
       },
     },
     {
@@ -79,7 +82,7 @@ const faqSchema = {
       name: "What kinds of speeches work with SpeechPrep?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Any prepared speech where you have a written script — investor pitches, conference talks, TEDx presentations, wedding speeches, keynotes, and class presentations.",
+        text: "Any prepared speech where you have a written script — wedding speeches (best man, maid of honor, toasts), investor pitches, conference talks, TEDx presentations, keynotes, and class presentations.",
       },
     },
     {
@@ -218,7 +221,7 @@ export default function LandingPage() {
               </Link>
             </div>
             <p className="mt-4 text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
-              Three sessions free. Then $12 a month, or $19 once.
+              Your first full rehearsal is free. Then $24, once.
             </p>
           </div>
 
@@ -283,7 +286,7 @@ export default function LandingPage() {
                   n: "01",
                   title: "Drop in the speech.",
                   body:
-                    "Paste it, upload a doc, or import from Drive. Either mark the sections yourself, or let us read it once and propose them.",
+                    "Paste it, upload a doc, or let us help you write it. Either mark the sections yourself, or let us read it once and propose them.",
                 },
                 {
                   n: "02",
@@ -345,33 +348,35 @@ export default function LandingPage() {
               Pricing
             </span>
             <h2 className="text-heading-lg mt-5">
-              Three free sessions. Then it depends on you.
+              One rehearsal free. Then $24, once.
             </h2>
             <p
               className="text-body mt-5"
               style={{ color: "var(--color-muted-ash)", maxWidth: 560 }}
             >
-              One session shows you the timing. Three show you the convergence. We give you all
-              three before asking for anything.
+              A human coach runs about $50 for half an hour, and speechwriters start at $200. The
+              Event Pass is $24, once — a month of unlimited rehearsals and coaching for the one
+              speech you actually have to give.
             </p>
           </div>
 
           <div className="grid lg:grid-cols-3 gap-5 mt-14">
             <PricingCard
-              name="Free"
-              price="$0"
-              cadence=""
-              tagline="Three sessions, on the house"
-              cta="Begin"
+              name="Event Pass"
+              price="$24"
+              cadence="once"
+              tagline="One speech · 30 days · no subscription"
+              cta="Get the Event Pass"
               ctaHref="/login"
-              dark={false}
-              right="Start here"
+              dark={true}
+              right="For the speech that matters"
               features={[
-                "Three full sessions",
-                "Speeches up to five minutes",
-                "Section pacing report",
-                "Said-vs-written diff",
-                "Audio recording",
+                "Unlimited rehearsals and coaching for 30 days",
+                "Live pacing nudges while you speak",
+                "Said-vs-written diff — adopt your ad-libs",
+                "Speeches up to sixty minutes",
+                "No auto-renew, nothing to cancel",
+                "We delete the recordings after, if you want",
               ]}
             />
             <PricingCard
@@ -381,33 +386,30 @@ export default function LandingPage() {
               tagline="Or $96 a year — two months free"
               cta="Subscribe"
               ctaHref="/login"
-              dark={true}
+              dark={false}
               right="For repeat speakers"
               features={[
-                "Unlimited sessions",
+                "Unlimited rehearsals, every speech",
                 "Speeches up to sixty minutes",
-                "Audio and video",
-                "Live keypress tagging",
-                "Iterative script versioning",
-                "Trends across speeches",
-                "PDF export and share links",
+                "Memory recall maps",
+                "Script versioning — every save is a draft",
+                "Per-section timing to the second",
               ]}
             />
             <PricingCard
-              name="Single speech"
-              price="$19"
-              cadence="once"
-              tagline="Seven days, one speech, no card after"
-              cta="Buy the pass"
+              name="Free"
+              price="$0"
+              cadence=""
+              tagline="One full rehearsal, no card"
+              cta="Begin"
               ctaHref="/login"
               dark={false}
-              right="One-time pass"
+              right="Start here"
               features={[
-                "Unlimited sessions for a week",
-                "Everything in Practiced",
-                "One speech, locked in",
-                "No subscription, no auto-renew",
-                "We delete the recording after, if you want",
+                "One full rehearsal with the complete coach report",
+                "Per-section pacing to the second",
+                "Said-vs-written diff",
+                "Speeches up to five minutes",
               ]}
             />
           </div>
