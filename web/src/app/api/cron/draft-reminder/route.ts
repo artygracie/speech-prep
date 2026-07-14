@@ -1,4 +1,5 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -59,8 +60,11 @@ export async function GET(req: Request): Promise<Response> {
     }
   }
 
-  const admin = createAdminClient();
-  // @ts-expect-error — drafts not yet in generated types
+  // The drafts tables aren't in the generated Database types (the
+  // feature's schema hasn't shipped to production) — use an untyped
+  // view of the client for these calls rather than scattering
+  // suppressions through the query chain.
+  const admin = createAdminClient() as unknown as SupabaseClient;
   const { data, error } = await admin
     .from("drafts")
     .select("id, title, email_sent_at, reminder_sent_at, pr_number")
@@ -83,13 +87,11 @@ export async function GET(req: Request): Promise<Response> {
     if (hoursSince >= 120) {
       if (pr_number) await closePr(pr_number);
 
-      // @ts-expect-error — drafts not yet in generated types
       await admin
         .from("drafts")
         .update({ status: "rejected", status_reason: "Auto-rejected after 5 days" })
         .eq("id", id);
 
-      // @ts-expect-error — draft_revisions not yet in generated types
       await admin.from("draft_revisions").insert({
         draft_id: id,
         kind: "system_event",
@@ -117,13 +119,11 @@ export async function GET(req: Request): Promise<Response> {
         console.warn(`[draft-reminder] send-approval failed for ${id}: ${nudgeRes.status}`);
       }
 
-      // @ts-expect-error — drafts not yet in generated types
       await admin
         .from("drafts")
         .update({ reminder_sent_at: new Date().toISOString() })
         .eq("id", id);
 
-      // @ts-expect-error — draft_revisions not yet in generated types
       await admin.from("draft_revisions").insert({
         draft_id: id,
         kind: "system_event",
