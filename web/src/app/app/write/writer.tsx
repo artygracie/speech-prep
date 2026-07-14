@@ -23,20 +23,22 @@ import { EventDateField } from "@/components/event-date-field";
 type Phase = "input" | "generating" | "editing";
 type ChatMessage = { role: "user" | "assistant"; text: string };
 
+// Wedding-first ordering — wedding speeches are the wedge, so wedding
+// roles lead, then the other big occasions, then work/other.
 const OCCASIONS = [
   "Best man speech",
   "Maid of honor speech",
   "Wedding toast",
-  "Father of the bride",
-  "Mother of the bride",
-  "Graduation speech",
-  "Keynote talk",
-  "Conference presentation",
-  "Retirement party toast",
+  "Parent of the couple speech",
+  "Groom or bride speech",
   "Eulogy / memorial speech",
   "Birthday toast",
-  "Award acceptance speech",
+  "Retirement party toast",
+  "Keynote talk",
+  "Conference presentation",
   "Work presentation",
+  "Graduation speech",
+  "Award acceptance speech",
 ];
 
 const DURATIONS = [
