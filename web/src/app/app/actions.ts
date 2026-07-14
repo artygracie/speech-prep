@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { aiSplitSections, aiNameSections } from "@/lib/ai-sections";
+import { parseDateOnly } from "@/lib/lifecycle";
 
 // ---------- Auth ----------
 export async function signOut() {
@@ -66,6 +67,14 @@ function estimateSeconds(text: string): number {
   return Math.max(15, Math.round((words / 145) * 60 / 5) * 5);
 }
 
+// Optional "When's the speech?" value from the creation flows. Returns
+// a clean YYYY-MM-DD string or null — never throws. A malformed value
+// simply means we don't store a date; the question is optional.
+function sanitizeEventDate(raw: unknown): string | null {
+  const s = String(raw ?? "").trim();
+  return s && parseDateOnly(s) ? s : null;
+}
+
 // AI-first auto-section: ask Claude to find logical beats and name them,
 // fall back to the paragraph heuristic if the model is unavailable or
 // returns something we can't parse. Either way, we compute target_seconds
@@ -95,6 +104,7 @@ export async function createSpeech(formData: FormData) {
 
   const title = String(formData.get("title") ?? "").trim();
   const occasion = String(formData.get("occasion") ?? "").trim() || null;
+  const eventDate = sanitizeEventDate(formData.get("event_date"));
   const body = String(formData.get("body") ?? "").trim();
 
   if (!title) return; // form-side validation already requires this
@@ -106,6 +116,7 @@ export async function createSpeech(formData: FormData) {
       user_id: user.id,
       title,
       occasion,
+      event_date: eventDate,
       current_version: 1,
     })
     .select("id")
@@ -158,13 +169,14 @@ export async function createFirstSpeech(formData: FormData) {
   if (!user) redirect("/login");
 
   const title = String(formData.get("title") ?? "").trim();
+  const eventDate = sanitizeEventDate(formData.get("event_date"));
   const body = String(formData.get("body") ?? "").trim();
 
   if (!title) return;
 
   const { data: speech, error: speechErr } = await supabase
     .from("speeches")
-    .insert({ user_id: user.id, title, current_version: 1 })
+    .insert({ user_id: user.id, title, event_date: eventDate, current_version: 1 })
     .select("id")
     .single();
   if (speechErr || !speech) throw speechErr ?? new Error("Failed to create speech");
@@ -281,6 +293,7 @@ export async function saveScript(
 export async function createSpeechFromWriter(
   title: string,
   body: string,
+  eventDate?: string | null,
 ): Promise<void> {
   const supabase = await createClient();
   const {
@@ -290,7 +303,12 @@ export async function createSpeechFromWriter(
 
   const { data: speech, error: speechErr } = await supabase
     .from("speeches")
-    .insert({ user_id: user.id, title: title.trim() || "Untitled speech", current_version: 1 })
+    .insert({
+      user_id: user.id,
+      title: title.trim() || "Untitled speech",
+      event_date: sanitizeEventDate(eventDate),
+      current_version: 1,
+    })
     .select("id")
     .single();
   if (speechErr || !speech) throw speechErr ?? new Error("Failed to create speech");

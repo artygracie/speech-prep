@@ -9,6 +9,7 @@
 // Submission goes through the server action passed in via `action`.
 
 import { useRef, useState, useTransition } from "react";
+import { EventDateField } from "@/components/event-date-field";
 
 export function OnboardingForm({
   action,
@@ -172,6 +173,10 @@ export function OnboardingForm({
           </p>
         )}
       </div>
+
+      {/* Optional event date. Skipping is free — the field starts empty
+          and submits fine that way. */}
+      <EventDateField />
 
       <div>
         <button

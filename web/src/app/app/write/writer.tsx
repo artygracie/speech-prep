@@ -18,6 +18,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { createSpeechFromWriter } from "@/app/app/actions";
+import { EventDateField } from "@/components/event-date-field";
 
 type Phase = "input" | "generating" | "editing";
 type ChatMessage = { role: "user" | "assistant"; text: string };
@@ -85,6 +86,7 @@ export function SpeechWriter() {
   const [occasion, setOccasion] = useState("");
   const [occasionCustom, setOccasionCustom] = useState("");
   const [duration, setDuration] = useState(5);
+  const [eventDate, setEventDate] = useState("");
   const [notes, setNotes] = useState("");
   const [genError, setGenError] = useState<string | null>(null);
 
@@ -267,7 +269,11 @@ export function SpeechWriter() {
 
   function handlePractice() {
     startSaveTransition(async () => {
-      await createSpeechFromWriter(title.trim() || "Untitled speech", speechText);
+      await createSpeechFromWriter(
+        title.trim() || "Untitled speech",
+        speechText,
+        eventDate || null,
+      );
     });
   }
 
@@ -363,6 +369,9 @@ export function SpeechWriter() {
                   </select>
                 </div>
               </div>
+
+              {/* Optional event date. Skipping is free — leave it empty. */}
+              <EventDateField onChange={setEventDate} />
 
               {/* Notes */}
               <div>
