@@ -438,6 +438,110 @@ export function recommendNext(input: RecommendationInput): Recommendation {
   };
 }
 
+// ─── Wave-2 email hook ───────────────────────────────────────────────
+//
+// nextNudge computes the next appropriate practice-reminder moment for
+// a speech. Pure — no persistence, no sending; Wave 2's email agent
+// consumes the result. It takes the same signals the recommendation
+// engine does: SessionSignal already folds in each session's coach
+// report (coachEditCounts), so there's no separate reports argument.
+//
+// Scheduling follows docs/memorization-research.md:
+//   - evening practice (~19:00 local) so sleep consolidates within a
+//     few hours of the rep (§5.4)
+//   - spacing over cramming: if the user already practiced today, the
+//     nudge lands tomorrow evening — a 12–24h gap (§2.1)
+//   - day-of: one light morning run, then nothing (§6)
+//   - after the event, or with nothing to practice yet: null
+
+export type Nudge = {
+  when: Date;                  // when the reminder should land
+  subjectKey: string;          // stable key the email agent maps to copy
+  phase: RecommendationPhase;  // arc phase at computation time
+};
+
+const NUDGE_HOUR_EVENING = 19; // ~2–3h before a typical bedtime
+const NUDGE_HOUR_MORNING = 9;  // day-of light run
+const NUDGE_CUTOFF_HOUR = 21;  // past this, tonight's slot is gone
+
+// One subject per phase. `null` = nothing to remind about.
+const NUDGE_SUBJECT_BY_PHASE: Record<RecommendationPhase, string | null> = {
+  needs_script: null,
+  familiarize: "read_aloud",
+  tighten: "apply_edits",
+  lock: "start_memorizing",
+  memorize_section: "drill_weak_section",
+  memorize_cumulative: "run_it_through",
+  polish: "cold_run",
+  done: "light_run",
+};
+
+function localSlot(base: Date, dayOffset: number, hour: number): Date {
+  return new Date(base.getFullYear(), base.getMonth(), base.getDate() + dayOffset, hour, 0, 0, 0);
+}
+
+function isSameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+export function nextNudge(
+  speech: { id: string; currentVersion: number; eventDate: Date | null },
+  sessions: SessionSignal[],   // newest first — same shape recommendNext consumes
+  sections: SectionSignal[],
+  now: Date = new Date(),
+): Nudge | null {
+  const daysUntilEvent = daysUntil(speech.eventDate, now);
+
+  // Event has passed — no more practice reminders. (The "how did it
+  // go?" follow-up is a separate Wave-2 surface, not a nudge.)
+  if (daysUntilEvent !== null && daysUntilEvent < 0) return null;
+
+  const rec = recommendNext({
+    speechId: speech.id,
+    currentVersion: speech.currentVersion,
+    sessions,
+    sections,
+    daysUntilEvent,
+    eventDate: speech.eventDate,
+  });
+  const subjectKey = NUDGE_SUBJECT_BY_PHASE[rec.phase];
+  if (!subjectKey) return null; // no script yet — nothing to practice
+
+  // Day-of: one light run in the morning, then leave them alone.
+  if (daysUntilEvent === 0) {
+    const morning = localSlot(now, 0, NUDGE_HOUR_MORNING);
+    if (now.getTime() >= morning.getTime()) return null;
+    return { when: morning, subjectKey: "event_day", phase: rec.phase };
+  }
+
+  // Default: this evening. Push to tomorrow when the user already
+  // practiced today (spacing over cramming) or tonight's slot is gone.
+  const practicedToday =
+    sessions.length > 0 && isSameLocalDay(sessions[0].createdAt, now);
+  const dayOffset =
+    practicedToday || now.getHours() >= NUDGE_CUTOFF_HOUR ? 1 : 0;
+  let when = localSlot(now, dayOffset, NUDGE_HOUR_EVENING);
+  // Inside the 19:00–21:00 window the slot is "now", not the past.
+  if (when.getTime() < now.getTime()) when = new Date(now.getTime());
+
+  // Never schedule an evening rep on (or past) the event day — shift
+  // to the day-of morning run instead.
+  if (speech.eventDate) {
+    const eventDayStart = localSlot(speech.eventDate, 0, 0);
+    if (when.getTime() >= eventDayStart.getTime()) {
+      const eventMorning = localSlot(speech.eventDate, 0, NUDGE_HOUR_MORNING);
+      if (now.getTime() >= eventMorning.getTime()) return null;
+      return { when: eventMorning, subjectKey: "event_day", phase: rec.phase };
+    }
+  }
+
+  return { when, subjectKey, phase: rec.phase };
+}
+
 // ─── Server-side signal gatherer ─────────────────────────────────────
 //
 // Pulls the rows the engine needs in one place so page handlers stay
