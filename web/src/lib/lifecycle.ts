@@ -73,8 +73,55 @@ export type RecommendationInput = {
   currentVersion: number;
   sessions: SessionSignal[];      // newest first
   sections: SectionSignal[];       // ordered by position
-  daysUntilEvent: number | null;   // not collected today; pass null
+  daysUntilEvent: number | null;   // from speeches.event_date; null when not provided
+  // The event date itself, only used to name the weekday in copy
+  // ("Saturday is 12 days out"). Logic keys off daysUntilEvent so tests
+  // can drive the tree without constructing dates.
+  eventDate?: Date | null;
 };
+
+// ─── Event-date helpers ──────────────────────────────────────────────
+
+// The date buckets the decision tree cares about. Under a week the arc
+// compresses (lock earlier, memorize sooner); inside a month the copy
+// references the date; beyond that (or with no date) behavior is
+// unchanged — a far-off wedding shouldn't add pressure.
+export const COMPRESSED_ARC_DAYS = 7;
+export const FULL_ARC_DAYS = 30;
+
+// Parse a Postgres `date` string (YYYY-MM-DD) as a *local* date. Naive
+// `new Date("YYYY-MM-DD")` parses as UTC midnight, which lands on the
+// previous calendar day in western timezones.
+export function parseDateOnly(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Whole calendar days from `now` until the event. 0 = event day,
+// negative = event has passed, null = no (parseable) date.
+export function daysUntil(
+  eventDate: string | Date | null | undefined,
+  now: Date = new Date(),
+): number | null {
+  if (!eventDate) return null;
+  const d = typeof eventDate === "string" ? parseDateOnly(eventDate) : eventDate;
+  if (!d || Number.isNaN(d.getTime())) return null;
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfEvent = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((startOfEvent.getTime() - startOfToday.getTime()) / 86_400_000);
+}
+
+// Quiet countdown phrase for rationale copy: "Saturday is 12 days out",
+// "The speech is tomorrow", "Speech day is today". Falls back to "The
+// speech" when we can't name the weekday.
+function countdownPhrase(days: number, eventDate?: Date | null): string {
+  const weekday = eventDate?.toLocaleDateString("en-US", { weekday: "long" });
+  if (days === 0) return "Speech day is today";
+  if (days === 1) return "The speech is tomorrow";
+  return `${weekday ?? "The speech"} is ${days} days out`;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -151,7 +198,13 @@ function sectionLabel(sec: SectionSignal | null, fallback = "the next section"):
 // ─── Decision tree ───────────────────────────────────────────────────
 
 export function recommendNext(input: RecommendationInput): Recommendation {
-  const { speechId, currentVersion, sessions, sections } = input;
+  const { speechId, currentVersion, sessions, sections, daysUntilEvent, eventDate } = input;
+
+  // Date bucket. Compressed (<7 days) tightens the arc; full (7–30)
+  // keeps the arc but lets copy reference the date; anything further
+  // out — or no date at all — behaves exactly as before.
+  const isCompressedArc = daysUntilEvent !== null && daysUntilEvent < COMPRESSED_ARC_DAYS;
+  const isDatedArc = daysUntilEvent !== null && daysUntilEvent <= FULL_ARC_DAYS;
 
   // Step 0: speech has no usable sections.
   if (sections.length === 0 || sections.every((s) => !s.id)) {
@@ -161,6 +214,22 @@ export function recommendNext(input: RecommendationInput): Recommendation {
       rationale: "We need a script to coach you on.",
       primaryAction: { label: "Edit script", href: `/app/speeches/${speechId}/edit` },
       signals: ["no_sections"],
+    };
+  }
+
+  // Step 0.5: it's speech day and the user has put in reps. Research
+  // says the day-of rep is one full run, then rest — over-rehearsing
+  // now raises anxiety more than it helps recall.
+  if (daysUntilEvent === 0 && sessions.length > 0) {
+    return {
+      phase: "polish",
+      headline: "Speech day.",
+      rationale: "One full run, out loud — then put it down. You're ready.",
+      primaryAction: {
+        label: "Record from memory",
+        href: recordHref(speechId, { mode: "freestyle" }),
+      },
+      signals: ["event_day"],
     };
   }
 
@@ -199,36 +268,55 @@ export function recommendNext(input: RecommendationInput): Recommendation {
     !latest.produced_followup_version &&
     latest.coachEditCounts.cut + latest.coachEditCounts.adopt + latest.coachEditCounts.rephrase > 0
   ) {
+    // Under a week out, edits reset memory — nudge toward locking soon.
+    const rationale = isCompressedArc
+      ? `Apply the suggestions you like, then record again. ${countdownPhrase(daysUntilEvent, eventDate)} — time to lock the script.`
+      : "Apply the suggestions you like, then record again.";
     return {
       phase: "tighten",
       headline: "Try those edits live.",
-      rationale: "Apply the suggestions you like, then record again.",
+      rationale,
       primaryAction: {
         label: "Open the report",
         href: `/app/speeches/${speechId}/sessions/${latest.id}`,
       },
-      signals: ["with_script_with_edits"],
+      signals: isCompressedArc
+        ? ["with_script_with_edits", `days_until_event:${daysUntilEvent}`]
+        : ["with_script_with_edits"],
     };
   }
 
-  // Step 3: ≥2 Script-visible takes on this version, latest had
-  //         no/few new substantive edits → time to memorize.
+  // Step 3: enough Script-visible takes on this version, latest had
+  //         no/few new substantive edits → time to memorize. The bar is
+  //         normally 2 takes; under a week to the event one clean take
+  //         is enough — the remaining days belong to memory, not
+  //         wordsmithing.
+  const lockThreshold = isCompressedArc ? 1 : 2;
   const withScriptOnCurrent = sessionsOnCurrent.filter((s) => s.mode === "with-script");
   if (
-    withScriptOnCurrent.length >= 2 &&
+    withScriptOnCurrent.length >= lockThreshold &&
     latest.mode === "with-script" &&
     latest.coachEditCounts.cut + latest.coachEditCounts.adopt + latest.coachEditCounts.rephrase === 0
   ) {
     const firstSec = sections[0] ?? null;
+    const drillSentence = `Drill ${sectionLabel(firstSec, "the opening")} from memory next.`;
+    const rationale = isDatedArc
+      ? `${countdownPhrase(daysUntilEvent, eventDate)} — this week is for locking the script. ${drillSentence}`
+      : `The writing's in good shape. ${drillSentence}`;
     return {
       phase: "lock",
       headline: "Time to memorize.",
-      rationale: `The writing's in good shape. Drill ${sectionLabel(firstSec, "the opening")} from memory next.`,
+      rationale,
       primaryAction: {
         label: `Drill ${sectionLabel(firstSec, "the opening")} from memory`,
         href: recordHref(speechId, { mode: "freestyle", sectionId: firstSec?.id }),
       },
-      signals: ["script_locked", "two_plus_with_script", "no_new_edits"],
+      signals: [
+        "script_locked",
+        isCompressedArc ? "compressed_arc" : "two_plus_with_script",
+        "no_new_edits",
+        ...(isDatedArc ? [`days_until_event:${daysUntilEvent}`] : []),
+      ],
     };
   }
 
@@ -366,13 +454,17 @@ export async function gatherSpeechSignals(
   supabase: ServerClient,
   speechId: string,
 ): Promise<RecommendationInput> {
-  // Speech: current_version is the only thing we need from the row.
+  // Speech: current_version drives the session filter; event_date
+  // drives the countdown-aware arms of the tree.
   const { data: speech } = await supabase
     .from("speeches")
-    .select("id, current_version")
+    .select("id, current_version, event_date")
     .eq("id", speechId)
     .single();
-  const currentVersion = (speech as { current_version: number } | null)?.current_version ?? 1;
+  const speechRow = speech as { current_version: number; event_date: string | null } | null;
+  const currentVersion = speechRow?.current_version ?? 1;
+  const eventDate = speechRow?.event_date ? parseDateOnly(speechRow.event_date) : null;
+  const daysUntilEvent = daysUntil(eventDate);
 
   // Sections (current version, ordered).
   const { data: secRows } = await supabase
@@ -409,7 +501,7 @@ export async function gatherSpeechSignals(
   }>;
 
   if (sessionRows.length === 0) {
-    return { speechId, currentVersion, sessions: [], sections, daysUntilEvent: null };
+    return { speechId, currentVersion, sessions: [], sections, daysUntilEvent, eventDate };
   }
 
   // Resolve script_version_id → v for each unique version_id.
@@ -539,5 +631,5 @@ export async function gatherSpeechSignals(
     };
   });
 
-  return { speechId, currentVersion, sessions, sections, daysUntilEvent: null };
+  return { speechId, currentVersion, sessions, sections, daysUntilEvent, eventDate };
 }
