@@ -7,6 +7,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { EventCountdownChip } from "@/components/event-countdown-chip";
+import { daysUntil } from "@/lib/lifecycle";
 
 function fmtRel(iso: string) {
   const d = new Date(iso);
@@ -22,7 +24,7 @@ export default async function SpeechesDashboard() {
   const supabase = await createClient();
   const { data: speeches } = await supabase
     .from("speeches")
-    .select("id, title, occasion, current_version, created_at, updated_at")
+    .select("id, title, occasion, event_date, current_version, created_at, updated_at")
     .order("updated_at", { ascending: false });
 
   const list = speeches ?? [];
@@ -80,7 +82,12 @@ export default async function SpeechesDashboard() {
             </span>
             <span />
           </div>
-          {list.map((sp) => (
+          {list.map((sp) => {
+            // Quiet countdown on the card — only when a date exists and
+            // hasn't passed; the chip carries the occasion label then.
+            const eventDays = daysUntil(sp.event_date);
+            const showCountdown = eventDays !== null && eventDays >= 0;
+            return (
             <Link
               key={sp.id}
               href={`/app/speeches/${sp.id}`}
@@ -97,9 +104,21 @@ export default async function SpeechesDashboard() {
             >
               <div>
                 <div className="text-subheading">{sp.title}</div>
-                <div className="text-caption mt-1" style={{ color: "var(--color-muted-ash)" }}>
-                  {(sp.occasion ?? "Speech")} · v{sp.current_version}
-                </div>
+                {showCountdown ? (
+                  <div
+                    className="mt-1"
+                    style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}
+                  >
+                    <EventCountdownChip occasion={sp.occasion} eventDate={sp.event_date} />
+                    <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+                      v{sp.current_version}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-caption mt-1" style={{ color: "var(--color-muted-ash)" }}>
+                    {(sp.occasion ?? "Speech")} · v{sp.current_version}
+                  </div>
+                )}
               </div>
               <div className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
                 {fmtRel(sp.updated_at)}
@@ -108,7 +127,8 @@ export default async function SpeechesDashboard() {
                 →
               </div>
             </Link>
-          ))}
+            );
+          })}
       </div>
     </div>
   );

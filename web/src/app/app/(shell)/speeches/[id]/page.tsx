@@ -6,7 +6,8 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { UpgradeCard } from "@/components/upgrade-card";
 import { NextStepCard } from "@/components/next-step-card";
-import { gatherSpeechSignals, recommendNext } from "@/lib/lifecycle";
+import { EventCountdownChip } from "@/components/event-countdown-chip";
+import { daysUntil, gatherSpeechSignals, recommendNext } from "@/lib/lifecycle";
 import DraftsPanel from "./drafts-panel";
 import { SessionRowActions } from "./session-row-actions";
 import { ConvergenceChart } from "./convergence-chart";
@@ -27,10 +28,16 @@ export default async function SpeechDetailPage({
 
   const { data: speech } = await supabase
     .from("speeches")
-    .select("id, title, occasion, current_version, created_at")
+    .select("id, title, occasion, event_date, current_version, created_at")
     .eq("id", id)
     .single();
   if (!speech) notFound();
+
+  // Countdown chip state. When the event date is known and hasn't
+  // passed, the occasion pill becomes "{occasion} — {n} days"; a past
+  // date falls back to the plain occasion pill.
+  const eventDays = daysUntil(speech.event_date);
+  const showCountdown = eventDays !== null && eventDays >= 0;
 
   const { data: scriptRows } = await supabase
     .from("current_script")
@@ -191,10 +198,14 @@ export default async function SpeechDetailPage({
           </Link>
           <h1 className="text-heading-lg mt-3">{speech.title}</h1>
           <div className="flex items-center gap-3 mt-3">
-            <span className="badge pill-soft">
-              <span className="dot" />
-              {speech.occasion ?? "Speech"}
-            </span>
+            {showCountdown ? (
+              <EventCountdownChip occasion={speech.occasion} eventDate={speech.event_date} />
+            ) : (
+              <span className="badge pill-soft">
+                <span className="dot" />
+                {speech.occasion ?? "Speech"}
+              </span>
+            )}
             <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
               v{speech.current_version} · target {fmtTime(targetTotal)}
             </span>
