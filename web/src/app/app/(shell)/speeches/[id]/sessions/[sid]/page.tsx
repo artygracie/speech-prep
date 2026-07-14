@@ -24,7 +24,9 @@ import type { TranscriptWord, ScriptSection, MemoryBand } from "@/lib/alignment"
 import { mergeSuggestedEdits } from "@/lib/paraphrase-suggestions";
 import { AutoRefresh } from "./auto-refresh";
 import { PlaybackDock } from "./playback-dock";
+import { ReportConversion } from "./report-conversion";
 import { ManuscriptScript, type SuggestedEdit } from "./manuscript-script";
+import { track } from "@/lib/track";
 import { UpgradeCard } from "@/components/upgrade-card";
 import { NextStepCard } from "@/components/next-step-card";
 import { gatherSpeechSignals, recommendNext } from "@/lib/lifecycle";
@@ -289,6 +291,17 @@ export default async function SessionReportPage({
     }
   }
 
+  // Funnel: the user saw a finished report. Gated on pipelineDone so the
+  // AutoRefresh polling of an in-flight report doesn't spam events; repeat
+  // views of a finished report do log again (funnel SQL dedupes by user).
+  if (pipelineDone && currentUser) {
+    await track(
+      "report_viewed",
+      { speech_id: speechId, session_id: sessionId, mode: currentMode },
+      { userId: currentUser.id },
+    );
+  }
+
   return (
     <div>
       {/* Polls the page until everything's landed. Renders nothing. */}
@@ -298,6 +311,10 @@ export default async function SessionReportPage({
         suspectedStuck={suspectedStuck}
         needsCoach={needsCoach}
       />
+
+      {/* Google Ads "report delivered" conversion — no-ops unless
+          NEXT_PUBLIC_GADS_CONVERSION_REPORT is set. Renders nothing. */}
+      {pipelineDone && <ReportConversion sessionId={sessionId} />}
 
       {/* ===== Header strip ===== */}
       <div

@@ -7,6 +7,15 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { aiSplitSections, aiNameSections } from "@/lib/ai-sections";
+import { track } from "@/lib/track";
+
+// How the script text arrived. "paste" and "upload" come from the intake
+// forms as a hidden field; "writer" is the AI-writer flow.
+type SpeechSource = "paste" | "upload" | "writer";
+
+function speechSourceFrom(formData: FormData): SpeechSource {
+  return formData.get("source") === "upload" ? "upload" : "paste";
+}
 
 // ---------- Auth ----------
 export async function signOut() {
@@ -141,6 +150,12 @@ export async function createSpeech(formData: FormData) {
   );
   if (secErr) throw secErr;
 
+  await track(
+    "speech_created",
+    { source: speechSourceFrom(formData), occasion, speech_id: speech.id },
+    { userId: user.id },
+  );
+
   revalidatePath("/app");
   redirect(`/app/speeches/${speech.id}/edit`);
 }
@@ -189,6 +204,12 @@ export async function createFirstSpeech(formData: FormData) {
     })),
   );
   if (secErr) throw secErr;
+
+  await track(
+    "speech_created",
+    { source: speechSourceFrom(formData), occasion: null, speech_id: speech.id },
+    { userId: user.id },
+  );
 
   revalidatePath("/app");
   redirect(`/app/speeches/${speech.id}/record?firstRun=1`);
@@ -315,6 +336,12 @@ export async function createSpeechFromWriter(
     })),
   );
   if (secErr) throw secErr;
+
+  await track(
+    "speech_created",
+    { source: "writer", occasion: null, speech_id: speech.id },
+    { userId: user.id },
+  );
 
   revalidatePath("/app");
   redirect(`/app/speeches/${speech.id}/record?firstRun=1`);
