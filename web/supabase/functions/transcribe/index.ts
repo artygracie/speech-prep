@@ -48,6 +48,29 @@ function logError(...args: unknown[]) {
 
 const FILLERS = new Set(["uh", "um", "umm", "uhh", "er", "erm", "ah", "like"]);
 
+// Pause thresholds — mirror of web/src/lib/alignment.ts. Keep in sync.
+//   >500ms gaps sum into section_metrics.pause_ms_total
+//   >1s gaps count into transcripts.pause_count
+const SECTION_PAUSE_MIN_GAP_MS = 500;
+const TRANSCRIPT_PAUSE_MIN_GAP_MS = 1000;
+
+function sumPauseMs(words: { startMs: number; endMs: number }[], minGapMs: number): number {
+  let total = 0;
+  for (let i = 1; i < words.length; i++) {
+    const gap = words[i].startMs - words[i - 1].endMs;
+    if (gap > minGapMs) total += gap;
+  }
+  return total;
+}
+
+function countPauses(words: { startMs: number; endMs: number }[], minGapMs: number): number {
+  let count = 0;
+  for (let i = 1; i < words.length; i++) {
+    if (words[i].startMs - words[i - 1].endMs > minGapMs) count += 1;
+  }
+  return count;
+}
+
 type TranscriptWord = {
   word: string;
   startMs: number;
@@ -210,6 +233,12 @@ function computeSectionMetrics(
     const actualSeconds = +(actualMs / 1000).toFixed(2);
     const wordCount = a.transcriptIdxs.length;
     const wpm = actualSeconds > 0 ? +((wordCount / actualSeconds) * 60).toFixed(2) : null;
+    // Pause total over the section's contiguous token span — the same
+    // window actualSeconds is measured over.
+    const pauseMsTotal = sumPauseMs(
+      transcriptTokens.slice(startIdx, endIdx + 1),
+      SECTION_PAUSE_MIN_GAP_MS,
+    );
     out.push({
       sectionId: s.id,
       position: s.position,
@@ -218,7 +247,7 @@ function computeSectionMetrics(
       deltaSeconds: +(actualSeconds - s.targetSeconds).toFixed(2),
       wpm,
       fillerCount: a.fillerCount,
-      pauseMsTotal: 0,
+      pauseMsTotal,
       wordStartIdx: transcriptTokens[startIdx]?.idx ?? null,
       wordEndIdx: transcriptTokens[endIdx]?.idx ?? null,
     });
@@ -386,7 +415,7 @@ Deno.serve(async (req: Request) => {
         text,
         words: words as unknown as Record<string, unknown>[],
         filler_count: fillerCount,
-        pause_count: 0,
+        pause_count: countPauses(words, TRANSCRIPT_PAUSE_MIN_GAP_MS),
         raw: raw as unknown as Record<string, unknown>,
       },
       { onConflict: "session_id" },

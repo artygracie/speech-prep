@@ -46,6 +46,47 @@ export type SectionMetric = {
   wordEndIdx: number | null;
 };
 
+// ---------- Pause detection ----------
+//
+// A "pause" is silence between two consecutive words: next.startMs -
+// prev.endMs. Two thresholds, two audiences:
+//
+//   SECTION_PAUSE_MIN_GAP_MS (500ms) — per-section pause_ms_total. Sums
+//     every gap long enough to be a real hesitation (not just breath
+//     between words). Feeds section_metrics.pause_ms_total, which the
+//     report page reads as hadLongPause when the section total > 4s.
+//
+//   TRANSCRIPT_PAUSE_MIN_GAP_MS (1000ms) — transcripts.pause_count.
+//     Counts only unambiguous stalls across the whole take.
+//
+// The transcribe edge function mirrors these (it can't import from the
+// Next.js project) — keep the two in sync.
+
+export const SECTION_PAUSE_MIN_GAP_MS = 500;
+export const TRANSCRIPT_PAUSE_MIN_GAP_MS = 1000;
+
+type TimedWord = Pick<TranscriptWord, "startMs" | "endMs">;
+
+// Sum of inter-word gaps strictly greater than minGapMs. Overlapping or
+// touching words (gap <= 0) contribute nothing.
+export function sumPauseMs(words: TimedWord[], minGapMs: number): number {
+  let total = 0;
+  for (let i = 1; i < words.length; i++) {
+    const gap = words[i].startMs - words[i - 1].endMs;
+    if (gap > minGapMs) total += gap;
+  }
+  return total;
+}
+
+// Count of inter-word gaps strictly greater than minGapMs.
+export function countPauses(words: TimedWord[], minGapMs: number): number {
+  let count = 0;
+  for (let i = 1; i < words.length; i++) {
+    if (words[i].startMs - words[i - 1].endMs > minGapMs) count += 1;
+  }
+  return count;
+}
+
 // ---------- Tokenisation ----------
 
 const FILLERS = new Set([
@@ -256,6 +297,14 @@ export function computeSectionMetrics(
     const wordCount = a.transcriptIdxs.length;
     const wpm = actualSeconds > 0 ? +((wordCount / actualSeconds) * 60).toFixed(2) : null;
 
+    // Pause total over the section's contiguous token span — the same
+    // window actualSeconds is measured over, so a pause between two
+    // improvised words inside the section still counts.
+    const pauseMsTotal = sumPauseMs(
+      transcriptTokens.slice(startIdx, endIdx + 1),
+      SECTION_PAUSE_MIN_GAP_MS,
+    );
+
     out.push({
       sectionId: s.id,
       position: s.position,
@@ -264,7 +313,7 @@ export function computeSectionMetrics(
       deltaSeconds: +(actualSeconds - s.targetSeconds).toFixed(2),
       wpm,
       fillerCount: a.fillerCount,
-      pauseMsTotal: 0, // populated by a separate pass over `words` if we track gaps
+      pauseMsTotal,
       // Translate token indices back to original word indices in the
       // transcript array (tokenisation may drop punctuation-only entries).
       wordStartIdx: transcriptTokens[startIdx]?.idx ?? null,
