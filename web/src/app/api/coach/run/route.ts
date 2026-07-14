@@ -242,10 +242,42 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(`insert failed: ${insErr.message}`, { status: 500 });
   }
 
+  // Debit the session credit now that the report has actually been
+  // delivered — success is the only point a run should cost anything
+  // (failed transcriptions/coach runs used to burn credits at upload).
+  // Claim debited_at first (UPDATE ... WHERE debited_at IS NULL) so
+  // retries and wake re-fires can never double-charge a session.
+  const { data: claimed, error: claimErr } = await admin
+    .from("sessions")
+    .update({ debited_at: new Date().toISOString() })
+    .eq("id", sessionId)
+    .is("debited_at", null)
+    .select("id")
+    .maybeSingle();
+  if (claimErr) {
+    console.error("[coach/run] debit claim failed", { sessionId, error: claimErr.message });
+  } else if (claimed) {
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("sessions_used")
+      .eq("id", session.user_id)
+      .single();
+    if (profile) {
+      const { error: debitErr } = await admin
+        .from("profiles")
+        .update({ sessions_used: (profile.sessions_used ?? 0) + 1 })
+        .eq("id", session.user_id);
+      if (debitErr) {
+        console.error("[coach/run] debit failed", { sessionId, error: debitErr.message });
+      }
+    }
+  }
+
   console.log("[coach/run] success", {
     sessionId,
     suggestedEdits: validEdits.length,
     droppedEdits: report.suggested_edits.length - validEdits.length,
+    debited: !!claimed,
     inputTokens: report.input_tokens,
     outputTokens: report.output_tokens,
   });

@@ -8,9 +8,11 @@
 //                           Throws PaywallError if the user is out of
 //                           free sessions and has no paid entitlement.
 //   2. finalizeSession    — call when MediaRecorder yields its final blob.
-//                           Updates the session row with audio metadata,
-//                           bumps profiles.sessions_used, kicks off the
-//                           transcription edge function in the background.
+//                           Updates the session row with audio metadata and
+//                           kicks off the transcription edge function in the
+//                           background. The session credit is NOT debited
+//                           here — /api/coach/run debits on report delivery,
+//                           so failed runs never burn a free session.
 //   3. deleteSession      — destructive cleanup; removes audio + row.
 //
 // Storage layout: {user_id}/{session_id}.{ext}.
@@ -204,19 +206,9 @@ export async function finalizeSession(args: {
     .eq("id", args.sessionId);
   if (upErr) throw upErr;
 
-  // Bump profile counter (best-effort).
-  await supabase.rpc; // no-op, just to leave a hook later
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("sessions_used")
-    .eq("id", user.id)
-    .single();
-  if (profile) {
-    await supabase
-      .from("profiles")
-      .update({ sessions_used: (profile.sessions_used ?? 0) + 1 })
-      .eq("id", user.id);
-  }
+  // NOTE: no credit debit here. sessions_used is bumped by
+  // /api/coach/run once the report actually lands (guarded by
+  // sessions.debited_at so it can only happen once per session).
 
   // Kick off transcription. We don't await — it can run in the background.
   // For now this is a stub that logs; the real edge function lands when
