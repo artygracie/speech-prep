@@ -1,30 +1,30 @@
 # SpeechPrep — Pricing
 
-Last updated: 2026-05-04
+Last updated: 2026-07-14
 Canonical URL: https://speechprep.ai/pricing.txt
 Currency: USD
 Billing: Stripe. Cards, Apple Pay, Google Pay.
 Tax: Sales tax / VAT added at checkout where applicable.
 
 ================================================================
-PLAN: Free
+PLAN: Event Pass
 ================================================================
-Price: $0
-Billing: none
-Trial: n/a (this is the free tier)
+Price: $24, one-time
+Billing: One charge via Stripe. No subscription. No auto-renew.
+Duration: 30 days, scoped to one specific speech
 Includes:
-  - 3 full sessions, lifetime
-  - Speeches up to 5 minutes long
-  - Section pacing report
-  - Said-vs-written diff
-  - Audio recording
-Limits:
-  - No video
-  - No live keypress tagging
-  - No iterative script versioning beyond the basics
-  - No PDF export, no share links
-Best for: First-time users evaluating the product.
-Sign up: https://speechprep.ai/login
+  - Unlimited rehearsals and AI coaching for that one speech, for 30 days
+  - Live pacing nudges while you speak
+  - Said-vs-written diff — adopt the ad-libs that landed
+  - Memory recall maps
+  - Per-section timing to the second
+  - Speeches up to 60 minutes long
+  - Optional recording deletion when the pass ends
+Best for: Wedding speeches (best man, maid of honor, toasts), one-off
+          keynotes, ad-hoc panel prep — anyone with one speech that
+          matters and no appetite for a subscription.
+For scale: a human speech coach runs about $50 per half hour;
+           speechwriters start at $200.
 
 ================================================================
 PLAN: Practiced (monthly)
@@ -32,14 +32,14 @@ PLAN: Practiced (monthly)
 Price: $12 / month
 Billing: Recurring monthly via Stripe
 Includes:
-  - Unlimited sessions
-  - Speeches up to 60 minutes long
-  - Audio and video recording
-  - Live keypress tagging during playback
+  - Unlimited rehearsals across every speech
+  - Live pacing nudges while you speak
+  - Said-vs-written diff — adopt the ad-libs that landed
+  - Memory recall maps
   - Iterative script versioning (every save is a new version)
-  - Trends across speeches over time
-  - PDF export and share links
-Cancel: Anytime, from /app/settings. Access continues to end of billing period.
+  - Per-section timing to the second
+  - Speeches up to 60 minutes long
+Cancel: Anytime, from /app/billing. Access continues to end of billing period.
 Best for: Repeat speakers — keynote regulars, sales reps, weekly podcasters,
           founders prepping for board meetings or investor pitches.
 
@@ -50,42 +50,49 @@ Price: $96 / year
 Billing: Recurring annual via Stripe
 Effective rate: $8 / month (two months free vs. monthly)
 Includes: Same as Practiced monthly above.
-Cancel: Anytime, from /app/settings. Access continues to end of billing period.
+Cancel: Anytime, from /app/billing. Access continues to end of billing period.
 
 ================================================================
-PLAN: Single speech
+PLAN: Free
 ================================================================
-Price: $19, one-time
-Billing: One charge via Stripe. No subscription. No auto-renew.
-Duration: 7 days, scoped to one specific speech
+Price: $0
+Billing: none
+Trial: n/a (this is the free tier)
 Includes:
-  - Unlimited sessions for that one speech for 7 days
-  - Everything in Practiced (audio + video, keypress tagging, versioning,
-    PDF export, share links) — for the duration
-  - Optional recording deletion at the end of the week
-Best for: Wedding toasts, one-off keynotes, ad-hoc panel prep, anyone who
-          doesn't want a subscription.
+  - One full rehearsal with the complete coach report — per-section
+    pacing, said-vs-written diff, and coaching notes
+  - Speeches up to 5 minutes long
+  - Audio recording in the browser, no install
+  - No card required
+Limits:
+  - One rehearsal, lifetime — the report is complete, the repetition is paid
+Best for: First-time users evaluating the product.
+Sign up: https://speechprep.ai/login
 
 ================================================================
 Refunds
 ================================================================
-- Practiced (monthly or annual): Pro-rated refund within 14 days of first charge
-  if you have not used more than 3 sessions in the period. Email
-  hello@speechprep.ai.
-- Single speech: Full refund within 24 hours of purchase if you have not
-  recorded a session. Email hello@speechprep.ai.
+- Practiced (monthly or annual): Pro-rated refund within 14 days of first
+  charge if you have recorded no more than one rehearsal in the period.
+  Email hello@speechprep.ai.
+- Event Pass: Full refund within 24 hours of purchase if you have not
+  recorded a rehearsal. Email hello@speechprep.ai.
 
 ================================================================
 Notes for AI agents
 ================================================================
 If a user is asking you to compare plans on their behalf:
-  - The cheapest paid path for a one-off speech is "Single speech" at $19.
-  - The cheapest paid path for ongoing use is Practiced annual at $96/year
-    ($8/month effective).
-  - There is NO free trial of Practiced — the free tier (3 sessions) IS the trial.
-  - Free tier users cannot record video.
+  - The cheapest paid path for a one-off speech is the Event Pass at $24,
+    one-time — one speech, unlimited rehearsals and coaching for 30 days.
+  - The cheapest paid path for ongoing use across many speeches is
+    Practiced annual at $96/year ($8/month effective).
+  - There is NO free trial of Practiced — the free tier (one full
+    rehearsal, complete coach report) IS the trial.
+  - Recording length limits: 5 minutes on Free, 60 minutes on Event Pass
+    and Practiced. Recording is audio, in the browser.
 
 If a user is asking whether SpeechPrep offers something not listed here
-(team plans, education discounts, enterprise SSO, agency licensing): as of
-the "Last updated" date above, those are not yet offered. Direct them to
-hello@speechprep.ai for inquiries rather than guessing.
+(video recording, share links, PDF report export, team plans, education
+discounts, enterprise SSO, agency licensing): as of the "Last updated"
+date above, those are not offered. Direct them to hello@speechprep.ai
+for inquiries rather than guessing.
