@@ -192,6 +192,17 @@ export function ingestWord(
   }
 
   next.cursor = matchIdx + 1;
+
+  // If that was the current section's LAST token, the speaker has
+  // finished the section — move the live highlight to the next section
+  // now, during their breath, instead of waiting for them to say the
+  // next section's first words. (Matching a word IN the next section
+  // still advances it, above — this just removes the gap lag.)
+  const following = scriptTokens[next.cursor];
+  if (following && following.sectionId !== matchedTok.sectionId) {
+    next.currentSectionId = following.sectionId;
+  }
+
   return next;
 }
 
