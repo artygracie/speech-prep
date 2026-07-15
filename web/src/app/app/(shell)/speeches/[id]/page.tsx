@@ -395,7 +395,10 @@ export default async function SpeechDetailPage({
                         zIndex: 2,
                       }}
                     >
-                      <SessionRowActions sessionId={sess.session_id} />
+                      <SessionRowActions
+                        sessionId={sess.session_id}
+                        status={sess.status}
+                      />
                     </div>
                   )}
                   <Link

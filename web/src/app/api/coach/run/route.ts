@@ -3,13 +3,15 @@
 // Generates an ai_reports row for a session. Idempotent — if a report
 // already exists, this is a no-op and returns 200.
 //
-// Triggered by the existing AutoRefresh / wake-handler flow once the
-// transcript has landed. Auth model: the caller must own the session
-// (we read the auth user from the request cookie via the SSR client),
-// or be a privileged server caller passing INTERNAL_COACH_SECRET. In
-// practice it's the user themselves clicking through to the report
-// page that fires this — same shape as /api/sessions/wake.
+// Triggered by (a) the transcribe edge function once the transcript +
+// section metrics have landed, and (b) the AutoRefresh / wake-handler
+// flow as a belt-and-braces retry. Auth model: the caller must own the
+// session (we read the auth user from the request cookie via the SSR
+// client), or be a privileged pipeline caller passing the shared
+// secret in the `x-coach-trigger` header (COACH_TRIGGER_SECRET —
+// compared timing-safe).
 
+import { timingSafeEqual } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -19,8 +21,23 @@ import {
   type ScriptSection,
   type TranscriptWord,
 } from "@/lib/alignment";
-import { generateCoachReport, type CoachInput } from "@/lib/ai-coach";
+import {
+  generateCoachReport,
+  type CoachInput,
+  type CoachLiveTag,
+} from "@/lib/ai-coach";
 import { resolveMode } from "@/lib/modes";
+
+// Constant-time check of the pipeline trigger header. False when the
+// secret isn't configured — the header path is then simply disabled.
+function isPipelineCaller(req: Request): boolean {
+  const secret = process.env.COACH_TRIGGER_SECRET;
+  const header = req.headers.get("x-coach-trigger");
+  if (!secret || !header) return false;
+  const a = Buffer.from(header);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,13 +57,10 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (!sessionId) return new Response("missing session_id", { status: 400 });
 
-  // Authorize. Either a logged-in user who owns the session, or an
-  // internal caller with the shared secret (e.g. a future cron worker
-  // draining stuck sessions).
-  const internalSecret = req.headers.get("x-internal-secret");
-  const isInternal =
-    !!process.env.INTERNAL_COACH_SECRET &&
-    internalSecret === process.env.INTERNAL_COACH_SECRET;
+  // Authorize. Either a logged-in user who owns the session, or a
+  // pipeline caller with the shared trigger secret (the transcribe
+  // edge function, or a future cron worker draining stuck sessions).
+  const isInternal = isPipelineCaller(req);
 
   const supabase = await createClient();
   let userId: string | null = null;
@@ -68,7 +82,7 @@ export async function POST(req: Request): Promise<Response> {
   const { data: session, error: sessErr } = await admin
     .from("sessions")
     .select(
-      "id, user_id, speech_id, script_version_id, status, mode",
+      "id, user_id, speech_id, script_version_id, status, mode, tags",
     )
     .eq("id", sessionId)
     .maybeSingle();
@@ -147,6 +161,11 @@ export async function POST(req: Request): Promise<Response> {
     else if (r.kind === "improv") improvised += 1;
   }
 
+  // Note: the transcript words go in alongside the text. The old edge
+  // coach fed the model only the alignment diff — which is empty when
+  // the script sections have no bodies — and that's how "no audio was
+  // recorded" reports got written over real transcripts. The unified
+  // coach always sees the words (and ai-coach.ts enforces it).
   const input: CoachInput = {
     mode: resolveMode(session.mode),
     speechTitle: speech?.title ?? "Untitled",
@@ -163,8 +182,13 @@ export async function POST(req: Request): Promise<Response> {
       deltaSeconds: m.deltaSeconds,
       wpm: m.wpm,
       fillerCount: m.fillerCount,
+      pauseMsTotal: m.pauseMsTotal,
+      wordStartIdx: m.wordStartIdx,
+      wordEndIdx: m.wordEndIdx,
     })),
     transcriptText: (transcript.text as string | null) ?? "",
+    words,
+    tags: (Array.isArray(session.tags) ? session.tags : []) as CoachLiveTag[],
     diffCounts: { matched, paraphrased, skipped, improvised },
   };
 
@@ -218,10 +242,42 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(`insert failed: ${insErr.message}`, { status: 500 });
   }
 
+  // Debit the session credit now that the report has actually been
+  // delivered — success is the only point a run should cost anything
+  // (failed transcriptions/coach runs used to burn credits at upload).
+  // Claim debited_at first (UPDATE ... WHERE debited_at IS NULL) so
+  // retries and wake re-fires can never double-charge a session.
+  const { data: claimed, error: claimErr } = await admin
+    .from("sessions")
+    .update({ debited_at: new Date().toISOString() })
+    .eq("id", sessionId)
+    .is("debited_at", null)
+    .select("id")
+    .maybeSingle();
+  if (claimErr) {
+    console.error("[coach/run] debit claim failed", { sessionId, error: claimErr.message });
+  } else if (claimed) {
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("sessions_used")
+      .eq("id", session.user_id)
+      .single();
+    if (profile) {
+      const { error: debitErr } = await admin
+        .from("profiles")
+        .update({ sessions_used: (profile.sessions_used ?? 0) + 1 })
+        .eq("id", session.user_id);
+      if (debitErr) {
+        console.error("[coach/run] debit failed", { sessionId, error: debitErr.message });
+      }
+    }
+  }
+
   console.log("[coach/run] success", {
     sessionId,
     suggestedEdits: validEdits.length,
     droppedEdits: report.suggested_edits.length - validEdits.length,
+    debited: !!claimed,
     inputTokens: report.input_tokens,
     outputTokens: report.output_tokens,
   });

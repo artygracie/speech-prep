@@ -1,15 +1,26 @@
 // Server-only AI coach: produces an ai_reports row for a session.
 //
+// This is THE coach — the former edge `coach` function's audio-signal
+// computation (prompt v2 / edge v7) was folded in here for prompt v6,
+// and the edge function is retired. One implementation, one prompt.
+//
 // Inputs (caller assembles these):
 //   - the session mode (with-script | freestyle) — drives the coaching
 //     persona (writing coach vs. memorization coach)
 //   - the speech's sections (id, name, body, target_seconds)
-//   - the transcript (text + optional words[] for citation)
+//   - the transcript (text + words[] with timings)
 //   - per-section metrics from alignment.ts (actual_seconds, delta,
-//     wpm, filler_count) — these tell the coach what was rushed,
-//     dragged, or skipped without making the model do arithmetic
+//     wpm, filler_count, pause_ms_total, word range) — these tell the
+//     coach what was rushed, dragged, or skipped without making the
+//     model do arithmetic
 //   - the session's diff rows (from buildDiff/coalesceDiff) summarised
 //     down to counts so the coach knows what's already been promoted
+//   - live tags the speaker self-flagged while recording
+//
+// From the word timings we derive per-section DELIVERY signals
+// deterministically (no extra API spend): pause distribution
+// (>0.5s/>1s/>2s), longest pause + timestamp, WPM variance ratio per
+// ~10s window, filler timestamps, and section transition gaps.
 //
 // Output: { headline, summary, per_section[], suggested_edits[] }
 //   - headline is a one-sentence pull-quote (≤90 chars) — the most
@@ -26,6 +37,7 @@
 
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { isFillerWord, type TranscriptWord } from "./alignment";
 import type { SessionMode } from "./modes";
 
 const MODEL = "claude-sonnet-4-6";
@@ -57,7 +69,17 @@ export type CoachMetric = {
   deltaSeconds: number;
   wpm: number | null;
   fillerCount: number;
+  // Sum of >500ms inter-word gaps within the section (alignment.ts).
+  pauseMsTotal: number;
+  // Word range into the transcript words[] — drives the per-section
+  // audio-signal derivation. Null when no words aligned to the section.
+  wordStartIdx: number | null;
+  wordEndIdx: number | null;
 };
+
+// A moment the speaker self-flagged live (keyboard tags in the
+// recorder): landed / flat / lost place / callback, with a timestamp.
+export type CoachLiveTag = { kind: string; label: string; atMs: number };
 
 export type CoachInput = {
   mode: SessionMode;
@@ -66,6 +88,10 @@ export type CoachInput = {
   sections: CoachSection[];
   metrics: CoachMetric[];
   transcriptText: string;
+  // Word-level timings — used to derive delivery signals and to verify
+  // the transcript actually made it into the prompt.
+  words: TranscriptWord[];
+  tags: CoachLiveTag[];
   diffCounts: {
     matched: number;
     paraphrased: number;
@@ -118,10 +144,151 @@ export type CoachReport = {
   prompt_version: number;
 };
 
+// ============================================================
+// Audio signals — derived deterministically from word timings.
+// Ported from the retired edge `coach` function (v7) so the unified
+// coach keeps its delivery-level insight.
+// ============================================================
+
+export type AudioSignal = {
+  sectionId: string;
+  sectionName: string;
+  // Pause buckets: count of inter-word gaps in each band. Excludes the
+  // gap before the section's first word.
+  pauses500ms: number;
+  pauses1s: number;
+  pauses2s: number;
+  // Longest single pause within the section, and when it happened
+  // (wall-clock ms from session start).
+  longestPauseMs: number;
+  longestPauseAtMs: number;
+  // WPM computed across each ~10s window in the section, summarised as
+  // stdev / mean. Higher = choppier. Null when the section is too
+  // short to windowise meaningfully.
+  wpmVarianceRatio: number | null;
+  // Filler-word timestamps (first 5).
+  fillerExamples: { word: string; atMs: number }[];
+  // Gap between this section's last word and the next section's first
+  // word. -1 when this is the last section or the next has no words.
+  transitionGapMs: number;
+};
+
+function computeAudioSignals(
+  sections: CoachSection[],
+  metrics: CoachMetric[],
+  words: TranscriptWord[],
+): AudioSignal[] {
+  const out: AudioSignal[] = [];
+  for (let si = 0; si < sections.length; si++) {
+    const sec = sections[si];
+    const m = metrics.find((x) => x.sectionId === sec.id);
+    if (!m || m.wordStartIdx == null || m.wordEndIdx == null) {
+      // No timing for this section — emit a stub so per-section
+      // ordering stays aligned in the prompt.
+      out.push({
+        sectionId: sec.id,
+        sectionName: sec.name,
+        pauses500ms: 0,
+        pauses1s: 0,
+        pauses2s: 0,
+        longestPauseMs: 0,
+        longestPauseAtMs: 0,
+        wpmVarianceRatio: null,
+        fillerExamples: [],
+        transitionGapMs: -1,
+      });
+      continue;
+    }
+
+    const start = m.wordStartIdx;
+    const end = Math.min(words.length - 1, m.wordEndIdx);
+    const slice = words.slice(start, end + 1);
+
+    // ---------- Pause distribution ----------
+    let p500 = 0, p1k = 0, p2k = 0;
+    let longestMs = 0;
+    let longestAt = 0;
+    for (let i = 1; i < slice.length; i++) {
+      const gap = slice[i].startMs - slice[i - 1].endMs;
+      if (gap >= 500) p500++;
+      if (gap >= 1000) p1k++;
+      if (gap >= 2000) p2k++;
+      if (gap > longestMs) {
+        longestMs = gap;
+        longestAt = slice[i - 1].endMs;
+      }
+    }
+
+    // ---------- WPM variance per ~10s window ----------
+    const sectionStartMs = slice[0]?.startMs ?? 0;
+    const sectionEndMs = slice[slice.length - 1]?.endMs ?? sectionStartMs;
+    const dur = sectionEndMs - sectionStartMs;
+    let wpmVar: number | null = null;
+    if (dur >= 5000 && slice.length >= 8) {
+      const windows: number[] = [];
+      const winSize = 10_000;
+      for (let t = sectionStartMs; t < sectionEndMs; t += winSize) {
+        const winEnd = Math.min(sectionEndMs, t + winSize);
+        const winWords = slice.filter((w) => w.startMs >= t && w.startMs < winEnd).length;
+        const winSec = (winEnd - t) / 1000;
+        if (winSec >= 3) windows.push((winWords / winSec) * 60);
+      }
+      if (windows.length >= 2) {
+        const mean = windows.reduce((a, b) => a + b, 0) / windows.length;
+        if (mean > 0) {
+          const variance =
+            windows.reduce((a, b) => a + (b - mean) ** 2, 0) / windows.length;
+          const stdev = Math.sqrt(variance);
+          wpmVar = +(stdev / mean).toFixed(2);
+        }
+      }
+    }
+
+    // ---------- Filler examples ----------
+    const fillerExamples: { word: string; atMs: number }[] = [];
+    for (const w of slice) {
+      if (fillerExamples.length >= 5) break;
+      if (w.isFiller === true || isFillerWord(w.word)) {
+        fillerExamples.push({ word: w.word, atMs: w.startMs });
+      }
+    }
+
+    // ---------- Transition gap ----------
+    let transitionGap = -1;
+    if (si < sections.length - 1) {
+      const nextSec = sections[si + 1];
+      const nextM = metrics.find((x) => x.sectionId === nextSec.id);
+      if (nextM?.wordStartIdx != null && words[nextM.wordStartIdx]) {
+        const lastEnd = slice[slice.length - 1]?.endMs ?? 0;
+        transitionGap = Math.max(0, words[nextM.wordStartIdx].startMs - lastEnd);
+      }
+    }
+
+    out.push({
+      sectionId: sec.id,
+      sectionName: sec.name,
+      pauses500ms: p500,
+      pauses1s: p1k,
+      pauses2s: p2k,
+      longestPauseMs: longestMs,
+      longestPauseAtMs: longestAt,
+      wpmVarianceRatio: wpmVar,
+      fillerExamples,
+      transitionGapMs: transitionGap,
+    });
+  }
+  return out;
+}
+
 // Bump this when the SYSTEM_PROMPT or persona blocks change.
 // ai_reports.prompt_version uses a numeric column so we can range-query
 // or chart by version.
-const PROMPT_VERSION = 5;
+//
+// v6 — unified coach: merged the edge coach's audio-derived delivery
+// signals (pauses, WPM variance, filler timestamps, transition gaps,
+// live tags) into the v5 persona/drill prompt, plus the no-audio
+// validation gate in generateCoachReport.
+const PROMPT_VERSION = 6;
 
 // Static system prompt — cached. The dynamic per-session content goes
 // in the user message so the cache hits on every call.
@@ -157,6 +324,16 @@ When emitting a drill in freestyle mode, prefer these evidence-backed tactics. T
 - "Read-aloud encoding" — read this section aloud 2x, with intent, before drilling. Use for blanked sections — the user needs to re-encode before they can drill.
 - "First-letter check" — practice the section reading only the first letter of each word. Use when the section is mostly there but a few words are stubbornly missing.
 - "Cold start run" — open the app and deliver the section immediately, no warm-up. Use sparingly, mostly for sections that are word-perfect when warmed up but fragile cold.
+
+DELIVERY SIGNALS (both modes)
+The user message includes per-section audio signals derived deterministically from word timings: pause distribution (counts of >0.5s / >1s / >2s gaps), the longest pause and when it happened, a WPM variance ratio per ~10s window, filler-word timestamps, and the silence gap into the next section. Use them to give DELIVERY feedback, not just text feedback:
+- Long pauses inside a section (>2s) often signal the speaker losing their place.
+- A pause >2s right before a punchline or callback can be intentional and effective — don't flag it as a problem if it preceded a strong line.
+- A high WPM variance ratio (>0.35) means the section was choppy. Worth flagging if it correlates with skipped lines or fillers.
+- A flat WPM variance ratio (<0.10) over a long section can mean monotone delivery.
+- Multiple fillers ("um", "uh") in one section, especially at consistent positions, suggest a phrase the speaker stumbles on every time. In with-script mode, propose a rephrase that flows better; in freestyle mode that's a recall gap — drill it.
+- Transition gaps >3s between sections suggest the speaker isn't sure how to bridge. In with-script mode that may mean a missing connective sentence in the script; in freestyle mode, use a bridge drill.
+- The speaker may also have self-flagged moments live (landed / flat / lost place / callback) with timestamps — treat these as ground truth for how the take felt from the inside, and anchor feedback to them when they line up with a signal.
 
 In BOTH modes, you also produce:
 
@@ -250,14 +427,85 @@ function clampHeadline(s: string, maxChars = 90): string {
   return slice.trim();
 }
 
+// ============================================================
+// No-audio validation gate.
+//
+// ROOT CAUSE of the historical "no audio was recorded" reports (~20%
+// of all reports ever generated, 15 of them over transcripts >300
+// chars): those sessions were recorded against script versions whose
+// only section had an EMPTY body. With zero script tokens the aligner
+// returns no pairs, so section_metrics landed as "0s actual, no word
+// range" and the alignment diff was empty. The retired edge coach's
+// prompt carried ONLY the diff and metrics — never the raw transcript
+// — so the model was literally told "actual 0s … (no transcript)" and
+// reasonably concluded nothing was recorded, while a full transcript
+// sat in the DB.
+//
+// Two defences now:
+//   1. buildUserMessage ALWAYS embeds the raw transcript text (and we
+//      reconstruct it from words[] if the text column is empty).
+//   2. This gate rejects any generated report that still claims
+//      silence over a non-empty transcript, regenerates once with a
+//      corrective note, and refuses to return fiction if that fails.
+// ============================================================
+
+const NO_AUDIO_CLAIM =
+  /\bno audio\b|\bno speech\b|\bnothing (?:was )?recorded\b|\btranscript is (?:completely |entirely )?(?:empty|blank)\b|\bempty transcript\b|\bfailed to (?:capture|record)\b|\bcame (?:in|up|back) (?:blank|empty)\b/i;
+
+function claimsNoAudio(report: CoachReport): boolean {
+  return NO_AUDIO_CLAIM.test(`${report.headline} ${report.summary}`);
+}
+
 export async function generateCoachReport(
   input: CoachInput,
 ): Promise<CoachReport | null> {
   const c = client();
   if (!c) return null;
 
-  const userMessage = personaPrefix(input.mode) + buildUserMessage(input);
+  // Input hardening: if the transcript has words, the prompt MUST
+  // carry them. The text column is the preferred surface; fall back to
+  // joining the timed words so a blank text column can never produce a
+  // silent prompt over a non-silent take.
+  const transcriptText =
+    input.transcriptText.trim().length > 0
+      ? input.transcriptText
+      : input.words.map((w) => w.word).join(" ");
+  const hasSpeech = transcriptText.trim().length > 0;
+  const hardened: CoachInput = { ...input, transcriptText };
 
+  const userMessage = personaPrefix(input.mode) + buildUserMessage(hardened);
+
+  const first = await callCoachModel(c, userMessage);
+  if (!first) return null;
+  if (!hasSpeech || !claimsNoAudio(first)) return first;
+
+  // The model claimed silence over a non-empty transcript. Regenerate
+  // once with an explicit reality check appended to the input.
+  console.error("[ai-coach] report claimed no audio over a non-empty transcript — regenerating", {
+    words: input.words.length,
+    transcriptChars: transcriptText.length,
+    headline: first.headline,
+  });
+  const retry = await callCoachModel(
+    c,
+    `${userMessage}
+
+REALITY CHECK: audio WAS recorded and transcribed for this session — the transcript above contains ${input.words.length} timed words. Do NOT claim that no audio was recorded or that the transcript is empty. If the script sections are blank, coach the delivery you can hear in the transcript and suggest the speaker write the script down.`,
+  );
+  if (retry && !claimsNoAudio(retry)) return retry;
+
+  console.error(
+    "[ai-coach] regenerated report still claims no audio — rejecting rather than storing fiction",
+    { words: input.words.length },
+  );
+  return null;
+}
+
+// One model round-trip: call, parse, validate shape, clamp headline.
+async function callCoachModel(
+  c: Anthropic,
+  userMessage: string,
+): Promise<CoachReport | null> {
   try {
     const res = await c.messages.create({
       model: MODEL,
@@ -313,9 +561,33 @@ export async function generateCoachReport(
       prompt_version: PROMPT_VERSION,
     };
   } catch (err) {
-    console.error("[ai-coach] generateCoachReport failed", err);
+    console.error("[ai-coach] coach model call failed", err);
     return null;
   }
+}
+
+function fmtSignal(s: AudioSignal): string {
+  const fillers = s.fillerExamples.length
+    ? s.fillerExamples
+        .map((f) => `"${f.word}" @ ${(f.atMs / 1000).toFixed(1)}s`)
+        .join(", ")
+    : "none";
+  const variance =
+    s.wpmVarianceRatio == null
+      ? "n/a (section too short)"
+      : s.wpmVarianceRatio.toFixed(2);
+  const transition =
+    s.transitionGapMs < 0
+      ? "(last section)"
+      : `${(s.transitionGapMs / 1000).toFixed(1)}s to next`;
+  return (
+    `[${s.sectionId}] ${s.sectionName}:\n` +
+    `  pauses: ${s.pauses500ms} >0.5s, ${s.pauses1s} >1s, ${s.pauses2s} >2s\n` +
+    `  longest pause: ${(s.longestPauseMs / 1000).toFixed(1)}s @ ${(s.longestPauseAtMs / 1000).toFixed(1)}s\n` +
+    `  wpm variance ratio: ${variance}\n` +
+    `  filler instances: ${fillers}\n` +
+    `  transition: ${transition}`
+  );
 }
 
 function buildUserMessage(input: CoachInput): string {
@@ -330,9 +602,19 @@ function buildUserMessage(input: CoachInput): string {
     .map((m) => {
       const sec =
         input.sections.find((s) => s.id === m.sectionId)?.name ?? m.sectionId;
-      return `[${m.sectionId}] ${sec}: actual ${m.actualSeconds}s, delta ${m.deltaSeconds >= 0 ? "+" : ""}${m.deltaSeconds}s, wpm ${m.wpm ?? "n/a"}, fillers ${m.fillerCount}`;
+      return `[${m.sectionId}] ${sec}: actual ${m.actualSeconds}s, delta ${m.deltaSeconds >= 0 ? "+" : ""}${m.deltaSeconds}s, wpm ${m.wpm ?? "n/a"}, fillers ${m.fillerCount}, paused ${(m.pauseMsTotal / 1000).toFixed(1)}s total`;
     })
     .join("\n");
+
+  const signals = computeAudioSignals(input.sections, input.metrics, input.words)
+    .map(fmtSignal)
+    .join("\n\n");
+
+  const tags = input.tags.length
+    ? input.tags
+        .map((t) => `${t.label || t.kind} at ${(t.atMs / 1000).toFixed(1)}s`)
+        .join("; ")
+    : "none";
 
   const counts = input.diffCounts;
   return `Speech: ${input.speechTitle}${input.occasion ? ` (${input.occasion})` : ""}
@@ -342,6 +624,11 @@ ${sections}
 
 PER-SECTION METRICS:
 ${metrics}
+
+DELIVERY SIGNALS (from word timings):
+${signals || "(no signal data)"}
+
+LIVE NOTES (self-flagged while recording): ${tags}
 
 DIFF COUNTS:
 matched=${counts.matched} paraphrased=${counts.paraphrased} skipped=${counts.skipped} improvised=${counts.improvised}

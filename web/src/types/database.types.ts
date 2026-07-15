@@ -229,6 +229,7 @@ export type Database = {
           audio_mime: string | null
           audio_path: string | null
           created_at: string
+          debited_at: string | null
           duration_ms: number | null
           id: string
           mode: string
@@ -244,6 +245,7 @@ export type Database = {
           audio_mime?: string | null
           audio_path?: string | null
           created_at?: string
+          debited_at?: string | null
           duration_ms?: number | null
           id?: string
           mode?: string
@@ -259,6 +261,7 @@ export type Database = {
           audio_mime?: string | null
           audio_path?: string | null
           created_at?: string
+          debited_at?: string | null
           duration_ms?: number | null
           id?: string
           mode?: string

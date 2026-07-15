@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient as createBrowserClient } from "@/lib/supabase/client";
-import { createSession, finalizeSession } from "@/app/app/sessions-actions";
+import { abandonSession, createSession, finalizeSession } from "@/app/app/sessions-actions";
 import { useStreamingTranscription } from "@/lib/use-streaming-transcription";
 import {
   emptyState as emptyAlignState,
@@ -27,10 +27,29 @@ import {
 } from "@/lib/live-align";
 import { BottomBar, type BottomBarNudge } from "./bottom-bar";
 import { MODE_LABEL, type SessionMode } from "@/lib/modes";
+import { maxDurationMs } from "@/lib/plan-limits";
 
 type Section = { id: string; position: number; name: string; targetSec: number; body: string };
 type Tag = { kind: "landed" | "flat" | "lost" | "callback"; atMs: number; label: string };
-type State = "idle" | "starting" | "recording" | "paused" | "stopping" | "uploading" | "error";
+// "silent" — the take ended with no detectable voice; nothing was
+// uploaded and the session was marked failed (no credit spent).
+type State = "idle" | "starting" | "recording" | "paused" | "stopping" | "uploading" | "error" | "silent";
+
+// ---------- Mic health ----------
+// An AnalyserNode RMS monitor runs alongside MediaRecorder. With echo
+// cancellation + noise suppression on, true silence sits well below
+// 0.01 RMS while even quiet speech clears 0.03.
+const RMS_VOICED_THRESHOLD = 0.015;
+// If the first ~10s contain no voiced audio, surface a non-blocking
+// "we can't hear you" interrupt.
+const MIC_WARN_AFTER_MS = 10_000;
+// Total voiced time below this at stop ≈ nothing was recorded — skip
+// the upload entirely instead of feeding silence to the pipeline.
+const MIN_VOICED_MS = 500;
+
+// How far ahead of the per-plan recording cap (lib/plan-limits.ts) the
+// "time limit" nudge starts counting down.
+const TIME_CAP_WARN_MS = 60_000;
 
 const TAG_DEFS: { code: string; key: string; kind: Tag["kind"]; label: string }[] = [
   { code: "KeyL", key: "L", kind: "landed", label: "Landed" },
@@ -61,11 +80,16 @@ function fmtTime(ms: number) {
 export function Recorder({
   speechId,
   sections,
+  plan = "free",
   initialMode = null,
   initialSectionId = null,
 }: {
   speechId: string;
   sections: Section[];
+  // The user's plan — drives the per-plan recording-length cap from
+  // lib/plan-limits.ts (free 5 min, paid 60 min). Server-side is the
+  // authority on entitlements; this only sizes the local hard stop.
+  plan?: string;
   // Pre-selected mode from a lifecycle recommendation or query param.
   // The user can still toggle inside the recorder.
   initialMode?: SessionMode | null;
@@ -73,6 +97,7 @@ export function Recorder({
   // Only honoured when the section actually exists on the speech.
   initialSectionId?: string | null;
 }) {
+  const durationCapMs = maxDurationMs(plan);
   const router = useRouter();
   const [mode, setMode] = useState<SessionMode>(initialMode ?? "with-script");
   const [state, setState] = useState<State>("idle");
@@ -104,6 +129,17 @@ export function Recorder({
   const startedAtRef = useRef<number>(0);
   const tickHandleRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mimeRef = useRef<{ mime: string; ext: string }>({ mime: "audio/webm", ext: "webm" });
+
+  // Mic health monitor. The analyser samples RMS on the same 200ms tick
+  // as the timer; voicedMsRef accumulates time where the level cleared
+  // RMS_VOICED_THRESHOLD. All best-effort — if AudioContext can't be
+  // created we record as before, just without silence detection.
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const analyserBufRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const voicedMsRef = useRef(0);
+  const [micLevel, setMicLevel] = useState(0);
+  const [micWarning, setMicWarning] = useState(false);
 
   // ---------- Sections in scope ----------
   // When practicing a single section, the rest of the speech is hidden
@@ -201,15 +237,55 @@ export function Recorder({
     return startedAtRef.current ? Date.now() - startedAtRef.current : 0;
   }
 
+  // One RMS sample off the analyser. Returns 0 when monitoring is off.
+  function sampleMicLevel(): number {
+    const analyser = analyserRef.current;
+    if (!analyser) return 0;
+    let buf = analyserBufRef.current;
+    if (!buf || buf.length !== analyser.fftSize) {
+      buf = new Uint8Array(analyser.fftSize);
+      analyserBufRef.current = buf;
+    }
+    analyser.getByteTimeDomainData(buf);
+    let sumSq = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const v = (buf[i] - 128) / 128;
+      sumSq += v * v;
+    }
+    return Math.sqrt(sumSq / buf.length);
+  }
+
+  const TICK_MS = 200;
   function startTicker() {
     stopTicker();
     // Tick at 5Hz: cheap enough, smooth enough for a live timer.
     // We also bump liveTick here so the bottom bar re-reads the
-    // alignment ref. Coalescing both updates avoids two renders per tick.
+    // alignment ref, and sample the mic level so all per-tick state
+    // updates coalesce into a single render.
     tickHandleRef.current = setInterval(() => {
+      // Per-plan recording cap: graceful auto-stop at the limit. The
+      // countdown nudge (see the nudge memo) starts a minute out, so
+      // this is never a surprise. stop() clears this interval first
+      // thing, so it fires at most once.
+      if (nowElapsed() >= durationCapMs) {
+        void stop();
+        return;
+      }
+
       setElapsedMs(nowElapsed());
       setLiveTick((t) => t + 1);
-    }, 200);
+
+      if (analyserRef.current) {
+        const rms = sampleMicLevel();
+        if (rms > RMS_VOICED_THRESHOLD) voicedMsRef.current += TICK_MS;
+        setMicLevel(rms);
+        // Warn when the take has run long enough to judge and we still
+        // haven't heard anything; clears itself as soon as voice lands.
+        setMicWarning(
+          nowElapsed() >= MIC_WARN_AFTER_MS && voicedMsRef.current < MIN_VOICED_MS,
+        );
+      }
+    }, TICK_MS);
   }
   function stopTicker() {
     if (tickHandleRef.current) {
@@ -221,6 +297,11 @@ export function Recorder({
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     mediaStreamRef.current = null;
     recorderRef.current = null;
+    analyserRef.current = null;
+    void audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    setMicWarning(false);
+    setMicLevel(0);
   }
 
   // ---------- Recording ----------
@@ -232,6 +313,23 @@ export function Recorder({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       mediaStreamRef.current = stream;
+
+      // Mic health monitor — best-effort. Recording works without it;
+      // we just lose silence detection.
+      voicedMsRef.current = 0;
+      try {
+        const ctx = new AudioContext();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        ctx.createMediaStreamSource(stream).connect(analyser);
+        // Contexts created after an await can start suspended even
+        // inside a click handler — resume explicitly.
+        void ctx.resume().catch(() => {});
+        audioCtxRef.current = ctx;
+        analyserRef.current = analyser;
+      } catch (err) {
+        console.warn("[recorder] mic level monitor unavailable:", err);
+      }
 
       const m = pickMimeType();
       mimeRef.current = m;
@@ -319,6 +417,11 @@ export function Recorder({
     streaming.stop();
     const sessionId = sessionIdRef.current;
     const captured = elapsedMs || nowElapsed();
+    // Snapshot mic-health facts before cleanupStream() tears the
+    // analyser down. Only trust the voiced total when the monitor
+    // actually ran — otherwise a monitor failure would eat real takes.
+    const monitorRan = analyserRef.current !== null;
+    const voicedMs = voicedMsRef.current;
 
     const onStop = new Promise<Blob>((resolve, reject) => {
       const rec = recorderRef.current!;
@@ -345,6 +448,19 @@ export function Recorder({
       return;
     }
     cleanupStream();
+
+    // Nothing voiced across the whole take? Don't feed silence to the
+    // pipeline — mark the session failed (it's still in 'recording'
+    // status, so abandonSession applies) and show the recovery state.
+    // Since credits are debited on report delivery, this take costs
+    // the user nothing.
+    if (monitorRan && voicedMs < MIN_VOICED_MS) {
+      void abandonSession(sessionId).catch(() => {
+        // Best-effort — the reaper/wake flow cleans up stragglers.
+      });
+      setState("silent");
+      return;
+    }
 
     setState("uploading");
     const ext = mimeRef.current.ext || "webm";
@@ -427,11 +543,22 @@ export function Recorder({
 
   // Live nudge for the bottom bar. Computed from alignment + clock state,
   // recomputed on every liveTick. We only show one at a time, with this
-  // priority: skipped > over-target > too-fast > too-slow.
+  // priority: time-limit > skipped > over-target > too-fast > too-slow.
   const nudge = useMemo<BottomBarNudge>(() => {
     void liveTick; // re-evaluate
     if (state !== "recording") return null;
     if (!currentSection) return null;
+
+    // 0. Approaching the per-plan recording cap — counts down the last
+    //    minute before the ticker auto-stops the take.
+    const remainingMs = durationCapMs - elapsedMs;
+    if (remainingMs <= TIME_CAP_WARN_MS) {
+      const s = Math.max(0, Math.ceil(remainingMs / 1000));
+      return {
+        kind: "time-limit",
+        message: `Recording stops in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`,
+      };
+    }
 
     const live = liveStateRef.current;
 
@@ -474,7 +601,7 @@ export function Recorder({
     }
 
     return null;
-  }, [state, currentSection, sectionElapsedMs, elapsedMs, liveTick]);
+  }, [state, currentSection, sectionElapsedMs, elapsedMs, liveTick, durationCapMs]);
 
   // The transcript window the bottom bar shows.
   const recentSpoken = useMemo(() => {
@@ -1104,6 +1231,8 @@ export function Recorder({
                 ? "Starting"
                 : state === "error"
                 ? "Error"
+                : state === "silent"
+                ? "No audio"
                 : "Ready"}
             </div>
             <div className="rec-time">{fmtTime(elapsedMs)}</div>
@@ -1233,6 +1362,8 @@ export function Recorder({
         currentSectionTargetMs={(currentSection?.targetSec ?? 0) * 1000}
         nudge={nudge}
         recentTags={tags}
+        micWarning={micWarning}
+        micLevel={micLevel}
         onStart={start}
         onPause={pause}
         onResume={resume}
