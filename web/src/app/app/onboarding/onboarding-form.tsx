@@ -21,6 +21,9 @@ export function OnboardingForm({
   const [pending, startTransition] = useTransition();
   const [extracting, setExtracting] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  // Analytics: remembers whether any of the body came from a dropped file,
+  // so speech_created can report source paste vs upload.
+  const [usedFile, setUsedFile] = useState(false);
 
   async function handleFile(file: File) {
     setFileError(null);
@@ -48,6 +51,7 @@ export function OnboardingForm({
         return;
       }
       setBody((prev) => (prev ? prev + "\n\n" + data.text : data.text!));
+      setUsedFile(true);
     } catch {
       setFileError("Upload failed. Try again, or paste the text instead.");
     } finally {
@@ -74,6 +78,8 @@ export function OnboardingForm({
 
   return (
     <form onSubmit={onSubmit} style={{ display: "grid", gap: 24 }}>
+      {/* Analytics: how the script text arrived (speech_created event). */}
+      <input type="hidden" name="source" value={usedFile ? "upload" : "paste"} />
       <div>
         <label
           htmlFor="ob-title"

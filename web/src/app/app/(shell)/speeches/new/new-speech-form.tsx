@@ -93,6 +93,8 @@ export function NewSpeechForm({
 
   return (
     <form onSubmit={onSubmit} style={{ display: "grid", gap: 16 }}>
+      {/* Analytics: how the script text arrived (speech_created event). */}
+      <input type="hidden" name="source" value={hasFile ? "upload" : "paste"} />
       {/* Title first — it's the speech's identifier, and the cheapest thing
           to fill in. Asking for it after a long paste feels like a gotcha. */}
       <div>

@@ -8,12 +8,17 @@ import { redirect } from "next/navigation";
 import { stripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import { applyEntitlementFromCheckoutSession, safeReturnTo } from "@/lib/entitlements";
+import { track } from "@/lib/track";
 import { SuccessRedirect } from "./success-redirect";
 import { ConversionPixelBridge } from "./conversion-pixel-bridge";
 
 export const metadata = { title: "Payment received — SpeechPrep" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+// Google Ads conversion action label ("AW-XXXXXXXX/xxxx"). Unset → the pixel
+// simply doesn't render. See docs/analytics.md for the founder setup steps.
+const PURCHASE_SEND_TO = process.env.NEXT_PUBLIC_GADS_CONVERSION_PURCHASE;
 
 export default async function BillingSuccessPage({
   searchParams,
@@ -46,6 +51,18 @@ export default async function BillingSuccessPage({
     // someone else's account.
     if (session.metadata?.user_id === user.id) {
       await applyEntitlementFromCheckoutSession(session);
+      // Funnel: verified purchase. A reload of this page re-logs with the
+      // same transaction_id; funnel SQL dedupes on it.
+      await track(
+        "purchase_completed",
+        {
+          transaction_id: session.id,
+          value: session.amount_total != null ? session.amount_total / 100 : null,
+          currency: session.currency?.toUpperCase() ?? null,
+          plan: session.metadata?.plan ?? null,
+        },
+        { userId: user.id },
+      );
     }
     returnTo = safeReturnTo(session.metadata?.return_to ?? null);
     if (session.amount_total && session.currency) {
@@ -55,9 +72,6 @@ export default async function BillingSuccessPage({
         currency: session.currency.toUpperCase(),
       };
     }
-    // Log to Vercel so we can confirm the conversion object is being built.
-    // Remove once Google Ads conversion verification stops failing.
-    console.log("[billing/success] conversion=", conversion, "amount_total=", session.amount_total, "currency=", session.currency);
   } catch {
     // If Stripe lookup fails, the webhook is still the source of truth
     // — fall through to the billing page so the user sees something.
@@ -76,8 +90,9 @@ export default async function BillingSuccessPage({
         textAlign: "center",
       }}
     >
-      {conversion && (
+      {conversion && PURCHASE_SEND_TO && (
         <ConversionPixelBridge
+          sendTo={PURCHASE_SEND_TO}
           transactionId={conversion.transactionId}
           value={conversion.value}
           currency={conversion.currency}
@@ -87,7 +102,10 @@ export default async function BillingSuccessPage({
       <p className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
         Taking you back to your speech&hellip;
       </p>
-      <SuccessRedirect to={returnTo} waitForPixel={!!conversion} />
+      <SuccessRedirect
+        to={returnTo}
+        waitForPixel={!!(conversion && PURCHASE_SEND_TO)}
+      />
     </div>
   );
 }

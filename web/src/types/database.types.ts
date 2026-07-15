@@ -1,6 +1,11 @@
 // Generated from the live Supabase schema via the Supabase MCP
 // `generate_typescript_types` tool. To regenerate after a migration: call
 // the MCP tool again and replace this file's body. Do not edit by hand.
+//
+// EXCEPTION (2026-07-14): the `events` table and `profiles.attribution`
+// column were hand-added to match the not-yet-applied migration
+// 20260714000100_events_and_attribution.sql. Regenerate this file once that
+// migration is applied and this note disappears on its own.
 
 export type Json =
   | string
@@ -70,8 +75,36 @@ export type Database = {
         }
         Relationships: []
       }
+      events: {
+        Row: {
+          anon_id: string | null
+          created_at: string
+          id: string
+          name: string
+          props: Json
+          user_id: string | null
+        }
+        Insert: {
+          anon_id?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          props?: Json
+          user_id?: string | null
+        }
+        Update: {
+          anon_id?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          props?: Json
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
+          attribution: Json | null
           created_at: string
           current_period_end: string | null
           display_name: string | null
@@ -86,6 +119,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          attribution?: Json | null
           created_at?: string
           current_period_end?: string | null
           display_name?: string | null
@@ -100,6 +134,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          attribution?: Json | null
           created_at?: string
           current_period_end?: string | null
           display_name?: string | null
