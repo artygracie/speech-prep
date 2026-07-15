@@ -21,6 +21,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { FREE_SESSION_LIMIT } from "@/lib/plan-limits";
 
 export type TopBarSpeech = {
   id: string;
@@ -41,8 +42,6 @@ type Props = {
   speeches: TopBarSpeech[];
   signOut: () => Promise<void>;
 };
-
-const FREE_LIMIT = 3;
 
 // /app/speeches/<uuid>/... — pull the id out so the bar can show the
 // right speech as "current" no matter which child route we're on.
@@ -103,11 +102,11 @@ export function TopBar({
 
   const initial = (displayName || email || "?").trim().charAt(0).toUpperCase();
   const isPaid = plan === "practiced" || plan === "single_speech";
-  // Sessions-left pill — escalates colour as the user gets closer to
-  // the wall so conversion intent rises with the visual weight.
+  // Free-rehearsal pill. The free tier is one full rehearsal, so the
+  // pill has two states: rehearsal still available (neutral) and spent
+  // (danger — the ink pill doubles as the upgrade CTA).
   const sessionsLeft = Math.max(0, freeSessionsRemaining);
-  const pillTone =
-    sessionsLeft === 0 ? "danger" : sessionsLeft <= 1 ? "warn" : "neutral";
+  const pillTone = sessionsLeft === 0 ? "danger" : "neutral";
 
   return (
     <>
@@ -191,12 +190,6 @@ export function TopBar({
         }
         .tb-pill.is-neutral .tb-pill-dot { background: var(--color-deliver-green); }
         .tb-pill.is-neutral:hover { background: rgba(17,17,17,0.08); }
-        .tb-pill.is-warn {
-          background: rgba(251,199,104,0.22);
-          color: #5a4310;
-        }
-        .tb-pill.is-warn .tb-pill-dot { background: var(--color-engagement-gold); }
-        .tb-pill.is-warn:hover { background: rgba(251,199,104,0.32); }
         .tb-pill.is-danger {
           background: var(--color-midnight-ink);
           color: var(--color-canvas-white);
@@ -400,7 +393,7 @@ export function TopBar({
             <Link href="/app/billing" className="tb-pill is-paid" aria-label="Manage your plan">
               <span className="tb-pill-dot" aria-hidden="true" />
               <span className="tb-pill-text">
-                {plan === "practiced" ? "Practiced" : "Single speech pass"}
+                {plan === "practiced" ? "Practiced" : "Event Pass"}
               </span>
             </Link>
           ) : (
@@ -409,17 +402,13 @@ export function TopBar({
               className={`tb-pill is-${pillTone}`}
               aria-label={
                 sessionsLeft === 0
-                  ? "Out of free sessions — upgrade"
-                  : `${sessionsLeft} of ${FREE_LIMIT} free sessions left`
+                  ? "Free rehearsal used — get a pass"
+                  : `${sessionsLeft} of ${FREE_SESSION_LIMIT} free rehearsals left`
               }
             >
               <span className="tb-pill-dot" aria-hidden="true" />
               <span className="tb-pill-text">
-                {sessionsLeft === 0
-                  ? "Go unlimited"
-                  : sessionsLeft === 1
-                  ? "1 session left"
-                  : `${sessionsLeft} sessions left`}
+                {sessionsLeft === 0 ? "Get a pass" : "Free rehearsal left"}
               </span>
             </Link>
           )}

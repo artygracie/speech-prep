@@ -84,7 +84,7 @@ export default function OnboardingPage() {
                 display: "inline-block",
               }}
             />
-            Three sessions free, starting now
+            Your first full rehearsal is free
           </span>
 
           <h1 className="text-display mt-6">
@@ -107,8 +107,8 @@ export default function OnboardingPage() {
             style={{ color: "var(--color-muted-ash)", maxWidth: 560 }}
           >
             Drop in your speech below and we&rsquo;ll have you recording in under a minute.
-            We&rsquo;ll suggest section breaks once we&rsquo;ve read it. The first session
-            is a throwaway — get a feel for it.
+            We&rsquo;ll suggest section breaks once we&rsquo;ve read it. Give it a real
+            run — the full coach report comes back on the house.
           </p>
 
           <Link

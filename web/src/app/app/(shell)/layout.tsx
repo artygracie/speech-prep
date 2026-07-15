@@ -7,6 +7,7 @@
 // time we get here, `user` is guaranteed non-null.
 
 import { createClient } from "@/lib/supabase/server";
+import { FREE_SESSION_LIMIT } from "@/lib/plan-limits";
 import { signOut } from "../actions";
 import { TopBar, type TopBarPlan, type TopBarSpeech } from "../_shell/top-bar";
 
@@ -43,7 +44,7 @@ export default async function ShellLayout({
     profileRes.data?.display_name ?? profileRes.data?.email ?? user?.email ?? "You";
   const email = profileRes.data?.email ?? user?.email ?? "";
   const plan = (entRes.data?.plan ?? "free") as TopBarPlan;
-  const freeSessionsRemaining = entRes.data?.free_sessions_remaining ?? 3;
+  const freeSessionsRemaining = entRes.data?.free_sessions_remaining ?? FREE_SESSION_LIMIT;
   const speeches: TopBarSpeech[] = (speechesRes.data ?? []).map((s) => ({
     id: s.id,
     title: s.title,

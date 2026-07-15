@@ -4,12 +4,13 @@
 > and get back per-section pacing, a what-you-said-vs-what-you-wrote diff,
 > and AI coaching notes — so you fix the speech before you give it.
 
-SpeechPrep is a web app for people who give prepared talks: keynote speakers,
-wedding toasts, conference panelists, sales pitches, sermons, founders rehearsing
-investor decks. The product turns a quiet hour of solo practice into a structured
-feedback loop. You paste your script. You record yourself reading it. You get
-back, to the second, which sections ran long, which lines you skipped, and
-which off-script moments landed better than what you wrote.
+SpeechPrep is a web app for people who give prepared talks: wedding speakers
+(best man, maid of honor, toasts), keynote speakers, conference panelists,
+sales pitches, sermons, founders rehearsing investor decks. The product turns
+a quiet hour of solo practice into a structured feedback loop. You paste your
+script. You record yourself reading it. You get back, to the second, which
+sections ran long, which lines you skipped, and which off-script moments
+landed better than what you wrote.
 
 The tagline is "the room before the room." The opposite of a teleprompter:
 a teleprompter helps you read; SpeechPrep helps you rehearse.
@@ -17,13 +18,16 @@ a teleprompter helps you read; SpeechPrep helps you rehearse.
 ## How it works
 
 1. **Write or paste a script.** Sectioned by paragraph. Optionally tag sections
-   (intro, story, ask, close).
-2. **Record yourself giving it.** Audio (free + paid) or video (paid). MediaRecorder
-   in the browser, no install.
+   (intro, story, ask, close). Upload .txt, .docx, or .pdf — or let the built-in
+   writer help you draft one.
+2. **Record yourself giving it.** Audio, captured by the browser, no install.
+   Live pacing nudges while you speak; tag moments that land (or don't) as you
+   record.
 3. **Get the report.**
-   - Per-section pacing: target seconds vs. actual seconds.
+   - Per-section pacing: target seconds vs. actual seconds, to the second.
    - Said-vs-written diff: what you skipped, what you added, what you reworded.
      Off-script lines that landed are surfaced as candidates for your next draft.
+   - Memory recall maps: which sections you know cold and which you reach for.
    - AI coaching notes: pacing problems, filler words, weak transitions, places
      where you lost the thread.
 4. **Iterate.** Apply the suggested edits or roll your own. Every save is a new
@@ -34,14 +38,15 @@ a teleprompter helps you read; SpeechPrep helps you rehearse.
 
 See /pricing.txt for the structured, machine-readable version.
 
-- **Free**: $0. Three full sessions, speeches up to five minutes, audio only.
-  Section pacing, said-vs-written diff, audio recording included.
-- **Practiced**: $12/month or $96/year (two months free). Unlimited sessions,
-  speeches up to 60 minutes, audio + video, live keypress tagging, iterative
-  script versioning, trends across speeches, PDF export and share links.
-- **Single speech**: $19 one-time, seven-day pass for one speech. Everything in
-  Practiced for that speech and that week. No subscription, no auto-renew. We
-  delete the recording after the week if you want.
+- **Event Pass**: $24 one-time. One speech, unlimited rehearsals and coaching
+  for 30 days. Speeches up to 60 minutes. No subscription, no auto-renew. We
+  delete the recordings after, if you want.
+- **Practiced**: $12/month or $96/year (two months free). Unlimited rehearsals
+  across every speech, speeches up to 60 minutes, script versioning, memory
+  recall maps. For repeat speakers.
+- **Free**: $0. One full rehearsal with the complete coach report — per-section
+  pacing, said-vs-written diff, coaching notes. Speeches up to 5 minutes. No
+  card required.
 
 ## Pages
 

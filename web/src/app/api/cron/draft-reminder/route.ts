@@ -60,10 +60,8 @@ export async function GET(req: Request): Promise<Response> {
     }
   }
 
-  // The drafts tables aren't in the generated Database types (the
-  // feature's schema hasn't shipped to production) — use an untyped
-  // view of the client for these calls rather than scattering
-  // suppressions through the query chain.
+  // The drafts tables aren't in the generated Database types yet, so we
+  // go through an untyped client for these queries.
   const admin = createAdminClient() as unknown as SupabaseClient;
   const { data, error } = await admin
     .from("drafts")

@@ -29,6 +29,7 @@ import { UpgradeCard } from "@/components/upgrade-card";
 import { NextStepCard } from "@/components/next-step-card";
 import { gatherSpeechSignals, recommendNext } from "@/lib/lifecycle";
 import { resolveMode, MODE_LABEL } from "@/lib/modes";
+import { FREE_SESSION_LIMIT } from "@/lib/plan-limits";
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -88,7 +89,7 @@ export default async function SessionReportPage({
         .maybeSingle()
     : { data: null };
   const isFreePlan = (ent?.plan ?? "free") === "free";
-  const freeSessionsRemaining = ent?.free_sessions_remaining ?? 3;
+  const freeSessionsRemaining = ent?.free_sessions_remaining ?? FREE_SESSION_LIMIT;
   const showUpgrade = isFreePlan;
 
   // Sections at the version that was recorded.

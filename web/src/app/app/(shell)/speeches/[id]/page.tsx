@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { UpgradeCard } from "@/components/upgrade-card";
 import { NextStepCard } from "@/components/next-step-card";
 import { gatherSpeechSignals, recommendNext } from "@/lib/lifecycle";
+import { FREE_SESSION_LIMIT } from "@/lib/plan-limits";
 import DraftsPanel from "./drafts-panel";
 import { SessionRowActions } from "./session-row-actions";
 import { ConvergenceChart } from "./convergence-chart";
@@ -137,9 +138,9 @@ export default async function SpeechDetailPage({
     : { data: null };
   const plan = ent?.plan ?? "free";
   const isFreePlan = plan === "free";
-  const freeSessionsRemaining = ent?.free_sessions_remaining ?? 3;
-  // The single-speech pass is locked to one speech. If the user has a
-  // pass but it's for a different speech, treat them as walled here.
+  const freeSessionsRemaining = ent?.free_sessions_remaining ?? FREE_SESSION_LIMIT;
+  // The Event Pass is locked to one speech. If the user has a pass
+  // but it's for a different speech, treat them as walled here.
   const isWrongSpeechPass =
     plan === "single_speech" &&
     ent?.one_shot_speech_id != null &&
@@ -226,8 +227,8 @@ export default async function SpeechDetailPage({
       </div>
 
       {/* Upgrade gate. Surfaces only when the user actually can't
-          record — either out of free sessions, or holding a one-shot
-          pass for a different speech. The Free plan with sessions
+          record — either the free rehearsal is spent, or they hold an
+          Event Pass for a different speech. The Free plan with sessions
           remaining gets a quieter nudge from the top-bar pill instead. */}
       {isWalled && (
         <div className="mt-8">

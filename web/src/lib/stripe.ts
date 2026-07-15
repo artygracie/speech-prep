@@ -30,6 +30,10 @@ export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_unset", {
 export const PRICES = {
   practiced_monthly: process.env.PRACTICED_PRICE_MONTHLY ?? "",
   practiced_yearly: process.env.PRACTICED_PRICE_YEARLY ?? "",
+  // Superseded (2026-07-14): the Event Pass checkout now charges inline
+  // price_data ($24 — see eventPassPriceData in @/lib/plan-limits), so
+  // this env price is no longer used at checkout. Kept so PLAN_FOR_PRICE
+  // still recognises historical $19 purchases in webhook replays.
   single_speech: process.env.SINGLE_SPEECH_PRICE ?? "",
 } as const;
 
