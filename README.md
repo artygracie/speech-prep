@@ -22,7 +22,9 @@ speech-prep/
 │   │   └── _landing/                 # Landing-only client components
 │   ├── src/lib/supabase/             # Server / browser / proxy clients
 │   ├── src/types/database.types.ts   # Generated from the live schema
-│   └── src/proxy.ts                  # Auth-aware request proxy (Next 16)
+│   ├── src/proxy.ts                  # Auth-aware request proxy (Next 16)
+│   └── supabase/migrations/          # Schema source of truth (see below)
+├── docs/                             # Operating docs — analytics, PRDs, research
 ├── assets/                           # Brand assets — wordmark + logo
 ├── index.html                        # Static landing demo (predecessor)
 ├── app.html                          # Static app demo (predecessor)
@@ -61,26 +63,39 @@ pnpm dlx supabase gen types typescript --project-id <id> > src/types/database.ty
 
 ## Schema
 
-Live in Supabase, version-controlled via `supabase` migrations (applied via the MCP for now). Phase-1 tables:
+Live in Supabase; `web/supabase/migrations/` is the source of truth:
 
-- `profiles` — mirrors `auth.users` with `plan` + `sessions_used`
-- `speeches` — top-level row, points at the current `script_versions.v`
-- `script_versions` — every save is a new row
-- `sections` — children of a `script_versions` row, ordered by `position`
-- `current_script` — read-side view that joins `speeches → current version → sections`
+- `20260714000000_baseline.sql` — the full live schema, reconstructed via
+  read-only introspection (the original phase migrations were applied via the
+  MCP and never committed). Tables: `profiles`, `speeches`, `script_versions`,
+  `sections`, `sessions`, `transcripts`, `section_metrics`, `ai_reports`.
+  Views: `current_script`, `entitlements`, `session_summaries`. Plus RLS
+  policies, triggers (incl. `handle_new_user` on `auth.users`), and the
+  private `recordings` storage bucket.
+- `20260714000100_events_and_attribution.sql` — first-party funnel `events`
+  table (server-write only) + `profiles.attribution` (first-touch UTM/gclid).
 
-All tables have RLS policies that scope rows to `auth.uid() = user_id` (via the parent speech for nested tables).
+All user tables have RLS policies scoping rows to `auth.uid() = user_id`
+(via the parent speech for nested tables). Funnel queries and health checks
+live in [`docs/analytics.md`](docs/analytics.md).
 
-## Build phases
+## Status
 
-This repo is being shipped phase by phase per the spec. Where we are:
+All five build phases from the original spec shipped in May 2026:
 
 - ✅ **Phase 1 — Foundation.** Next.js, Supabase, magic-link auth, dashboard + script editor.
-- ⏳ **Phase 2 — Recording.** MediaRecorder + Storage + sessions table.
-- ⏳ **Phase 3 — Transcription + pacing.** Deepgram edge function + Needleman–Wunsch alignment.
-- ⏳ **Phase 4 — Diff + coach.** Anthropic API, prompt caching, iterative script update.
-- ⏳ **Phase 5 — Pay.** Stripe, free-tier gating, billing portal.
+- ✅ **Phase 2 — Recording.** MediaRecorder + Storage + sessions table.
+- ✅ **Phase 3 — Transcription + pacing.** Deepgram edge function + alignment.
+- ✅ **Phase 4 — Diff + coach.** Anthropic API coach reports with suggested edits.
+- ✅ **Phase 5 — Pay.** Stripe ($12/mo Practiced, $19 single-speech pass), free-tier gating, billing portal.
+
+The product is live at [speechprep.ai](https://speechprep.ai). Current work
+is the **relaunch**: fixing the recording→report pipeline, adding funnel
+analytics + attribution (see `docs/analytics.md`), and relighting Google Ads.
+
+- Relaunch strategy: [artyfacts.ai/a/a6c4baa0-…](https://artyfacts.ai/a/a6c4baa0-a4eb-4d58-8af1-aa246edfa894)
+- Implementation plan: [artyfacts.ai/a/43a439f5-…](https://artyfacts.ai/a/43a439f5-bbbf-40e2-8d58-6ce5fca9fa5b)
 
 ## Deploy
 
-Vercel. Connect this repo, set the two env vars, ship. Nothing about the code requires Vercel specifically — any Node host that runs Next.js works.
+Vercel. Connect this repo, set the env vars from `web/.env.example`, ship. Nothing about the code requires Vercel specifically — any Node host that runs Next.js works.
