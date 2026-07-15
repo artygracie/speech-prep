@@ -33,28 +33,15 @@ async function extractDocx(buf: Buffer): Promise<string> {
 }
 
 async function extractPdf(buf: Buffer): Promise<string> {
-  // pdfjs-dist legacy build is the one designed to run in Node without a
-  // DOM. The non-legacy build assumes a browser and breaks in server
-  // contexts.
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const data = new Uint8Array(buf);
-  const doc = await pdfjs.getDocument({ data }).promise;
-  const parts: string[] = [];
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    const pageText = content.items
-      .map((item: unknown) => {
-        if (typeof item === "object" && item !== null && "str" in item) {
-          return String((item as { str: string }).str);
-        }
-        return "";
-      })
-      .join(" ");
-    parts.push(pageText);
-  }
-  await doc.destroy();
-  return parts.join("\n\n");
+  // unpdf ships a serverless-safe build of pdf.js. Plain pdfjs-dist needs
+  // browser canvas APIs (DOMMatrix et al.) even to load — locally the
+  // optional @napi-rs/canvas binary papers over that, but it never ships
+  // to the Linux runtime, which 422'd every PDF upload in production.
+  const { extractText, getDocumentProxy } = await import("unpdf");
+  const doc = await getDocumentProxy(new Uint8Array(buf));
+  const { text } = await extractText(doc, { mergePages: false });
+  const parts = Array.isArray(text) ? text : [text];
+  return parts.filter(Boolean).join("\n\n");
 }
 
 export async function POST(req: Request): Promise<Response> {
