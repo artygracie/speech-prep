@@ -356,7 +356,7 @@ export function TopBar({
                     </>
                   )}
                   <Link
-                    href="/app/speeches/new"
+                    href="/app/speeches/start"
                     className="tb-pop-row"
                     onClick={() => setTitleOpen(false)}
                   >

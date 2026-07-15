@@ -51,7 +51,7 @@ export default async function SpeechesDashboard() {
             duplicate it in the topbar — users typically focus on one
             speech at a time. The first-time empty state lives at
             /app/onboarding, which the redirect above sends new users to. */}
-        <Link href="/app/speeches/new" className="btn-primary">
+        <Link href="/app/speeches/start" className="btn-primary">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />

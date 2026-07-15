@@ -4,8 +4,9 @@
 
 import { notFound } from "next/navigation";
 import { NewSpeechForm } from "@/app/app/(shell)/speeches/new/new-speech-form";
-import { OnboardingForm } from "@/app/app/onboarding/onboarding-form";
+import { OnboardingStart } from "@/app/app/onboarding/onboarding-start";
 import { ScriptIntake } from "@/components/script-intake";
+import { StartFork } from "@/components/start-fork";
 
 export default function IntakePreviewPage() {
   if (process.env.NODE_ENV === "production") notFound();
@@ -25,18 +26,31 @@ export default function IntakePreviewPage() {
     <main style={{ maxWidth: 760, margin: "0 auto", padding: "48px 24px", display: "grid", gap: 64 }}>
       <section>
         <h1 className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-          DEV · new-speech form
+          DEV · fork (/app/speeches/start)
         </h1>
-        <div className="mt-4">
+        <h2 className="text-heading-lg mt-4">Where&rsquo;s your speech at right now?</h2>
+        <div className="mt-6">
+          <StartFork writeHref="/app/write" uploadHref="/app/speeches/new" />
+        </div>
+      </section>
+      <section>
+        <h1 className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+          DEV · upload page (new-speech form, upload-first)
+        </h1>
+        <h2 className="text-heading-lg mt-4">Drop it in.</h2>
+        <p className="text-body mt-2" style={{ color: "var(--color-muted-ash)" }}>
+          Upload a PDF, word doc, or .txt
+        </p>
+        <div className="mt-5">
           <NewSpeechForm action={noop} />
         </div>
       </section>
       <section>
         <h1 className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-          DEV · onboarding form
+          DEV · onboarding fork + upload step
         </h1>
         <div className="mt-4">
-          <OnboardingForm action={noop} />
+          <OnboardingStart action={noop} />
         </div>
       </section>
       <section>

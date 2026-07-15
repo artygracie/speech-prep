@@ -29,7 +29,10 @@ const ACCEPT =
 const SUPPORTED_EXTS = [".txt", ".docx", ".pdf"];
 const PREVIEW_WORDS = 46;
 
-type Mode = "paste" | "file";
+// "upload" is the hero-dropzone empty state (the default — the fork page
+// routed writing-intent away, so this surface expects a document).
+// "paste" is the textarea fallback. "file" is the document card.
+type Mode = "upload" | "paste" | "file";
 
 export function ScriptIntake({
   rows = 8,
@@ -45,7 +48,7 @@ export function ScriptIntake({
    *  loadFile(). */
   initialFile?: { name: string; body: string; pages?: number };
 }) {
-  const [mode, setMode] = useState<Mode>(initialFile ? "file" : "paste");
+  const [mode, setMode] = useState<Mode>(initialFile ? "file" : "upload");
   const [body, setBody] = useState(initialFile?.body ?? "");
   // True once any of the body arrived via a file, even after "Edit as
   // text" — analytics wants how the words got here, not the current UI.
@@ -109,7 +112,7 @@ export function ScriptIntake({
   }
 
   function removeFile() {
-    setMode("paste");
+    setMode("upload");
     setBody("");
     setUsedFile(false);
     setFileName("");
@@ -142,15 +145,11 @@ export function ScriptIntake({
   return (
     <div>
       {/* Fields that ride along with the parent form. body must always be
-          present; in file mode it lives in a hidden textarea. */}
+          present; outside paste mode it lives in a hidden textarea. */}
       <input type="hidden" name="source" value={usedFile ? "upload" : "paste"} />
-      {mode === "file" && (
-        <>
-          <textarea name="body" value={body} readOnly hidden />
-          {occasion && !occasionDismissed && (
-            <input type="hidden" name="occasion" value={occasion} />
-          )}
-        </>
+      {mode !== "paste" && <textarea name="body" value={body} readOnly hidden />}
+      {mode === "file" && occasion && !occasionDismissed && (
+        <input type="hidden" name="occasion" value={occasion} />
       )}
 
       <div
@@ -191,7 +190,93 @@ export function ScriptIntake({
         )}
       </div>
 
-      {mode === "paste" ? (
+      {mode === "upload" ? (
+        <>
+          <div
+            onDragOver={(e) => {
+              if (extracting) return;
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              if (extracting) return;
+              e.preventDefault();
+              setDragOver(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f) void loadFile(f);
+            }}
+            onClick={() => !extracting && fileRef.current?.click()}
+            role="button"
+            tabIndex={extracting ? -1 : 0}
+            onKeyDown={(e) => {
+              if (!extracting && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                fileRef.current?.click();
+              }
+            }}
+            className="mt-2"
+            style={{
+              border: `1.5px dashed ${
+                dragOver ? "var(--color-midnight-ink)" : "rgba(17,17,17,0.18)"
+              }`,
+              background: dragOver ? "rgba(17,17,17,0.03)" : "var(--color-canvas-white)",
+              borderRadius: 14,
+              padding: "56px 24px",
+              textAlign: "center",
+              cursor: extracting ? "default" : "pointer",
+              transition: "border-color 120ms ease, background 120ms ease",
+            }}
+          >
+            {extracting ? (
+              <div className="text-body" style={{ color: "var(--color-muted-ash)" }}>
+                Reading your file…
+              </div>
+            ) : (
+              <>
+                <div
+                  className="text-body"
+                  style={{ color: "var(--color-midnight-ink)", fontWeight: 500, fontSize: 18 }}
+                >
+                  Drag your speech here
+                </div>
+                <div className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
+                  or{" "}
+                  <span
+                    style={{
+                      textDecoration: "underline",
+                      textUnderlineOffset: 3,
+                      textDecorationColor: "rgba(17,17,17,0.3)",
+                    }}
+                  >
+                    click to browse
+                  </span>{" "}
+                  · PDF, Word, .txt
+                </div>
+              </>
+            )}
+          </div>
+          <p className="text-caption mt-3" style={{ color: "var(--color-muted-ash)" }}>
+            No file?{" "}
+            <button
+              type="button"
+              onClick={() => setMode("paste")}
+              style={{
+                background: "transparent",
+                border: 0,
+                padding: 0,
+                cursor: "pointer",
+                font: "inherit",
+                color: "inherit",
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
+              }}
+            >
+              Paste the text instead
+            </button>
+          </p>
+        </>
+      ) : mode === "paste" ? (
         <div
           onDragOver={(e) => {
             if (extracting) return;
@@ -415,7 +500,7 @@ export function ScriptIntake({
           </button>{" "}
           — otherwise you&rsquo;ll fine-tune it in the editor.
         </p>
-      ) : helperText ? (
+      ) : mode === "paste" && helperText ? (
         <p className="text-caption mt-2" style={{ color: "var(--color-muted-ash)" }}>
           {helperText}
         </p>

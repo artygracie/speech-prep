@@ -11,7 +11,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { createFirstSpeech } from "../actions";
-import { OnboardingForm } from "./onboarding-form";
+import { OnboardingStart } from "./onboarding-start";
 
 export const metadata = { title: "Welcome — SpeechPrep" };
 
@@ -106,37 +106,11 @@ export default function OnboardingPage() {
             className="text-body mt-5"
             style={{ color: "var(--color-muted-ash)", maxWidth: 560 }}
           >
-            Drop in your speech below and we&rsquo;ll have you recording in under a minute.
-            We&rsquo;ll suggest section breaks once we&rsquo;ve read it. Give it a real
-            run — the full coach report comes back on the house.
+            Give it a real run — the full coach report comes back on the house.
           </p>
 
-          <Link
-            href="/app/write"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              marginTop: 20,
-              padding: "10px 16px",
-              borderRadius: 8,
-              border: "1px solid rgba(17,17,17,0.1)",
-              background: "var(--color-whisper-gray)",
-              color: "var(--color-midnight-ink)",
-              textDecoration: "none",
-              fontSize: 14,
-              fontWeight: 500,
-              transition: "background 120ms ease, border-color 120ms ease",
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-            </svg>
-            Don&rsquo;t have a speech yet? Let us help you write one
-          </Link>
-
           <div className="mt-10">
-            <OnboardingForm action={createFirstSpeech} />
+            <OnboardingStart action={createFirstSpeech} />
           </div>
         </div>
       </div>
