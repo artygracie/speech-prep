@@ -184,6 +184,7 @@ export async function createFirstSpeech(formData: FormData) {
   if (!user) redirect("/login");
 
   const title = String(formData.get("title") ?? "").trim();
+  const occasion = String(formData.get("occasion") ?? "").trim() || null;
   const eventDate = sanitizeEventDate(formData.get("event_date"));
   const body = String(formData.get("body") ?? "").trim();
 
@@ -191,7 +192,7 @@ export async function createFirstSpeech(formData: FormData) {
 
   const { data: speech, error: speechErr } = await supabase
     .from("speeches")
-    .insert({ user_id: user.id, title, event_date: eventDate, current_version: 1 })
+    .insert({ user_id: user.id, title, occasion, event_date: eventDate, current_version: 1 })
     .select("id")
     .single();
   if (speechErr || !speech) throw speechErr ?? new Error("Failed to create speech");
@@ -219,7 +220,7 @@ export async function createFirstSpeech(formData: FormData) {
 
   await track(
     "speech_created",
-    { source: speechSourceFrom(formData), occasion: null, speech_id: speech.id },
+    { source: speechSourceFrom(formData), occasion, speech_id: speech.id },
     { userId: user.id },
   );
 

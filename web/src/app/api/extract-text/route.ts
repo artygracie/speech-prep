@@ -32,16 +32,16 @@ async function extractDocx(buf: Buffer): Promise<string> {
   return result.value ?? "";
 }
 
-async function extractPdf(buf: Buffer): Promise<string> {
+async function extractPdf(buf: Buffer): Promise<{ text: string; pages: number }> {
   // unpdf ships a serverless-safe build of pdf.js. Plain pdfjs-dist needs
   // browser canvas APIs (DOMMatrix et al.) even to load — locally the
   // optional @napi-rs/canvas binary papers over that, but it never ships
   // to the Linux runtime, which 422'd every PDF upload in production.
   const { extractText, getDocumentProxy } = await import("unpdf");
   const doc = await getDocumentProxy(new Uint8Array(buf));
-  const { text } = await extractText(doc, { mergePages: false });
+  const { text, totalPages } = await extractText(doc, { mergePages: false });
   const parts = Array.isArray(text) ? text : [text];
-  return parts.filter(Boolean).join("\n\n");
+  return { text: parts.filter(Boolean).join("\n\n"), pages: totalPages };
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -81,10 +81,15 @@ export async function POST(req: Request): Promise<Response> {
   const buf = Buffer.from(await file.arrayBuffer());
 
   let text = "";
+  let pages: number | undefined;
   try {
     if (ext === "txt") text = buf.toString("utf-8");
     else if (ext === "docx") text = await extractDocx(buf);
-    else if (ext === "pdf") text = await extractPdf(buf);
+    else if (ext === "pdf") {
+      const result = await extractPdf(buf);
+      text = result.text;
+      pages = result.pages;
+    }
   } catch (err) {
     // A parse failure here is a product bug until proven otherwise (a user
     // just lost the upload path) — report it, don't only console it.
@@ -120,5 +125,5 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  return Response.json({ text });
+  return Response.json({ text, ...(pages ? { pages } : {}) });
 }
