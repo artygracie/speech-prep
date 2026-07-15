@@ -2,10 +2,11 @@
 // `generate_typescript_types` tool. To regenerate after a migration: call
 // the MCP tool again and replace this file's body. Do not edit by hand.
 //
-// EXCEPTION (2026-07-14): the `events` table and `profiles.attribution`
-// column were hand-added to match the not-yet-applied migration
-// 20260714000100_events_and_attribution.sql. Regenerate this file once that
-// migration is applied and this note disappears on its own.
+// PENDING REGEN (2026-07-14): three hand-additions ahead of the
+// not-yet-applied migrations — `events` table + `profiles.attribution`
+// (20260714000100), `sessions.debited_at` (20260714100000), and
+// `speeches.event_date` (20260714120000). Regenerate this file once the
+// migrations are applied at integration and this note disappears.
 
 export type Json =
   | string
@@ -313,6 +314,7 @@ export type Database = {
         Row: {
           created_at: string
           current_version: number
+          event_date: string | null
           id: string
           occasion: string | null
           title: string
@@ -322,6 +324,7 @@ export type Database = {
         Insert: {
           created_at?: string
           current_version?: number
+          event_date?: string | null
           id?: string
           occasion?: string | null
           title: string
@@ -331,6 +334,7 @@ export type Database = {
         Update: {
           created_at?: string
           current_version?: number
+          event_date?: string | null
           id?: string
           occasion?: string | null
           title?: string

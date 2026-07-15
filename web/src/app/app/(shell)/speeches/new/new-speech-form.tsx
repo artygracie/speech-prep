@@ -9,6 +9,7 @@
 
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
+import { EventDateField } from "@/components/event-date-field";
 
 const ACCEPT = ".txt,.docx,.pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf";
 const SUPPORTED_EXTS = [".txt", ".docx", ".pdf"];
@@ -329,6 +330,10 @@ export function NewSpeechForm({
           }}
         />
       </div>
+
+      {/* Optional event date. Skipping is free — the field starts empty
+          and submits fine that way. */}
+      <EventDateField />
 
       <div className="flex gap-3 items-center">
         <button
