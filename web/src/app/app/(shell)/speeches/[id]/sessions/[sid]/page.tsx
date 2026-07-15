@@ -304,7 +304,10 @@ export default async function SessionReportPage({
   }
 
   return (
-    <div>
+    // Bottom padding clears the manuscript's fixed action bar (.ms-bar,
+    // ~64px + safe area) so the last card on the page can scroll fully
+    // above it.
+    <div style={{ paddingBottom: 128 }}>
       {/* Polls the page until everything's landed. Renders nothing. */}
       <AutoRefresh
         sessionId={sessionId}

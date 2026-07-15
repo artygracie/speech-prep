@@ -768,7 +768,10 @@ export function ManuscriptScript({
           display: grid;
           grid-template-columns: minmax(0, 1fr);
           gap: 32px;
-          padding-bottom: 96px; /* room for sticky bar */
+          /* Clearance for the fixed .ms-bar lives on the PAGE root
+             (sessions/[sid]/page.tsx) so the cards rendered after this
+             component clear the bar too — padding here would only
+             protect the manuscript and open a dead gap above them. */
         }
         @media (min-width: 1100px) {
           .ms-grid.has-rail {
