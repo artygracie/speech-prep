@@ -33,6 +33,12 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  // pdfjs-dist's legacy ESM build breaks when the bundler inlines it
+  // (its internal worker/module resolution can't be statically traced),
+  // which made /api/extract-text 422 on every PDF in production while
+  // working fine in plain Node. Externalizing it makes the server
+  // resolve it from node_modules at runtime instead.
+  serverExternalPackages: ["pdfjs-dist"],
   async headers() {
     return [
       {

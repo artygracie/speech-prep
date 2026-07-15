@@ -8,6 +8,7 @@
 // Auth: requires a logged-in user. We don't persist the upload anywhere;
 // the file lives in memory for the duration of the request.
 
+import * as Sentry from "@sentry/nextjs";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -98,7 +99,13 @@ export async function POST(req: Request): Promise<Response> {
     else if (ext === "docx") text = await extractDocx(buf);
     else if (ext === "pdf") text = await extractPdf(buf);
   } catch (err) {
+    // A parse failure here is a product bug until proven otherwise (a user
+    // just lost the upload path) — report it, don't only console it.
     console.error("[extract-text] parse failed", err);
+    Sentry.captureException(err, {
+      tags: { route: "extract-text", ext },
+      extra: { fileName: file.name, fileSize: file.size, fileType: file.type },
+    });
     return Response.json(
       { error: "Couldn't read that file. Try pasting the text instead." },
       { status: 422 },
