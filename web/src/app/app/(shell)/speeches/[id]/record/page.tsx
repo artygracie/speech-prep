@@ -179,6 +179,7 @@ export default async function RecordPage({
           <Recorder
             speechId={speech.id}
             sections={sections}
+            plan={plan}
             initialMode={initialMode}
             initialSectionId={initialSectionId}
           />

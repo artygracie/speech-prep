@@ -22,7 +22,7 @@ import { useEffect, useRef, useState } from "react";
 type Tag = { kind: "landed" | "flat" | "lost" | "callback"; atMs: number };
 
 export type BottomBarNudge = {
-  kind: "over-target" | "fast" | "slow" | "skipped";
+  kind: "over-target" | "fast" | "slow" | "skipped" | "time-limit";
   message: string;
 } | null;
 
@@ -33,7 +33,10 @@ export type BottomBarState =
   | "paused"
   | "stopping"
   | "uploading"
-  | "error";
+  | "error"
+  // The take ended with no detectable voice — nothing was uploaded and
+  // no session credit was spent. Recovery state with a retry.
+  | "silent";
 
 type Props = {
   state: BottomBarState;
@@ -48,6 +51,12 @@ type Props = {
 
   nudge: BottomBarNudge;
   recentTags: Tag[];
+
+  // Mic health, from the recorder's AnalyserNode monitor. micWarning
+  // shows the "we can't hear you" interrupt while recording; micLevel
+  // (RMS, ~0..0.3 for speech) drives its live level meter.
+  micWarning: boolean;
+  micLevel: number;
 
   onStart: () => void;
   onPause: () => void;
@@ -71,6 +80,8 @@ export function BottomBar({
   currentSectionTargetMs,
   nudge,
   recentTags,
+  micWarning,
+  micLevel,
   onStart,
   onPause,
   onResume,
@@ -321,6 +332,40 @@ export function BottomBar({
         100% { opacity: 0; transform: scale(0.95); }
       }
 
+      /* ===== Mic-health interrupt =====
+         Non-blocking strip above the live rows: red-tinted like a hard
+         nudge, with a small live level meter so the user can see the
+         mic react (or not) while they fix it. */
+      .bb-mic-warn {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: rgba(225, 101, 64, 0.10);
+        color: #88321a;
+        font-size: 13px; font-weight: 500;
+        animation: bb-nudge-in 280ms ease forwards;
+      }
+      .bb-mic-warn::before {
+        content: ""; width: 7px; height: 7px; border-radius: 999px;
+        flex: 0 0 auto;
+        background: var(--color-leadgen-red);
+        box-shadow: 0 0 0 0 rgba(225, 101, 64, 0.55);
+        animation: bb-pulse 1.4s ease-out infinite;
+      }
+      .bb-mic-warn-msg { flex: 1 1 auto; min-width: 0; }
+      .bb-mic-meter {
+        flex: 0 0 auto;
+        width: 72px; height: 4px; border-radius: 999px;
+        background: rgba(136, 50, 26, 0.16);
+        position: relative; overflow: hidden;
+      }
+      .bb-mic-meter > span {
+        position: absolute; inset: 0 auto 0 0;
+        border-radius: 999px;
+        background: var(--color-leadgen-red);
+        transition: width 180ms ease-out;
+      }
+
       /* Mobile: shrink the timer; collapse controls to icon-only feel */
       @media (max-width: 720px) {
         .bb-time { font-size: 28px; }
@@ -361,6 +406,11 @@ export function BottomBar({
       label = "Error";
       hint = errorMsg ?? "Something went wrong.";
       isErrorHint = true;
+    } else if (state === "silent") {
+      dotKind = "paused";
+      label = "No audio";
+      hint =
+        "Nothing was recorded — this didn't use a session. Check your microphone, then try again.";
     }
 
     return (
@@ -399,7 +449,7 @@ export function BottomBar({
                   Uploading…
                 </button>
               )}
-              {state === "error" && (
+              {(state === "error" || state === "silent") && (
                 <button onClick={onRetry} className="bb-btn bb-btn-primary">
                   Try again
                 </button>
@@ -421,6 +471,23 @@ export function BottomBar({
       {styles}
       <div className="bb-shell" role="status" aria-live="polite">
         <div className="bb-live">
+          {/* Mic-health interrupt — shows when the take has run ~10s
+              with no voiced audio. Non-blocking: recording continues,
+              the strip just tells the user their mic isn't reaching
+              us, with a live level meter so they can watch it react. */}
+          {micWarning && (
+            <div className="bb-mic-warn" role="alert">
+              <span className="bb-mic-warn-msg">
+                We can&rsquo;t hear you — check your microphone
+              </span>
+              <span className="bb-mic-meter" aria-hidden="true">
+                <span
+                  style={{ width: `${Math.min(100, (micLevel / 0.15) * 100)}%` }}
+                />
+              </span>
+            </div>
+          )}
+
           {/* Row 1: timer | transcript | controls */}
           <div className="bb-live-row1">
             <div className="bb-timer-cluster">
@@ -491,7 +558,11 @@ export function BottomBar({
                 ) : nudge ? (
                   <span
                     className={`bb-nudge ${
-                      nudge.kind === "over-target" || nudge.kind === "skipped" ? "" : "is-soft"
+                      nudge.kind === "over-target" ||
+                      nudge.kind === "skipped" ||
+                      nudge.kind === "time-limit"
+                        ? ""
+                        : "is-soft"
                     }`}
                   >
                     {nudge.message}
