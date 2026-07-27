@@ -279,9 +279,12 @@ later, **but both must be configured before relighting ads**.
    was replaced by the env var. If you want to keep that existing conversion
    action, paste its label into `NEXT_PUBLIC_GADS_CONVERSION_PURCHASE`
    instead of creating a new one.
-8. Local Google Ads MCP: authenticate first with
-   `gcloud auth application-default login`, otherwise the MCP's
-   customer/metadata/search tools fail with a credentials error.
+8. Local Google Ads MCP: if the MCP's customer/metadata/search tools fail
+   with a credentials error, run `bash ~/Projects/Artygroup-OS/scripts/ads-reauth.sh`
+   (founder-run; browser login via the Artygroup OAuth client). Never use plain
+   `gcloud auth application-default login` — Google blocks gcloud's shared
+   OAuth client for the adwords scope, and the failed attempt clobbers the
+   working credential file.
 
 ---
 
@@ -316,3 +319,76 @@ where anon_id = 'manual-check';
 
 Also confirm client access is locked out: with the anon key,
 `select * from events` must return zero rows and inserts must fail.
+
+---
+
+## 7. Session replay (Statsig)
+
+`public.events` tells us *where* the funnel leaks; replay tells us *why*.
+Statsig records the DOM (via rrweb) and plays sessions back in the console.
+
+### Wiring
+
+| Piece | File |
+| --- | --- |
+| Client singleton, replay + autocapture config | `web/src/lib/statsig.ts` |
+| Boot (runs before hydration) | `web/src/instrumentation-client.ts` |
+| Attach the Supabase user id | `web/src/components/statsig-identify.tsx`, mounted in `web/src/app/app/layout.tsx` |
+
+Anonymous visitors are recorded under Statsig's own stableID, so the whole
+landing → signup path is captured. Once a session reaches `/app`, the
+recording is re-keyed to `auth.users.id`, which is the same id used by
+`events.user_id` — so a funnel query and a replay search join by hand.
+
+### Turning it on
+
+1. Statsig console → **Project Settings → Keys & Environments** → copy the
+   **client** key (`client-…`; the server secret key must never ship to the
+   browser).
+2. Set `NEXT_PUBLIC_STATSIG_CLIENT_KEY` in Vercel. Production-only keeps
+   preview and local traffic out of the replay feed.
+3. Statsig console → **Project Settings → Analytics & Session Replay** →
+   set the sampling rate. Start at 100%: at current volume every session is
+   worth watching, and sampling can come back when it isn't.
+4. Redeploy. Confirm with a network request to `events.statsigapi.net` and a
+   session appearing in the console within a minute or two.
+
+With the key unset every export in `lib/statsig.ts` is a no-op, so an
+unconfigured environment costs nothing and cannot leak.
+
+### Privacy
+
+The SDK is initialised with `maskAllInputs: true` — everything a user types
+(the pasted speech, the occasion, their name, the email field) is replaced
+with asterisks in the replay.
+
+**Rendered** content is *not* masked, which means a replay of the report or
+manuscript view shows the user's speech text on screen. That is deliberate —
+watching someone read their own report is most of the value here — but it is
+a judgement call, not a technical constraint. Two escape hatches are already
+wired into the recorder config:
+
+- `class="sp-replay-mask"` — text inside the element renders as asterisks.
+- `class="sp-replay-block"` — the element is cut from the replay and
+  replaced with a black box of the same size.
+
+Add either class to `web/src/components/debrief/*` or the full-script view to
+redact speech content. Note that selector rules configured in the Statsig
+console **override** these SDK options, so keep the two in sync.
+
+### One recorder, on purpose
+
+Statsig is the only session recorder. Sentry Replay was removed when Statsig
+went live (2026-07-27) — `replayIntegration()`, `replaysSessionSampleRate`,
+and `replaysOnErrorSampleRate` are all gone from `instrumentation-client.ts`.
+Sentry still does errors and tracing; it just no longer records the DOM.
+
+Two recorders instrumenting every page bought nothing but overhead, and
+replays split across two tools means neither gets checked. If you ever want
+Sentry's error-triggered replay back, re-adding `replayIntegration()` is the
+only change needed — but then turn Statsig's recorder off, not both on.
+
+Note that the `excludeReplay*` tree-shaking flags under `webpack.treeshake`
+in `next.config.ts` are documented no-ops unless `replayIntegration()` is
+registered, so there is nothing to set there. Dropping the integration is
+itself what keeps Sentry's replay code out of the client bundle.

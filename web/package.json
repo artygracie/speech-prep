@@ -12,6 +12,9 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.93.0",
     "@sentry/nextjs": "^10",
+    "@statsig/js-client": "^3.33.3",
+    "@statsig/session-replay": "^3.33.3",
+    "@statsig/web-analytics": "^3.33.3",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
     "@vercel/analytics": "^2.0.1",
