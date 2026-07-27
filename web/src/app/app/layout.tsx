@@ -8,6 +8,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { StatsigIdentify } from "@/components/statsig-identify";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -24,5 +25,10 @@ export default async function AppLayout({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  return <>{children}</>;
+  return (
+    <>
+      <StatsigIdentify userId={user.id} />
+      {children}
+    </>
+  );
 }
