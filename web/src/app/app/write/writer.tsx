@@ -16,7 +16,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { createSpeechFromWriter } from "@/app/app/actions";
 import { EventDateField } from "@/components/event-date-field";
 
@@ -62,6 +62,29 @@ function fmtDuration(words: number) {
   return `~${minutes.toFixed(1).replace(".0", "")} min`;
 }
 
+// Returns the range [start, end) in newText that differs from oldText.
+// Used to highlight what the AI changed after a chat refinement.
+function findChangedRange(
+  oldText: string,
+  newText: string,
+): { start: number; end: number } | null {
+  if (oldText === newText) return null;
+  let start = 0;
+  while (
+    start < oldText.length &&
+    start < newText.length &&
+    oldText[start] === newText[start]
+  ) start++;
+  let endOld = oldText.length;
+  let endNew = newText.length;
+  while (
+    endOld > start &&
+    endNew > start &&
+    oldText[endOld - 1] === newText[endNew - 1]
+  ) { endOld--; endNew--; }
+  return { start, end: endNew };
+}
+
 async function readStream(
   response: Response,
   onChunk: (chunk: string) => void,
@@ -103,8 +126,11 @@ export function SpeechWriter() {
     start: number;
     end: number;
   } | null>(null);
+  const [selectionPos, setSelectionPos] = useState<{ x: number; y: number } | null>(null);
   const [selectionNote, setSelectionNote] = useState("");
   const [refiningSelection, setRefiningSelection] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const popoverInputRef = useRef<HTMLInputElement>(null);
 
   // Chat panel state
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -166,18 +192,52 @@ export function SpeechWriter() {
 
   // ── Selection detection ───────────────────────────────────────────────────
 
-  const detectSelection = useCallback(() => {
+  function clearSelection() {
+    setSelection(null);
+    setSelectionPos(null);
+    setSelectionNote("");
+  }
+
+  function handleTextareaMouseUp(e: React.MouseEvent<HTMLTextAreaElement>) {
     const el = textareaRef.current;
     if (!el) return;
     const start = el.selectionStart;
     const end = el.selectionEnd;
     if (start !== end && end - start > 3) {
       setSelection({ text: el.value.slice(start, end), start, end });
+      setSelectionPos({ x: e.clientX, y: e.clientY });
+      // Focus the popover input on next frame so user can type immediately
+      requestAnimationFrame(() => popoverInputRef.current?.focus());
     } else {
-      setSelection(null);
-      setSelectionNote("");
+      clearSelection();
     }
-  }, []);
+  }
+
+  // Close popover on outside click
+  useEffect(() => {
+    function onMouseDown(e: MouseEvent) {
+      if (!selection) return;
+      const target = e.target as Node;
+      if (
+        popoverRef.current?.contains(target) ||
+        textareaRef.current?.contains(target)
+      ) return;
+      clearSelection();
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection]);
+
+  // Close on Escape
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && selection) clearSelection();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection]);
 
   // ── Selection refinement ──────────────────────────────────────────────────
 
@@ -211,8 +271,7 @@ export function SpeechWriter() {
         setSpeechText(before + replacement + after);
       }
 
-      setSelection(null);
-      setSelectionNote("");
+      clearSelection();
     } catch (err) {
       console.error("[writer] selection refine failed", err);
     } finally {
@@ -232,35 +291,64 @@ export function SpeechWriter() {
     const userMsg: ChatMessage = { role: "user", text: msg };
     setChatHistory((prev) => [...prev, userMsg]);
 
+    const prevText = speechText;
+
     try {
-      const res = await fetch("/api/refine-speech", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch(“/api/refine-speech”, {
+        method: “POST”,
+        headers: { “Content-Type”: “application/json” },
         body: JSON.stringify({
-          mode: "chat",
+          mode: “chat”,
           currentText: speechText,
           instruction: msg,
         }),
       });
 
-      if (!res.ok) throw new Error("Chat refinement failed");
+      if (!res.ok) throw new Error(“Chat refinement failed”);
 
-      // Stream the updated speech into the doc
-      let updated = "";
-      await readStream(res, (chunk) => {
-        updated += chunk;
+      // Buffer the full response — don’t trickle it into the textarea
+      // so the user doesn’t see a confusing full-doc rewrite when only
+      // one paragraph changed.
+      let updated = “”;
+      await readStream(res, (chunk) => { updated += chunk; });
+      updated = updated.trim();
+
+      if (updated && updated !== prevText) {
         setSpeechText(updated);
-      });
 
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "assistant", text: "Done — I've updated the speech above. Keep going or click “Start practicing” when you’re happy." },
-      ]);
+        // Find what changed and select it so the user can see exactly
+        // which part was touched.
+        const range = findChangedRange(prevText, updated);
+        if (range && range.end > range.start) {
+          requestAnimationFrame(() => {
+            const el = textareaRef.current;
+            if (!el) return;
+            el.focus();
+            el.setSelectionRange(range.start, range.end);
+            // Scroll to put the changed region near the top of the viewport
+            const linesBefore = updated.slice(0, range.start).split(“\n”).length;
+            el.scrollTop = Math.max(0, (linesBefore - 3) * 33);
+          });
+        }
+      }
+
+      const rangeSize = updated && prevText ? findChangedRange(prevText, updated) : null;
+      const changedWords = rangeSize
+        ? updated.slice(rangeSize.start, rangeSize.end).trim().split(/\s+/).filter(Boolean).length
+        : 0;
+      const feedback =
+        changedWords === 0
+          ? “Nothing changed — try being more specific.”
+          : changedWords < 60
+          ? “Updated — the changed part is highlighted above.”
+          : “Updated the speech — changes are highlighted above.”;
+
+      setChatHistory((prev) => [...prev, { role: “assistant”, text: feedback }]);
     } catch (err) {
-      console.error("[writer] chat refine failed", err);
+      console.error(“[writer] chat refine failed”, err);
       setChatHistory((prev) => [
         ...prev,
-        { role: "assistant", text: "Something went wrong. Try again." },
+        { role: “assistant”, text: “Something went wrong. Try again.” },
       ]);
     } finally {
       setChatPending(false);
@@ -463,15 +551,14 @@ export function SpeechWriter() {
       <div className="writer-body">
         {/* Speech doc */}
         <div className="writer-doc-col">
+          <h1 className="writer-doc-title">{title || "Untitled speech"}</h1>
           <div className="writer-doc-wrap">
             <textarea
               ref={textareaRef}
               className="writer-doc"
               value={speechText}
-              onChange={(e) => setSpeechText(e.target.value)}
-              onMouseUp={detectSelection}
-              onKeyUp={detectSelection}
-              onSelect={detectSelection}
+              onChange={(e) => { setSpeechText(e.target.value); clearSelection(); }}
+              onMouseUp={handleTextareaMouseUp}
               placeholder={streaming ? "" : "Your speech will appear here…"}
               spellCheck
               readOnly={streaming}
@@ -490,45 +577,6 @@ export function SpeechWriter() {
         {/* AI panel */}
         <aside className="writer-panel">
           <div className="writer-panel-inner">
-            {/* Selection refine card */}
-            {selection && (
-              <div className="writer-selection-card">
-                <p className="text-caption" style={{ color: "var(--color-muted-ash)", marginBottom: 8 }}>
-                  <span style={{ color: "var(--color-phoenix-orange)", fontWeight: 500 }}>✦ Selected:</span>{" "}
-                  <span style={{ fontStyle: "italic" }}>
-                    &ldquo;{selection.text.length > 80 ? selection.text.slice(0, 80) + "…" : selection.text}&rdquo;
-                  </span>
-                </p>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    autoFocus
-                    placeholder="What should change about this part?"
-                    value={selectionNote}
-                    onChange={(e) => setSelectionNote(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSelectionRefine(); } }}
-                    className="input"
-                    style={{ flex: 1, fontSize: 13 }}
-                    disabled={refiningSelection}
-                  />
-                  <button
-                    onClick={handleSelectionRefine}
-                    disabled={!selectionNote.trim() || refiningSelection}
-                    className="btn-primary"
-                    style={{ fontSize: 13, flexShrink: 0 }}
-                  >
-                    {refiningSelection ? "Rewriting…" : "Rewrite"}
-                  </button>
-                </div>
-                <button
-                  onClick={() => { setSelection(null); setSelectionNote(""); }}
-                  className="text-caption"
-                  style={{ color: "var(--color-muted-ash)", marginTop: 6, background: "none", border: 0, padding: 0, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
-
             {/* Chat history */}
             <div className="writer-chat-history">
               {chatHistory.length === 0 && !streaming && (
@@ -593,6 +641,63 @@ export function SpeechWriter() {
           </div>
         </aside>
       </div>
+
+      {/* Floating selection refine popover */}
+      {selection && selectionPos && (
+        <div
+          ref={popoverRef}
+          className="writer-refine-popover"
+          style={{
+            left: Math.max(8, Math.min(
+              selectionPos.x - 220,
+              (typeof window !== "undefined" ? window.innerWidth : 800) - 456,
+            )),
+            top: Math.max(8, selectionPos.y - 76),
+          }}
+          // Prevent the textarea's onMouseDown-outside handler from firing
+          // when the user clicks inside this popover.
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <span className="writer-refine-spark" aria-hidden>✦</span>
+          {refiningSelection ? (
+            <span className="writer-refine-pending">
+              <span className="writer-thinking-dot" />
+              <span className="writer-thinking-dot" />
+              <span className="writer-thinking-dot" />
+            </span>
+          ) : (
+            <>
+              <input
+                ref={popoverInputRef}
+                className="writer-refine-input"
+                placeholder="What should change here?"
+                value={selectionNote}
+                onChange={(e) => setSelectionNote(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSelectionRefine();
+                  }
+                }}
+              />
+              <button
+                className="writer-refine-btn"
+                onClick={handleSelectionRefine}
+                disabled={!selectionNote.trim()}
+              >
+                Rewrite
+              </button>
+              <button
+                className="writer-refine-dismiss"
+                onClick={clearSelection}
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </main>
   );
 }
@@ -634,6 +739,18 @@ const editorStyles = `
   }
   @media (max-width: 640px) {
     .writer-doc-col { padding: 24px 20px 32px; }
+  }
+
+  .writer-doc-title {
+    font-family: var(--font-script);
+    font-size: clamp(26px, 3.2vw, 36px);
+    font-weight: 500;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    color: var(--color-midnight-ink);
+    margin: 0 0 28px;
+    padding-bottom: 22px;
+    border-bottom: 1px solid rgba(17,17,17,0.07);
   }
 
   .writer-doc-wrap {
@@ -695,13 +812,82 @@ const editorStyles = `
     padding: 20px 20px 0;
   }
 
-  .writer-selection-card {
-    background: var(--color-whisper-gray);
-    border: 1px solid rgba(17,17,17,0.08);
+  /* ── Floating selection refine popover ── */
+  .writer-refine-popover {
+    position: fixed;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--color-midnight-ink);
     border-radius: 10px;
-    padding: 14px;
-    margin-bottom: 16px;
+    padding: 10px 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.14);
+    width: 448px;
+    animation: popover-in 120ms cubic-bezier(0.2, 0, 0, 1.2);
+  }
+  @keyframes popover-in {
+    from { opacity: 0; transform: translateY(6px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .writer-refine-spark {
+    color: var(--color-phoenix-orange);
+    font-size: 13px;
     flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .writer-refine-input {
+    flex: 1;
+    min-width: 0;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    padding: 6px 10px;
+    outline: none;
+    transition: border-color 120ms ease;
+  }
+  .writer-refine-input::placeholder { color: rgba(255,255,255,0.4); }
+  .writer-refine-input:focus { border-color: rgba(255,255,255,0.35); }
+
+  .writer-refine-btn {
+    background: var(--color-phoenix-orange);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 13px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: opacity 120ms ease;
+    white-space: nowrap;
+  }
+  .writer-refine-btn:disabled { opacity: 0.4; cursor: default; }
+  .writer-refine-btn:not(:disabled):hover { opacity: 0.88; }
+
+  .writer-refine-dismiss {
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.45);
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 120ms ease;
+  }
+  .writer-refine-dismiss:hover { color: rgba(255,255,255,0.8); }
+
+  .writer-refine-pending {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    flex: 1;
+    padding: 4px 0;
   }
 
   .writer-chat-history {
