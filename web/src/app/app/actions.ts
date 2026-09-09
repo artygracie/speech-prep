@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 import { aiSplitSections, aiNameSections } from "@/lib/ai-sections";
 import { track } from "@/lib/track";
 import { parseDateOnly } from "@/lib/lifecycle";
+import { sanitizeOccasion } from "@/lib/occasions";
 
 // How the script text arrived. "paste" and "upload" come from the intake
 // forms as a hidden field; "writer" is the AI-writer flow.
@@ -112,7 +113,7 @@ export async function createSpeech(formData: FormData) {
   if (!user) redirect("/login");
 
   const title = String(formData.get("title") ?? "").trim();
-  const occasion = String(formData.get("occasion") ?? "").trim() || null;
+  const occasion = sanitizeOccasion(formData.get("occasion"));
   const eventDate = sanitizeEventDate(formData.get("event_date"));
   const body = String(formData.get("body") ?? "").trim();
 
@@ -184,7 +185,7 @@ export async function createFirstSpeech(formData: FormData) {
   if (!user) redirect("/login");
 
   const title = String(formData.get("title") ?? "").trim();
-  const occasion = String(formData.get("occasion") ?? "").trim() || null;
+  const occasion = sanitizeOccasion(formData.get("occasion"));
   const eventDate = sanitizeEventDate(formData.get("event_date"));
   const body = String(formData.get("body") ?? "").trim();
 
@@ -316,6 +317,7 @@ export async function createSpeechFromWriter(
   title: string,
   body: string,
   eventDate?: string | null,
+  occasion?: string | null,
 ): Promise<void> {
   const supabase = await createClient();
   const {
@@ -328,6 +330,7 @@ export async function createSpeechFromWriter(
     .insert({
       user_id: user.id,
       title: title.trim() || "Untitled speech",
+      occasion: sanitizeOccasion(occasion),
       event_date: sanitizeEventDate(eventDate),
       current_version: 1,
     })
@@ -358,7 +361,7 @@ export async function createSpeechFromWriter(
 
   await track(
     "speech_created",
-    { source: "writer", occasion: null, speech_id: speech.id },
+    { source: "writer", occasion: sanitizeOccasion(occasion), speech_id: speech.id },
     { userId: user.id },
   );
 

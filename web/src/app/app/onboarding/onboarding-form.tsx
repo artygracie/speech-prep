@@ -9,6 +9,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { EventDateField } from "@/components/event-date-field";
+import { OccasionField } from "@/components/occasion-field";
 import { ScriptIntake } from "@/components/script-intake";
 
 export function OnboardingForm({
@@ -18,6 +19,7 @@ export function OnboardingForm({
 }) {
   const [title, setTitle] = useState("");
   const [titleSuggested, setTitleSuggested] = useState(false);
+  const [occasion, setOccasion] = useState("");
   const titleTouched = useRef(false);
   const [pending, startTransition] = useTransition();
 
@@ -82,15 +84,16 @@ export function OnboardingForm({
         }}
       />
 
-      {/* Optional event date. Skipping is free — the field starts empty
-          and submits fine that way. */}
+      {/* Occasion is the one required question (it keys emails, copy, and
+          analytics); the date is optional and skipping it is free. */}
+      <OccasionField onChange={setOccasion} />
       <EventDateField />
 
       <div>
         <button
           type="submit"
           className="btn-primary"
-          disabled={pending || !title.trim()}
+          disabled={pending || !title.trim() || !occasion}
           style={{ minWidth: 180, justifyContent: "center" }}
         >
           {pending ? "Setting up…" : "I'm ready →"}

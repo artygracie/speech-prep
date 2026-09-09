@@ -33,7 +33,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm container-narrow" style={{ paddingInline: 24 }}>
           <h1 className="text-heading-lg">Sign in.</h1>
           <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-            We&rsquo;ll email you a link. No passwords.
+            No passwords. Google, or a link to your inbox.
           </p>
 
           <div className="mt-8">
@@ -41,7 +41,7 @@ export default function LoginPage() {
           </div>
 
           <p className="text-body-sm mt-10" style={{ color: "var(--color-muted-ash)" }}>
-            New here? Just enter your email — we&rsquo;ll create your account on first sign-in.
+            New here? Either option creates your account on first sign-in.
           </p>
         </div>
       </div>

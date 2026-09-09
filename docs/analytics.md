@@ -163,6 +163,39 @@ from profiles
 group by 1 order by 1 desc;
 ```
 
+### Who are our users (occasion mix)
+
+Occasion is a required chip on every creation flow (ART-807; values in
+`web/src/lib/occasions.ts`). Anything created before that ship is null.
+
+```sql
+select date_trunc('month', s.created_at)::date as month,
+       coalesce(s.occasion, '(none)') as occasion,
+       count(*) as speeches,
+       count(distinct s.user_id) as users,
+       count(*) filter (where s.event_date is not null) as with_event_date
+from speeches s
+where s.created_at >= now() - interval '6 months'
+group by 1, 2
+order by 1 desc, 3 desc;
+```
+
+### Did they ever get in (auth funnel)
+
+Magic-link delivery is the biggest measured leak (ART-808): 335 of the
+first 544 accounts never signed in. Compare providers once Google is live.
+
+```sql
+select date_trunc('month', created_at)::date as month,
+       coalesce(raw_app_meta_data->>'provider', 'email') as provider,
+       count(*) as accounts,
+       count(*) filter (where last_sign_in_at is null) as never_signed_in,
+       count(*) filter (where email_confirmed_at is null) as never_confirmed
+from auth.users
+group by 1, 2
+order by 1 desc, 2;
+```
+
 ### Target bars
 
 | Metric | Target |
