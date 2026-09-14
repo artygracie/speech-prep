@@ -1,8 +1,13 @@
-// Anonymous demo report — the whole rehearsal loop with nothing persisted.
+// Anonymous demo report — the rehearsal loop with nothing persisted.
 //
-// Takes a script and one recording, returns a real coach report. No auth,
-// no session row, no storage object, no ai_reports insert. The audio lives
-// in memory for the duration of the request and is never written down.
+// Takes one recording of a fixed sample speech and returns a real coach
+// report. No auth, no session row, no storage object, no ai_reports insert.
+// The audio lives in memory for the duration of the request and is never
+// written down.
+//
+// The script is NOT an input. It's the server-side sample, which means an
+// unauthenticated endpoint never feeds caller-supplied prose into a model
+// call, and the only thing the caller controls is the audio.
 //
 // Why a separate route rather than a demo branch inside /api/coach/run:
 // that route is built around a session id and does ownership checks,
@@ -20,9 +25,13 @@ import {
 } from "@/lib/alignment";
 import { generateCoachReport, type CoachInput } from "@/lib/ai-coach";
 import { DeepgramUnavailableError, transcribeBuffer } from "@/lib/deepgram";
-import { MAX_AUDIO_BYTES, MAX_SCRIPT_CHARS } from "@/lib/demo-config";
+import { MAX_AUDIO_BYTES } from "@/lib/demo-config";
 import { allowIp, clientIp, withinGlobalDailyCap } from "@/lib/demo-limits";
-import { autoSection } from "@/lib/sectioning";
+import {
+  SAMPLE_OCCASION,
+  SAMPLE_SECTIONS,
+  SAMPLE_TITLE,
+} from "@/lib/demo-sample";
 import { track } from "@/lib/track";
 
 export const runtime = "nodejs";
@@ -39,6 +48,10 @@ const ALLOWED_MIME = [
   "audio/wav",
   "audio/x-wav",
 ];
+
+// Stable ids so the client can match report entries to the section list it
+// already has. Position doubles as the id because the sample never changes.
+const sectionId = (i: number) => `demo-${i}`;
 
 function json(body: unknown, status: number): Response {
   return Response.json(body, { status });
@@ -63,21 +76,9 @@ export async function POST(req: Request): Promise<Response> {
     return json({ error: "bad_request", message: "Expected multipart form data." }, 400);
   }
 
-  const script = String(form.get("script") ?? "").trim();
   const anonId = String(form.get("anon_id") ?? "").trim() || null;
-  const occasion = String(form.get("occasion") ?? "").trim() || null;
-  const title = String(form.get("title") ?? "").trim() || "Your speech";
   const audio = form.get("audio");
 
-  if (!script) {
-    return json({ error: "no_script", message: "Paste your speech first." }, 400);
-  }
-  if (script.length > MAX_SCRIPT_CHARS) {
-    return json(
-      { error: "script_too_long", message: "The demo takes speeches up to about 1,000 words." },
-      413,
-    );
-  }
   if (!(audio instanceof Blob)) {
     return json({ error: "no_audio", message: "No recording was attached." }, 400);
   }
@@ -93,11 +94,8 @@ export async function POST(req: Request): Promise<Response> {
   const rawType = (audio.type || "audio/webm").split(";")[0]!.trim();
   const contentType = ALLOWED_MIME.includes(rawType) ? rawType : "audio/webm";
 
-  // Demo sections are always heuristic. The AI sectioner is a second
-  // model call and the demo already spends one on the coach.
-  const proposed = autoSection(script);
-  const sections: ScriptSection[] = proposed.map((s, i) => ({
-    id: `demo-${i}`,
+  const sections: ScriptSection[] = SAMPLE_SECTIONS.map((s, i) => ({
+    id: sectionId(i),
     body: s.body,
     targetSeconds: s.target_seconds,
     position: i,
@@ -132,13 +130,13 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const input: CoachInput = {
-      // The demo is always script-in-hand: it's a first rehearsal, not a
-      // memorization check, so the coach should behave as a writing coach.
+      // Script-in-hand: they're reading it off the screen, so the coach
+      // should critique delivery, not memorisation.
       mode: "with-script",
-      speechTitle: title,
-      occasion,
-      sections: proposed.map((s, i) => ({
-        id: `demo-${i}`,
+      speechTitle: SAMPLE_TITLE,
+      occasion: SAMPLE_OCCASION,
+      sections: SAMPLE_SECTIONS.map((s, i) => ({
+        id: sectionId(i),
         name: s.name,
         body: s.body,
         targetSeconds: s.target_seconds,
@@ -163,7 +161,6 @@ export async function POST(req: Request): Promise<Response> {
     if (!report) {
       console.error("[demo/report] coach returned null", {
         hasApiKey: !!process.env.ANTHROPIC_API_KEY,
-        sectionCount: sections.length,
         wordCount: words.length,
       });
       return json({ error: "coach_unavailable", message: "The coach is unavailable right now." }, 503);
@@ -172,25 +169,16 @@ export async function POST(req: Request): Promise<Response> {
     await track(
       "demo_report",
       {
-        occasion,
-        section_count: sections.length,
         word_count: words.length,
         duration_ms: words.length ? words[words.length - 1]!.endMs : 0,
+        matched,
+        skipped,
       },
       { anonId },
     );
 
     // Deliberately no ai_reports insert: nothing about this run is stored.
-    return json(
-      {
-        report,
-        transcriptText: text,
-        sections: proposed.map((s, i) => ({ id: `demo-${i}`, ...s })),
-        metrics,
-        diffCounts: { matched, paraphrased, skipped, improvised },
-      },
-      200,
-    );
+    return json({ report, transcriptText: text, metrics }, 200);
   } catch (err) {
     if (err instanceof DeepgramUnavailableError) {
       console.error("[demo/report] DEEPGRAM_API_KEY is not set");

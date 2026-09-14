@@ -7,7 +7,8 @@
 // module, so the limits are deliberately conservative.
 //
 // Three layers, cheapest first:
-//   1. Payload caps      — rejected before any vendor call.
+//   1. Payload cap       — rejected before any vendor call. The script is
+//                          server-side, so audio size is the only input.
 //   2. Per-IP burst      — in-memory, so it is per serverless instance and
 //                          resets on cold start. Catches naive hammering,
 //                          not a distributed attacker. Good enough because
@@ -22,7 +23,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-export { MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS, MAX_SCRIPT_CHARS } from "@/lib/demo-config";
+export { MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS } from "@/lib/demo-config";
 
 const PER_IP_MAX = 5;
 const PER_IP_WINDOW_MS = 60 * 60 * 1000;

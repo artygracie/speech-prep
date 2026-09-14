@@ -4,31 +4,16 @@
 // upload-first intake in place when "Already written?" is chosen.
 // "Need help writing it?" routes to the AI writer.
 
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { StartFork } from "@/components/start-fork";
 import { OnboardingForm } from "./onboarding-form";
-import {
-  getDemoDraftServerSnapshot,
-  getDemoDraftSnapshot,
-  subscribeDemoDraft,
-} from "@/lib/demo-draft";
 
 export function OnboardingStart({
   action,
 }: {
   action: (formData: FormData) => Promise<void>;
 }) {
-  // null means "the user hasn't chosen yet", so the demo draft decides.
-  // Someone arriving from the demo has already written their speech and
-  // read it out loud; asking "where's your speech at right now?" again
-  // would be the app forgetting what just happened.
-  const [chosen, setStep] = useState<"fork" | "upload" | null>(null);
-  const draft = useSyncExternalStore(
-    subscribeDemoDraft,
-    getDemoDraftSnapshot,
-    getDemoDraftServerSnapshot,
-  );
-  const step = chosen ?? (draft ? "upload" : "fork");
+  const [step, setStep] = useState<"fork" | "upload">("fork");
 
   if (step === "fork") {
     return (

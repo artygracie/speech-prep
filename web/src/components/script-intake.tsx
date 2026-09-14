@@ -40,7 +40,6 @@ export function ScriptIntake({
   onSuggestTitle,
   onInferOccasion,
   initialFile,
-  initialBody,
 }: {
   rows?: number;
   helperText?: string;
@@ -53,14 +52,9 @@ export function ScriptIntake({
    *  for the /dev/intake visual harness — real flows always go through
    *  loadFile(). */
   initialFile?: { name: string; body: string; pages?: number };
-  /** Start in paste mode with this text already in the textarea. Used by
-   *  the demo handoff, where the speech is already written. */
-  initialBody?: string;
 }) {
-  const [mode, setMode] = useState<Mode>(
-    initialFile ? "file" : initialBody ? "paste" : "upload",
-  );
-  const [body, setBody] = useState(initialFile?.body ?? initialBody ?? "");
+  const [mode, setMode] = useState<Mode>(initialFile ? "file" : "upload");
+  const [body, setBody] = useState(initialFile?.body ?? "");
   // True once any of the body arrived via a file, even after "Edit as
   // text" — analytics wants how the words got here, not the current UI.
   const [usedFile, setUsedFile] = useState(Boolean(initialFile));

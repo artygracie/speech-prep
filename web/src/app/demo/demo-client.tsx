@@ -1,23 +1,27 @@
 "use client";
 
-// The demo, in three phases: script → record → report.
+// The demo: read a speech out loud, hear what it was actually like.
+//
+// One fixed sample, two phases (read → report). No writing step, because
+// the demo isn't a writing tool and most visitors don't have a speech yet.
+// The point is the part nothing else does: you read it, and something tells
+// you the truth about how it went.
 //
 // Nothing here touches Supabase. The recording is held in memory, POSTed
-// once to /api/demo/report, and dropped. The only thing that outlives the
-// page is the draft we stash in sessionStorage so that signing up carries
-// the speech into the real app instead of dumping the user on a blank form.
+// once to /api/demo/report, and dropped.
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { OccasionField } from "@/components/occasion-field";
-import { SAMPLE_OCCASION, SAMPLE_SPEECH, SAMPLE_TITLE } from "@/lib/demo-sample";
-import { MAX_AUDIO_SECONDS, MAX_SCRIPT_CHARS } from "@/lib/demo-config";
-import { saveDemoDraft } from "@/lib/demo-draft";
+import { MAX_AUDIO_SECONDS } from "@/lib/demo-config";
+import {
+  SAMPLE_SECTIONS,
+  SAMPLE_TARGET_SECONDS,
+  SAMPLE_TITLE,
+} from "@/lib/demo-sample";
 import type { CoachReport } from "@/lib/ai-coach";
 
-type Phase = "script" | "record" | "working" | "report";
+type Phase = "read" | "recording" | "working" | "report";
 
-type DemoSection = { id: string; name: string; body: string; target_seconds: number };
 type DemoMetric = {
   sectionId: string;
   actualSeconds: number;
@@ -25,10 +29,10 @@ type DemoMetric = {
   wpm: number | null;
   fillerCount: number;
 };
+
 type DemoResult = {
   report: CoachReport;
   transcriptText: string;
-  sections: DemoSection[];
   metrics: DemoMetric[];
 };
 
@@ -72,10 +76,7 @@ function fmt(seconds: number): string {
 }
 
 export function DemoClient() {
-  const [phase, setPhase] = useState<Phase>("script");
-  const [script, setScript] = useState("");
-  const [occasion, setOccasion] = useState("");
-  const [title, setTitle] = useState("");
+  const [phase, setPhase] = useState<Phase>("read");
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DemoResult | null>(null);
@@ -95,18 +96,21 @@ export function DemoClient() {
 
   useEffect(() => cleanup, [cleanup]);
 
-  function useSample() {
-    setScript(SAMPLE_SPEECH);
-    setOccasion(SAMPLE_OCCASION);
-    setTitle(SAMPLE_TITLE);
-  }
+  const stopRecording = useCallback(() => {
+    if (tickRef.current) clearInterval(tickRef.current);
+    tickRef.current = null;
+    try {
+      recRef.current?.stop();
+    } catch {
+      cleanup();
+      setError("Recording stopped unexpectedly. Try again.");
+      setPhase("read");
+    }
+  }, [cleanup]);
 
   async function submit(audio: Blob) {
     setPhase("working");
     const fd = new FormData();
-    fd.set("script", script);
-    fd.set("occasion", occasion);
-    fd.set("title", title || "Your speech");
     fd.set("anon_id", anonId());
     fd.set("audio", audio, "take.webm");
     try {
@@ -114,15 +118,14 @@ export function DemoClient() {
       const body = await res.json();
       if (!res.ok) {
         setError(body?.message ?? "Something went wrong. Try again.");
-        setPhase("record");
+        setPhase("read");
         return;
       }
       setResult(body as DemoResult);
       setPhase("report");
-      saveDemoDraft({ script, occasion, title: title || "Your speech" });
     } catch {
       setError("We couldn't reach the coach. Check your connection and try again.");
-      setPhase("record");
+      setPhase("read");
     }
   }
 
@@ -142,7 +145,7 @@ export function DemoClient() {
         cleanup();
         if (blob.size === 0) {
           setError("That recording came back empty. Try again.");
-          setPhase("record");
+          setPhase("read");
           return;
         }
         void submit(blob);
@@ -150,8 +153,8 @@ export function DemoClient() {
       recRef.current = rec;
       rec.start(1000);
       setElapsed(0);
-      setPhase("record");
-      beacon("demo_started", { occasion: occasion || null });
+      setPhase("recording");
+      beacon("demo_started");
 
       const startedAt = Date.now();
       tickRef.current = setInterval(() => {
@@ -166,29 +169,17 @@ export function DemoClient() {
     }
   }
 
-  function stopRecording() {
-    if (tickRef.current) clearInterval(tickRef.current);
-    tickRef.current = null;
-    try {
-      recRef.current?.stop();
-    } catch {
-      cleanup();
-      setError("Recording stopped unexpectedly. Try again.");
-    }
-  }
-
-  const recording = recRef.current?.state === "recording";
-
   // ── Report ────────────────────────────────────────────────────────────
   if (phase === "report" && result) {
     const metricById = new Map(result.metrics.map((m) => [m.sectionId, m]));
     const total = result.metrics.reduce((a, m) => a + m.actualSeconds, 0);
-    const targetTotal = result.sections.reduce((a, s) => a + s.target_seconds, 0);
+    const drift = total - SAMPLE_TARGET_SECONDS;
+
     return (
       <div style={{ display: "grid", gap: 28 }}>
         <div>
           <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-            Your rehearsal
+            How that went
           </span>
           <h1 className="text-heading-lg mt-2">{result.report.headline}</h1>
           <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
@@ -199,17 +190,18 @@ export function DemoClient() {
         <div className="card-bordered" style={{ padding: 18 }}>
           <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
             <Stat label="You took" value={fmt(total)} />
-            <Stat label="Script targets" value={fmt(targetTotal)} />
+            <Stat label="Written to run" value={fmt(SAMPLE_TARGET_SECONDS)} />
             <Stat
-              label="Difference"
-              value={`${total >= targetTotal ? "+" : "−"}${fmt(Math.abs(total - targetTotal))}`}
+              label={drift >= 0 ? "Slower by" : "Faster by"}
+              value={fmt(Math.abs(drift))}
             />
           </div>
         </div>
 
         <div style={{ display: "grid", gap: 12 }}>
           {result.report.per_section.map((p) => {
-            const section = result.sections.find((s) => s.id === p.section_id);
+            const idx = Number(p.section_id.replace("demo-", ""));
+            const section = SAMPLE_SECTIONS[idx];
             const m = metricById.get(p.section_id);
             return (
               <div key={p.section_id} className="card-bordered" style={{ padding: 18 }}>
@@ -243,18 +235,14 @@ export function DemoClient() {
           className="card-bordered"
           style={{ padding: 22, borderColor: "rgba(71,208,150,0.4)" }}
         >
-          <p className="text-subheading">That was one take.</p>
+          <p className="text-subheading">Now do that with the speech you have to give.</p>
           <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
-            Speeches get better on the fourth or fifth run, not the first. Create an account to
-            keep this speech, rehearse it as many times as you like, and watch the timing settle.
+            Bring your own script and rehearse it as many times as you like. Speeches settle on
+            the fourth or fifth run, not the first.
           </p>
           <div className="mt-4" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <Link
-              href="/login?next=/app/onboarding"
-              className="btn-primary"
-              onClick={() => beacon("demo_signup", { occasion: occasion || null })}
-            >
-              Save this speech →
+            <Link href="/login" className="btn-primary" onClick={() => beacon("demo_signup")}>
+              Start with my speech →
             </Link>
             <button
               type="button"
@@ -262,16 +250,19 @@ export function DemoClient() {
               onClick={() => {
                 setResult(null);
                 setError(null);
-                setPhase("script");
+                setPhase("read");
               }}
             >
-              Try another take
+              Read it again
             </button>
           </div>
         </div>
 
         <details>
-          <summary className="text-caption" style={{ color: "var(--color-muted-ash)", cursor: "pointer" }}>
+          <summary
+            className="text-caption"
+            style={{ color: "var(--color-muted-ash)", cursor: "pointer" }}
+          >
             What we heard
           </summary>
           <p className="text-body-sm mt-3" style={{ color: "var(--color-muted-ash)" }}>
@@ -285,105 +276,38 @@ export function DemoClient() {
   // ── Working ───────────────────────────────────────────────────────────
   if (phase === "working") {
     return (
-      <div style={{ display: "grid", gap: 12, justifyItems: "center", padding: "80px 0" }}>
+      <div style={{ display: "grid", gap: 12, justifyItems: "center", padding: "96px 0" }}>
         <p className="text-subheading">Listening back…</p>
         <p className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
-          Transcribing your take and timing it against the script. About twenty seconds.
+          Timing what you said against the script. About twenty seconds.
         </p>
       </div>
     );
   }
 
-  // ── Record ────────────────────────────────────────────────────────────
-  if (phase === "record") {
-    return (
-      <div style={{ display: "grid", gap: 24 }}>
-        <div>
-          <h1 className="text-heading-lg">Give it once.</h1>
-          <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-            Out loud, at the pace you&rsquo;d actually use. Up to {MAX_AUDIO_SECONDS} seconds.
-            Nothing is saved.
-          </p>
-        </div>
-
-        <div className="card-bordered" style={{ padding: 22, maxHeight: 260, overflowY: "auto" }}>
-          <p className="text-body-sm" style={{ whiteSpace: "pre-wrap" }}>
-            {script}
-          </p>
-        </div>
-
-        {error && (
-          <p className="text-body-sm" style={{ color: "var(--color-leadgen-red)" }}>
-            {error}
-          </p>
-        )}
-
-        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-          {recording ? (
-            <>
-              <button type="button" className="btn-primary" onClick={stopRecording}>
-                Stop and get my report
-              </button>
-              <span className="text-subheading" aria-live="polite">
-                {fmt(elapsed)}
-              </span>
-            </>
-          ) : (
-            <>
-              <button type="button" className="btn-primary" onClick={startRecording}>
-                Start recording
-              </button>
-              <button type="button" className="btn-ghost" onClick={() => setPhase("script")}>
-                Back to the script
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // ── Script ────────────────────────────────────────────────────────────
-  const tooLong = script.length > MAX_SCRIPT_CHARS;
+  // ── Read / recording ──────────────────────────────────────────────────
+  const isRecording = phase === "recording";
   return (
     <div style={{ display: "grid", gap: 24 }}>
       <div>
-        <h1 className="text-heading-lg">Practice your speech before you give it.</h1>
+        <h1 className="text-heading-lg">Read this out loud.</h1>
         <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-          Paste what you&rsquo;ve written, read it out once, and get back your real timing, what
-          you actually said versus what you wrote, and where it drags. No account needed.
+          {`A best man speech, about ${fmt(SAMPLE_TARGET_SECONDS)} if you don\u2019t rush.`}{" "}
+          Read it the way you&rsquo;d actually say it and we&rsquo;ll tell you what it was really
+          like. No account, and the recording isn&rsquo;t saved.
         </p>
       </div>
 
-      <div>
-        <label htmlFor="demo-script" className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-          Your speech
-        </label>
-        <textarea
-          id="demo-script"
-          rows={12}
-          value={script}
-          onChange={(e) => setScript(e.target.value)}
-          placeholder="Paste your speech here…"
-          className="input mt-2"
-          style={{ width: "100%", resize: "vertical", lineHeight: 1.6 }}
-        />
-        <div
-          className="mt-2"
-          style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}
-        >
-          <button type="button" className="btn-ghost" onClick={useSample}>
-            Don&rsquo;t have one? Use a sample
-          </button>
-          {tooLong && (
-            <span className="text-caption" style={{ color: "var(--color-leadgen-red)" }}>
-              A bit long for the demo — trim to about 1,000 words.
-            </span>
-          )}
-        </div>
+      <div className="card-bordered" style={{ padding: 24, display: "grid", gap: 16 }}>
+        <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+          {SAMPLE_TITLE}
+        </span>
+        {SAMPLE_SECTIONS.map((s) => (
+          <p key={s.name} className="text-body" style={{ lineHeight: 1.7 }}>
+            {s.body}
+          </p>
+        ))}
       </div>
-
-      <OccasionField value={occasion} onChange={setOccasion} required={false} />
 
       {error && (
         <p className="text-body-sm" style={{ color: "var(--color-leadgen-red)" }}>
@@ -391,18 +315,43 @@ export function DemoClient() {
         </p>
       )}
 
-      <div>
-        <button
-          type="button"
-          className="btn-primary"
-          disabled={!script.trim() || tooLong}
-          onClick={() => {
-            setError(null);
-            setPhase("record");
-          }}
-        >
-          Next: read it out loud →
-        </button>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
+          position: "sticky",
+          bottom: 24,
+        }}
+      >
+        {isRecording ? (
+          <>
+            <button type="button" className="btn-primary" onClick={stopRecording}>
+              Stop and hear how it went
+            </button>
+            <span
+              className="text-subheading"
+              aria-live="polite"
+              style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 999,
+                  background: "var(--color-leadgen-red)",
+                }}
+              />
+              {fmt(elapsed)}
+            </span>
+          </>
+        ) : (
+          <button type="button" className="btn-primary" onClick={startRecording}>
+            Start reading
+          </button>
+        )}
       </div>
     </div>
   );
