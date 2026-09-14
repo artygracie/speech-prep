@@ -1,22 +1,27 @@
 import type { Metadata } from "next";
-import { Inter, Instrument_Serif } from "next/font/google";
+import localFont from "next/font/local";
 import Script from "next/script";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { IS_INDEXABLE, SITE_URL } from "@/lib/site";
 import { ATTRIBUTION_SNIPPET } from "@/lib/attribution";
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "700", "900"],
+// Arty UI Layer 1 type, inherited verbatim: General Sans for body/UI,
+// Sentient italic as the display accent. Self-hosted from src/fonts so
+// every Artygroup product renders identically without a Google round-trip.
+const generalSans = localFont({
+  src: "../fonts/GeneralSans-Variable.woff2",
+  variable: "--font-general-sans",
+  weight: "200 700",
+  display: "swap",
 });
 
-const instrumentSerif = Instrument_Serif({
-  variable: "--font-instrument-serif",
-  subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
+const sentient = localFont({
+  src: "../fonts/Sentient-Variable-Italic.woff2",
+  variable: "--font-sentient",
+  weight: "200 700",
+  style: "italic",
+  display: "swap",
 });
 
 const TITLE = "SpeechPrep — Practice your speech before you give it.";
@@ -54,7 +59,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${instrumentSerif.variable}`}>
+    <html lang="en" className={`${generalSans.variable} ${sentient.variable}`}>
       <body>
         {/* Google Tag Manager (noscript) */}
         <noscript>
