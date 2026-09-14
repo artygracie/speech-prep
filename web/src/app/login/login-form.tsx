@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authCallbackUrl } from "@/lib/site";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -19,9 +20,7 @@ export function LoginForm() {
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/app`,
-        },
+        options: { redirectTo: authCallbackUrl() },
       });
       if (error) throw error;
     } catch (err) {
@@ -39,9 +38,7 @@ export function LoginForm() {
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/app`,
-        },
+        options: { emailRedirectTo: authCallbackUrl() },
       });
       if (error) throw error;
       setState("sent");
