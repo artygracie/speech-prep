@@ -9,6 +9,8 @@ import { createClient } from "@/lib/supabase/server";
 import { aiSplitSections, aiNameSections } from "@/lib/ai-sections";
 import { track } from "@/lib/track";
 import { parseDateOnly } from "@/lib/lifecycle";
+import { sanitizeOccasion } from "@/lib/occasions";
+import { autoSection, estimateSeconds } from "@/lib/sectioning";
 
 // How the script text arrived. "paste" and "upload" come from the intake
 // forms as a hidden field; "writer" is the AI-writer flow.
@@ -33,49 +35,6 @@ export async function signOut() {
 // playing with. Naming is positional and caps at 6 — past that we fall
 // back to "Section N", which is ugly but rare since the AI path handles
 // the long ones.
-function autoSection(text: string): {
-  name: string;
-  target_seconds: number;
-  body: string;
-}[] {
-  const blocks = text
-    .split(/\n\s*\n/)
-    .map((b) => b.trim())
-    .filter(Boolean);
-
-  if (blocks.length === 0) {
-    return [{ name: "Open", target_seconds: 60, body: "" }];
-  }
-  if (blocks.length === 1) {
-    const sentences = blocks[0].match(/[^.!?]+[.!?]+/g) ?? [blocks[0]];
-    const mid = Math.ceil(sentences.length / 2);
-    return [
-      {
-        name: "Open",
-        target_seconds: estimateSeconds(sentences.slice(0, mid).join(" ")),
-        body: sentences.slice(0, mid).join(" ").trim(),
-      },
-      {
-        name: "Close",
-        target_seconds: estimateSeconds(sentences.slice(mid).join(" ")),
-        body: sentences.slice(mid).join(" ").trim() || sentences.join(" ").trim(),
-      },
-    ];
-  }
-  const names = ["Open", "Story", "Turn", "Close", "Aside", "Coda"];
-  return blocks.map((b, i) => ({
-    name: names[i] ?? `Section ${i + 1}`,
-    target_seconds: estimateSeconds(b),
-    body: b,
-  }));
-}
-
-function estimateSeconds(text: string): number {
-  const words = text.trim().split(/\s+/).filter(Boolean).length;
-  // 145 wpm, rounded to the nearest 5s, minimum 15s.
-  return Math.max(15, Math.round((words / 145) * 60 / 5) * 5);
-}
-
 // Optional "When's the speech?" value from the creation flows. Returns
 // a clean YYYY-MM-DD string or null — never throws. A malformed value
 // simply means we don't store a date; the question is optional.
@@ -112,7 +71,7 @@ export async function createSpeech(formData: FormData) {
   if (!user) redirect("/login");
 
   const title = String(formData.get("title") ?? "").trim();
-  const occasion = String(formData.get("occasion") ?? "").trim() || null;
+  const occasion = sanitizeOccasion(formData.get("occasion"));
   const eventDate = sanitizeEventDate(formData.get("event_date"));
   const body = String(formData.get("body") ?? "").trim();
 
@@ -184,7 +143,7 @@ export async function createFirstSpeech(formData: FormData) {
   if (!user) redirect("/login");
 
   const title = String(formData.get("title") ?? "").trim();
-  const occasion = String(formData.get("occasion") ?? "").trim() || null;
+  const occasion = sanitizeOccasion(formData.get("occasion"));
   const eventDate = sanitizeEventDate(formData.get("event_date"));
   const body = String(formData.get("body") ?? "").trim();
 
@@ -316,6 +275,7 @@ export async function createSpeechFromWriter(
   title: string,
   body: string,
   eventDate?: string | null,
+  occasion?: string | null,
 ): Promise<void> {
   const supabase = await createClient();
   const {
@@ -328,6 +288,7 @@ export async function createSpeechFromWriter(
     .insert({
       user_id: user.id,
       title: title.trim() || "Untitled speech",
+      occasion: sanitizeOccasion(occasion),
       event_date: sanitizeEventDate(eventDate),
       current_version: 1,
     })
@@ -358,7 +319,7 @@ export async function createSpeechFromWriter(
 
   await track(
     "speech_created",
-    { source: "writer", occasion: null, speech_id: speech.id },
+    { source: "writer", occasion: sanitizeOccasion(occasion), speech_id: speech.id },
     { userId: user.id },
   );
 

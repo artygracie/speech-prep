@@ -275,6 +275,7 @@ export function SpeechWriter() {
         title.trim() || "Untitled speech",
         speechText,
         eventDate || null,
+        effectiveOccasion || null,
       );
     });
   }

@@ -18,7 +18,8 @@ import type { Database } from "@/types/database.types";
 
 // Magic-link flow: the auth.users row is created when the link is requested,
 // and the user typically clicks the email within minutes. A login this soon
-// after account creation is a signup, not a returning visit.
+// after account creation is a signup, not a returning visit. OAuth creates
+// the row and lands here in the same second, so the same window covers it.
 const SIGNUP_WINDOW_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
@@ -65,10 +66,15 @@ async function recordSignupAnalytics(
     const isNewUser =
       Date.now() - new Date(user.created_at).getTime() < SIGNUP_WINDOW_MS;
     if (isNewUser) {
+      // Supabase sets app_metadata.provider to "email" for magic links and
+      // the provider slug ("google") for OAuth. OAuth signups get their own
+      // event so the two paths can be compared in the funnel query.
+      const provider = user.app_metadata?.provider ?? "email";
+      const method = provider === "email" ? "magic_link" : provider;
       await track(
-        "signup",
+        method === "magic_link" ? "signup" : "oauth_signup",
         {
-          method: "magic_link",
+          method,
           utm_source: attribution?.utm_source,
           gclid: attribution?.gclid,
         },

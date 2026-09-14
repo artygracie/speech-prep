@@ -8,6 +8,8 @@
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { EventDateField } from "@/components/event-date-field";
+import { OccasionField } from "@/components/occasion-field";
+import { isOccasion } from "@/lib/occasions";
 import { ScriptIntake } from "@/components/script-intake";
 
 export function NewSpeechForm({
@@ -17,6 +19,7 @@ export function NewSpeechForm({
 }) {
   const [title, setTitle] = useState("");
   const [titleSuggested, setTitleSuggested] = useState(false);
+  const [occasion, setOccasion] = useState("");
   const titleTouched = useRef(false);
   const [pending, startTransition] = useTransition();
 
@@ -76,6 +79,9 @@ export function NewSpeechForm({
       <ScriptIntake
         rows={7}
         helperText="We'll suggest section breaks for you. You can change them anytime."
+        onInferOccasion={(o) => {
+          if (isOccasion(o)) setOccasion(o);
+        }}
         onSuggestTitle={(suggested) => {
           if (!titleTouched.current || !title.trim()) {
             setTitle(suggested);
@@ -84,15 +90,14 @@ export function NewSpeechForm({
         }}
       />
 
-      {/* Optional event date. Skipping is free — the field starts empty
-          and submits fine that way. */}
+      <OccasionField value={occasion} onChange={setOccasion} />
       <EventDateField />
 
       <div className="flex gap-3 items-center">
         <button
           type="submit"
           className="btn-primary"
-          disabled={pending || !title.trim()}
+          disabled={pending || !title.trim() || !occasion}
         >
           {pending ? "Opening editor…" : "Open editor"}
         </button>
