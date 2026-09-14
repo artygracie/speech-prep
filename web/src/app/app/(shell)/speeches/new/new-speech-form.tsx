@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { EventDateField } from "@/components/event-date-field";
 import { OccasionField } from "@/components/occasion-field";
+import { isOccasion } from "@/lib/occasions";
 import { ScriptIntake } from "@/components/script-intake";
 
 export function NewSpeechForm({
@@ -78,6 +79,9 @@ export function NewSpeechForm({
       <ScriptIntake
         rows={7}
         helperText="We'll suggest section breaks for you. You can change them anytime."
+        onInferOccasion={(o) => {
+          if (isOccasion(o)) setOccasion(o);
+        }}
         onSuggestTitle={(suggested) => {
           if (!titleTouched.current || !title.trim()) {
             setTitle(suggested);
@@ -86,7 +90,7 @@ export function NewSpeechForm({
         }}
       />
 
-      <OccasionField onChange={setOccasion} />
+      <OccasionField value={occasion} onChange={setOccasion} />
       <EventDateField />
 
       <div className="flex gap-3 items-center">

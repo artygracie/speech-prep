@@ -3,12 +3,14 @@
 // OccasionField — "What's the speech for?" as eight chips, one required
 // pick. Sits next to EventDateField in every creation flow.
 //
+// Controlled: the parent form owns the value, so an uploaded file that
+// infers its own occasion (ScriptIntake -> inferOccasion) can preselect a
+// chip rather than emitting a second, competing `occasion` input.
+//
 // Renders a hidden input under `name` so plain <form> + server-action
-// flows pick it up with zero wiring; programmatic flows pass `onChange`.
-// `required` is enforced by the hidden input so native form validation
-// blocks submit until a chip is chosen.
+// flows pick it up with zero wiring, and so native validation blocks
+// submit until a chip is chosen.
 
-import { useState } from "react";
 import { OCCASIONS, type Occasion } from "@/lib/occasions";
 
 const chipBase: React.CSSProperties = {
@@ -36,23 +38,15 @@ const chipActive: React.CSSProperties = {
 
 export function OccasionField({
   name = "occasion",
-  defaultValue = "",
-  required = true,
+  value,
   onChange,
+  required = true,
 }: {
   name?: string;
-  defaultValue?: Occasion | "";
+  value: string;
+  onChange: (value: string) => void;
   required?: boolean;
-  onChange?: (value: Occasion | "") => void;
 }) {
-  const [value, setValue] = useState<Occasion | "">(defaultValue);
-
-  function pick(next: Occasion) {
-    const resolved = next === value && !required ? "" : next;
-    setValue(resolved);
-    onChange?.(resolved);
-  }
-
   return (
     <div>
       <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
@@ -64,7 +58,7 @@ export function OccasionField({
         className="mt-2"
         style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
       >
-        {OCCASIONS.map((o) => {
+        {OCCASIONS.map((o: Occasion) => {
           const active = o === value;
           return (
             <button
@@ -72,7 +66,7 @@ export function OccasionField({
               type="button"
               role="radio"
               aria-checked={active}
-              onClick={() => pick(o)}
+              onClick={() => onChange(active && !required ? "" : o)}
               style={active ? chipActive : chipIdle}
             >
               {o}
@@ -81,8 +75,8 @@ export function OccasionField({
         })}
       </div>
       {/* Hidden but validated: an empty required input blocks native submit
-          and the browser focuses it, so the group above needs to be right
-          next to it for the message to make sense. */}
+          and the browser focuses it, so the group above needs to sit
+          directly next to it for the message to make sense. */}
       <input
         type="text"
         name={name}
@@ -91,8 +85,13 @@ export function OccasionField({
         readOnly
         tabIndex={-1}
         aria-hidden="true"
-        style={{ position: "absolute", opacity: 0, width: 1, height: 1, pointerEvents: "none" }}
-        onChange={() => {}}
+        style={{
+          position: "absolute",
+          opacity: 0,
+          width: 1,
+          height: 1,
+          pointerEvents: "none",
+        }}
       />
     </div>
   );

@@ -38,18 +38,29 @@ export function ScriptIntake({
   rows = 8,
   helperText,
   onSuggestTitle,
+  onInferOccasion,
   initialFile,
+  initialBody,
 }: {
   rows?: number;
   helperText?: string;
   onSuggestTitle?: (title: string) => void;
+  /** Fires when an uploaded file implies an occasion, so the parent's
+   *  OccasionField can preselect a chip. Free-text labels that aren't on
+   *  the chip list are simply ignored by the parent. */
+  onInferOccasion?: (occasion: string) => void;
   /** Pre-load the file-card state without a network round-trip. Exists
    *  for the /dev/intake visual harness — real flows always go through
    *  loadFile(). */
   initialFile?: { name: string; body: string; pages?: number };
+  /** Start in paste mode with this text already in the textarea. Used by
+   *  the demo handoff, where the speech is already written. */
+  initialBody?: string;
 }) {
-  const [mode, setMode] = useState<Mode>(initialFile ? "file" : "upload");
-  const [body, setBody] = useState(initialFile?.body ?? "");
+  const [mode, setMode] = useState<Mode>(
+    initialFile ? "file" : initialBody ? "paste" : "upload",
+  );
+  const [body, setBody] = useState(initialFile?.body ?? initialBody ?? "");
   // True once any of the body arrived via a file, even after "Edit as
   // text" — analytics wants how the words got here, not the current UI.
   const [usedFile, setUsedFile] = useState(Boolean(initialFile));
@@ -98,7 +109,9 @@ export function ScriptIntake({
       setFileName(file.name);
       setFileExt(lower.slice(lower.lastIndexOf(".") + 1).toUpperCase());
       setPages(typeof data.pages === "number" ? data.pages : null);
-      setOccasion(inferOccasion(file.name, data.text));
+      const inferred = inferOccasion(file.name, data.text);
+      setOccasion(inferred);
+      if (inferred && onInferOccasion) onInferOccasion(inferred);
       setOccasionDismissed(false);
       setExpanded(false);
       setMode("file");
@@ -148,9 +161,6 @@ export function ScriptIntake({
           present; outside paste mode it lives in a hidden textarea. */}
       <input type="hidden" name="source" value={usedFile ? "upload" : "paste"} />
       {mode !== "paste" && <textarea name="body" value={body} readOnly hidden />}
-      {mode === "file" && occasion && !occasionDismissed && (
-        <input type="hidden" name="occasion" value={occasion} />
-      )}
 
       <div
         style={{
