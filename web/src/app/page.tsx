@@ -7,6 +7,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { LiveTranscript } from "./_landing/live-transcript";
+import { ROLES } from "@/lib/roles";
 import { SITE_URL } from "@/lib/site";
 
 const softwareApplicationSchema = {
@@ -135,8 +136,12 @@ export default function LandingPage() {
             <a href="#how" className="nav-link">How it works</a>
             <a href="#pricing" className="nav-link">Pricing</a>
           </nav>
-          <div className="flex items-center gap-2">
-            <Link href="/login" className="btn-primary">Begin</Link>
+          <div className="flex items-center gap-3">
+            <Link href="/login" className="nav-link">Sign in</Link>
+            {/* The nav CTA has to match the page's one job. It used to be
+                "Begin" -> /login, which pointed the most prominent button
+                on the page straight at the wall the demo exists to remove. */}
+            <Link href="/demo" className="btn-primary">Try it</Link>
           </div>
         </div>
       </header>
@@ -146,40 +151,16 @@ export default function LandingPage() {
         <div className="hero-bg" aria-hidden="true" />
         <div className="container-x relative z-10 pt-24 pb-24 md:pt-32 md:pb-28">
           <div className="max-w-4xl">
-            {/* Eyebrow as a soft pill — sits a touch off the page so the
-                eye lands on it before the headline. */}
-            <span
-              className="text-caption"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                background: "rgba(255, 255, 255, 0.65)",
-                backdropFilter: "saturate(160%) blur(8px)",
-                WebkitBackdropFilter: "saturate(160%) blur(8px)",
-                border: "1px solid rgba(17, 17, 17, 0.06)",
-                color: "var(--color-midnight-ink)",
-                padding: "6px 12px",
-                borderRadius: 999,
-                boxShadow: "0 1px 2px rgba(17, 17, 17, 0.04)",
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 999,
-                  background: "var(--color-phoenix-orange)",
-                  display: "inline-block",
-                }}
-              />
-              Practice your speech before you give it
+            {/* Eyebrow now uses the Arty UI .eyebrow component rather
+                than a hand-rolled pill — same look, one source of truth. */}
+            <span className="eyebrow reveal reveal-1">
+              <span className="dot" aria-hidden="true" />
+              For the best man, the maid of honor, and the parents
             </span>
-            <h1 className="text-display mt-7">
-              Don&rsquo;t just give a speech.
+            <h1 className="text-display mt-7 reveal reveal-2">
+              You wrote it.
               <br />
-              Give{" "}
+              Now find out what it{" "}
               <span
                 className="serif"
                 style={{
@@ -190,22 +171,22 @@ export default function LandingPage() {
                   marginRight: "0.06em",
                 }}
               >
-                the
+                sounds
               </span>{" "}
-              speech.
+              like.
             </h1>
             <p
-              className="mt-8 text-body md:text-subheading max-w-xl"
+              className="mt-8 text-body md:text-subheading max-w-xl reveal reveal-3"
               style={{ color: "var(--color-muted-ash)" }}
             >
-              Upload your speech. Record yourself giving it. SpeechPrep tells you, to the second,
-              which sections ran long, which lines you skipped, and which off-script moments
-              were better than what you wrote down.
+              Reading it in your head tells you nothing. Read your speech out loud
+              once and SpeechPrep gives you the real timing, the lines you skipped
+              when you got nervous, and the one thing to fix before the day.
             </p>
 
-            <div className="mt-10 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-5 max-w-lg">
-              <Link href="/login" className="btn-primary">
-                Start practicing &rarr;
+            <div className="mt-10 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5 max-w-lg reveal reveal-4">
+              <Link href="/demo" className="btn-primary">
+                Read one out loud &rarr;
               </Link>
               <Link
                 href="#how"
@@ -220,13 +201,35 @@ export default function LandingPage() {
                 How it works
               </Link>
             </div>
-            <p className="mt-4 text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
-              Your first full rehearsal is free. Then $24, once.
+            <p className="mt-4 text-body-sm reveal reveal-4" style={{ color: "var(--color-muted-ash)" }}>
+              Takes about a minute, and you don&rsquo;t need an account.
             </p>
           </div>
 
           {/* Live recording mockup — interactive */}
           <LiveTranscript />
+        </div>
+      </section>
+
+      {/* ===== Which speech are you giving? =====
+           The role pages are where search demand actually lands, so the
+           homepage has to hand people to the right one. This is also the
+           only internal link path to them, for readers and crawlers. */}
+      <section className="container-x" style={{ paddingBlock: 56 }}>
+        <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+          Which speech are you giving?
+        </span>
+        <div className="mt-5" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {ROLES.map((r) => (
+            <Link
+              key={r.slug}
+              href={`/${r.slug}`}
+              className="role-chip"
+              aria-label={`${r.occasion} speech`}
+            >
+              {r.occasion}
+            </Link>
+          ))}
         </div>
       </section>
 
@@ -239,7 +242,7 @@ export default function LandingPage() {
           <h2 className="text-heading-lg mt-5">
             Most people prepare a speech in a Google Doc and read it aloud twice. Then they go and
             give it.{" "}
-            <span className="serif" style={{ color: "var(--color-phoenix-orange)" }}>
+            <span className="serif" style={{ color: "var(--color-accent)" }}>
               That&rsquo;s the whole rehearsal.
             </span>
           </h2>
