@@ -9,7 +9,7 @@ import Link from "next/link";
 import { DemoClient } from "./demo-client";
 
 export const metadata = {
-  title: "Try it — SpeechPrep",
+  title: "Try it | SpeechPrep",
   description:
     "Read your speech out loud once and get back your real timing, what you actually said versus what you wrote, and where it drags. No account needed.",
 };
