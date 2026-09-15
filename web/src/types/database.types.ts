@@ -1,13 +1,3 @@
-// Generated from the live Supabase schema via the Supabase MCP
-// `generate_typescript_types` tool. To regenerate after a migration: call
-// the MCP tool again and replace this file's body. Do not edit by hand.
-//
-// PENDING REGEN (2026-07-14): three hand-additions ahead of the
-// not-yet-applied migrations — `events` table + `profiles.attribution`
-// (20260714000100), `sessions.debited_at` (20260714100000), and
-// `speeches.event_date` (20260714120000). Regenerate this file once the
-// migrations are applied at integration and this note disappears.
-
 export type Json =
   | string
   | number
@@ -17,6 +7,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -74,7 +66,111 @@ export type Database = {
           summary?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_reports_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "session_summaries"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "ai_reports_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_reports_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "entitlements"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "ai_reports_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_sends: {
+        Row: {
+          created_at: string
+          error: string | null
+          id: string
+          resend_id: string | null
+          scheduled_for: string
+          sent_at: string | null
+          speech_id: string | null
+          status: string
+          subject_key: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          resend_id?: string | null
+          scheduled_for: string
+          sent_at?: string | null
+          speech_id?: string | null
+          status?: string
+          subject_key: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error?: string | null
+          id?: string
+          resend_id?: string | null
+          scheduled_for?: string
+          sent_at?: string | null
+          speech_id?: string | null
+          status?: string
+          subject_key?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_sends_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "email_sends_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "pending_speech_nudges"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "email_sends_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "speeches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sends_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "entitlements"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "email_sends_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       events: {
         Row: {
@@ -101,7 +197,22 @@ export type Database = {
           props?: Json
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "entitlements"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -110,6 +221,8 @@ export type Database = {
           current_period_end: string | null
           display_name: string | null
           email: string
+          email_bounced_at: string | null
+          email_unsubscribed_at: string | null
           id: string
           one_shot_speech_id: string | null
           plan: string
@@ -117,6 +230,8 @@ export type Database = {
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           subscription_status: string | null
+          timezone: string | null
+          unsubscribe_token: string
           updated_at: string
         }
         Insert: {
@@ -125,6 +240,8 @@ export type Database = {
           current_period_end?: string | null
           display_name?: string | null
           email: string
+          email_bounced_at?: string | null
+          email_unsubscribed_at?: string | null
           id: string
           one_shot_speech_id?: string | null
           plan?: string
@@ -132,6 +249,8 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string | null
+          timezone?: string | null
+          unsubscribe_token?: string
           updated_at?: string
         }
         Update: {
@@ -140,6 +259,8 @@ export type Database = {
           current_period_end?: string | null
           display_name?: string | null
           email?: string
+          email_bounced_at?: string | null
+          email_unsubscribed_at?: string | null
           id?: string
           one_shot_speech_id?: string | null
           plan?: string
@@ -147,9 +268,33 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string | null
+          timezone?: string | null
+          unsubscribe_token?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_one_shot_speech_id_fkey"
+            columns: ["one_shot_speech_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "profiles_one_shot_speech_id_fkey"
+            columns: ["one_shot_speech_id"]
+            isOneToOne: false
+            referencedRelation: "pending_speech_nudges"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "profiles_one_shot_speech_id_fkey"
+            columns: ["one_shot_speech_id"]
+            isOneToOne: false
+            referencedRelation: "speeches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       script_versions: {
         Row: {
@@ -176,37 +321,43 @@ export type Database = {
           summary?: string | null
           v?: number
         }
-        Relationships: []
-      }
-      sections: {
-        Row: {
-          body: string
-          created_at: string
-          id: string
-          name: string
-          position: number
-          script_version_id: string
-          target_seconds: number
-        }
-        Insert: {
-          body?: string
-          created_at?: string
-          id?: string
-          name?: string
-          position: number
-          script_version_id: string
-          target_seconds?: number
-        }
-        Update: {
-          body?: string
-          created_at?: string
-          id?: string
-          name?: string
-          position?: number
-          script_version_id?: string
-          target_seconds?: number
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "script_versions_parent_version_id_fkey"
+            columns: ["parent_version_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["script_version_id"]
+          },
+          {
+            foreignKeyName: "script_versions_parent_version_id_fkey"
+            columns: ["parent_version_id"]
+            isOneToOne: false
+            referencedRelation: "script_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "script_versions_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "script_versions_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "pending_speech_nudges"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "script_versions_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "speeches"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       section_metrics: {
         Row: {
@@ -257,7 +408,95 @@ export type Database = {
           word_start_idx?: number | null
           wpm?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "section_metrics_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["section_id"]
+          },
+          {
+            foreignKeyName: "section_metrics_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "sections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "section_metrics_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "session_summaries"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "section_metrics_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "section_metrics_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "entitlements"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "section_metrics_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sections: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          name: string
+          position: number
+          script_version_id: string
+          target_seconds: number
+        }
+        Insert: {
+          body?: string
+          created_at?: string
+          id?: string
+          name?: string
+          position: number
+          script_version_id: string
+          target_seconds?: number
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          script_version_id?: string
+          target_seconds?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sections_script_version_id_fkey"
+            columns: ["script_version_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["script_version_id"]
+          },
+          {
+            foreignKeyName: "sections_script_version_id_fkey"
+            columns: ["script_version_id"]
+            isOneToOne: false
+            referencedRelation: "script_versions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sessions: {
         Row: {
@@ -308,7 +547,57 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sessions_script_version_id_fkey"
+            columns: ["script_version_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["script_version_id"]
+          },
+          {
+            foreignKeyName: "sessions_script_version_id_fkey"
+            columns: ["script_version_id"]
+            isOneToOne: false
+            referencedRelation: "script_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "sessions_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "pending_speech_nudges"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "sessions_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "speeches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "entitlements"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       speeches: {
         Row: {
@@ -341,7 +630,22 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "speeches_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "entitlements"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "speeches_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transcripts: {
         Row: {
@@ -386,7 +690,36 @@ export type Database = {
           user_id?: string
           words?: Json
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "transcripts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "session_summaries"
+            referencedColumns: ["session_id"]
+          },
+          {
+            foreignKeyName: "transcripts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transcripts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "entitlements"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "transcripts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -404,7 +737,22 @@ export type Database = {
           title: string | null
           user_id: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "speeches_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "entitlements"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "speeches_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       entitlements: {
         Row: {
@@ -417,7 +765,80 @@ export type Database = {
           subscription_status: string | null
           user_id: string | null
         }
-        Relationships: []
+        Insert: {
+          current_period_end?: string | null
+          free_sessions_remaining?: never
+          is_entitled?: never
+          one_shot_speech_id?: string | null
+          plan?: string | null
+          sessions_used?: number | null
+          subscription_status?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          current_period_end?: string | null
+          free_sessions_remaining?: never
+          is_entitled?: never
+          one_shot_speech_id?: string | null
+          plan?: string | null
+          sessions_used?: number | null
+          subscription_status?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_one_shot_speech_id_fkey"
+            columns: ["one_shot_speech_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "profiles_one_shot_speech_id_fkey"
+            columns: ["one_shot_speech_id"]
+            isOneToOne: false
+            referencedRelation: "pending_speech_nudges"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "profiles_one_shot_speech_id_fkey"
+            columns: ["one_shot_speech_id"]
+            isOneToOne: false
+            referencedRelation: "speeches"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pending_speech_nudges: {
+        Row: {
+          current_version: number | null
+          display_name: string | null
+          email: string | null
+          event_date: string | null
+          last_session_at: string | null
+          occasion: string | null
+          speech_id: string | null
+          timezone: string | null
+          title: string | null
+          unsubscribe_token: string | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "speeches_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "entitlements"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "speeches_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       session_summaries: {
         Row: {
@@ -433,11 +854,195 @@ export type Database = {
           total_target_seconds: number | null
           user_id: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "sessions_script_version_id_fkey"
+            columns: ["script_version_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["script_version_id"]
+          },
+          {
+            foreignKeyName: "sessions_script_version_id_fkey"
+            columns: ["script_version_id"]
+            isOneToOne: false
+            referencedRelation: "script_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "current_script"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "sessions_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "pending_speech_nudges"
+            referencedColumns: ["speech_id"]
+          },
+          {
+            foreignKeyName: "sessions_speech_id_fkey"
+            columns: ["speech_id"]
+            isOneToOne: false
+            referencedRelation: "speeches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "entitlements"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
-    Functions: { [_ in never]: never }
-    Enums: { [_ in never]: never }
-    CompositeTypes: { [_ in never]: never }
+    Functions: {
+      reap_stuck_sessions: {
+        Args: never
+        Returns: {
+          reaped_count: number
+        }[]
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
 }
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never) = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never) = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
