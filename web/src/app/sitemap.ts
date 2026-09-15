@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
+import { ROLES } from "@/lib/roles";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
@@ -18,5 +19,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.9,
     },
+    // One page per wedding role. These are the money pages: search
+    // demand is by role, not by category (see ART-810).
+    ...ROLES.map((r) => ({
+      url: `${SITE_URL}/${r.slug}`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    })),
   ];
 }
