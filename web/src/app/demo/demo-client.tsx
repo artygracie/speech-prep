@@ -76,7 +76,11 @@ function fmt(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export function DemoClient() {
+// `embedded`: rendered inside another page's hero (the landing page). The
+// host owns the h1 and the intro, so the demo drops to h2 and skips its own
+// framing copy. Everything else is identical.
+export function DemoClient({ embedded = false }: { embedded?: boolean } = {}) {
+  const Heading = embedded ? "h2" : "h1";
   const [phase, setPhase] = useState<Phase>("read");
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -222,7 +226,7 @@ export function DemoClient() {
     return (
       <div style={{ display: "grid", gap: 28 }}>
         <div>
-          <h1 className="text-heading-lg">{result.report.headline}</h1>
+          <Heading className="text-heading-lg">{result.report.headline}</Heading>
           <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
             {timingLine}
           </p>
@@ -313,14 +317,16 @@ export function DemoClient() {
   const isRecording = phase === "recording";
   return (
     <div style={{ display: "grid", gap: 24 }}>
-      <div>
-        <h1 className="text-heading-lg">Read this out loud.</h1>
-        <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-          {`A best man speech, about ${fmt(SAMPLE_TARGET_SECONDS)} if you don\u2019t rush.`}{" "}
-          Read it the way you&rsquo;d actually say it and we&rsquo;ll tell you what it was really
-          like. No account, and the recording isn&rsquo;t saved.
-        </p>
-      </div>
+      {!embedded && (
+        <div>
+          <h1 className="text-heading-lg">Read this out loud.</h1>
+          <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
+            {`A best man speech, about ${fmt(SAMPLE_TARGET_SECONDS)} if you don\u2019t rush.`}{" "}
+            Read it the way you&rsquo;d actually say it and we&rsquo;ll tell you what it was really
+            like. No account, and the recording isn&rsquo;t saved.
+          </p>
+        </div>
+      )}
 
       <div
         style={{
