@@ -130,6 +130,13 @@ export function RolePage({ role }: { role: Role }) {
               See pricing
             </Link>
           </div>
+          <p className="text-body-sm mt-6" style={{ color: "var(--color-muted-ash)" }}>
+            Worried about remembering it?{" "}
+            <Link href="/how-to-memorize-a-speech" style={{ color: "var(--color-midnight-ink)" }}>
+              How to memorize a speech
+            </Link>
+            , with a five-day plan.
+          </p>
         </div>
       </section>
 
@@ -148,7 +155,7 @@ export function RolePage({ role }: { role: Role }) {
 
       <footer className="container-x" style={{ paddingBlock: 40, borderTop: "1px solid rgba(17,17,17,0.08)" }}>
         <p className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
-          SpeechPrep — practice your speech before you give it.
+          SpeechPrep. Practice your speech before you give it.
         </p>
       </footer>
     </main>

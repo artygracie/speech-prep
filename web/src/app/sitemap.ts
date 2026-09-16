@@ -21,6 +21,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     // One page per wedding role. These are the money pages: search
     // demand is by role, not by category (see ART-810).
+    // Content (ART-811). Funnels to /demo and the role pages; never a
+    // dead-end informational post (see the seo-launch-visibility playbook).
+    {
+      url: `${SITE_URL}/how-to-memorize-a-speech`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    },
     ...ROLES.map((r) => ({
       url: `${SITE_URL}/${r.slug}`,
       lastModified: now,
