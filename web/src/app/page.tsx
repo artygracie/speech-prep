@@ -10,8 +10,8 @@
 // The one thing the reference cannot do: its window holds a screenshot.
 // Ours holds the product, running.
 //
-// Accent appears exactly three times: the eyebrow dot, one wavy underline,
-// and the recording dot inside the demo. btn-primary is ink. No em-dashes.
+// Accent appears twice at rest (one wavy underline, the recording dot once
+// a take starts). btn-primary is ink. No em-dashes.
 
 import Image from "next/image";
 import Link from "next/link";
@@ -187,54 +187,35 @@ export default function LandingPage() {
           </nav>
           <div className="flex items-center gap-1">
             <Link href="/login" className="nav-link">Sign in</Link>
-            <a href="#try" className="btn-primary" style={{ padding: "9px 16px", fontSize: 14 }}>
+            <a href="#try" className="nav-cta">
               Try it
             </a>
           </div>
         </header>
 
         <main>
-          {/* Hero: centered stack, then the product in a window. */}
+          {/* Hero: headline, one line of copy, then the product in a window.
+              The ambient gradient runs from the very top of the page. */}
           <section className="relative" style={{ overflow: "hidden" }}>
-            <div className="rail-x hero-top" style={{ textAlign: "center" }}>
-              <span className="eyebrow reveal reveal-1">
-                <span className="dot" aria-hidden="true" />
-                <span className="hidden md:inline">For the best man, the maid of honor, and the parents</span>
-                <span className="md:hidden">For the wedding party</span>
-              </span>
-              <h1 className="text-display-serif mt-7 reveal reveal-2" style={{ maxWidth: "12ch", marginInline: "auto" }}>
+            <div className="hero-bg" aria-hidden="true" />
+            <div className="rail-x hero-top relative" style={{ textAlign: "center" }}>
+              <h1 className="text-display-marketing reveal reveal-1" style={{ maxWidth: "12ch", marginInline: "auto" }}>
                 Give your best speech.
               </h1>
               <p
-                className="mt-6 reveal reveal-3"
-                style={{ ...muted, fontSize: "clamp(17px, 1.4vw, 20px)", lineHeight: 1.45, maxWidth: "34rem", marginInline: "auto" }}
+                className="mt-6 reveal reveal-2"
+                style={{ ...muted, fontSize: "clamp(17px, 1.4vw, 20px)", lineHeight: 1.45, maxWidth: "36rem", marginInline: "auto" }}
               >
-                Read it out loud once. SpeechPrep gives you the timing, the lines you skipped,
-                and one thing to fix before the day.
+                Practice makes perfect. Write and practice your speech out loud with our live
+                coach to memorize your lines and time those laughs.
               </p>
-              <div className="mt-8 flex items-center justify-center gap-3 flex-wrap reveal reveal-4">
-                <a href="#try" className="btn-primary">Read one out loud</a>
-                <a href="#pricing" className="btn-light">See pricing</a>
-              </div>
-              <p className="mt-4 text-body-sm reveal reveal-4" style={muted}>
+              <p className="mt-5 text-body-sm reveal reveal-3" style={muted}>
                 About a minute. No account, nothing saved.
               </p>
             </div>
 
-            {/* The window. The gradient band sits behind its lower half, the
-                way the reference's photo does, and fades up into the page. */}
-            <div className="relative" style={{ marginTop: 56 }}>
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute", left: 0, right: 0, top: "40%", bottom: 0,
-                  background: "linear-gradient(to bottom, transparent, var(--color-whisper-gray))",
-                }}
-              />
-              <div className="hero-bg" aria-hidden="true" style={{ top: "40%" }} />
-              <div id="try" className="rail-x relative reveal reveal-5" style={{ scrollMarginTop: 88, paddingBottom: 72 }}>
-                <DemoClient variant="frame" />
-              </div>
+            <div id="try" className="rail-x relative reveal reveal-4" style={{ scrollMarginTop: 88, marginTop: 48, paddingBottom: 72 }}>
+              <DemoClient variant="frame" />
             </div>
           </section>
 
@@ -243,7 +224,7 @@ export default function LandingPage() {
             <div className="grid md:grid-cols-12 gap-8 items-end">
               <div className="md:col-span-7">
                 <span className="text-caption" style={muted}>After one read</span>
-                <h2 className="text-heading-serif mt-4">Three specific things come back.</h2>
+                <h2 className="text-heading-marketing mt-4">Three specific things come back.</h2>
               </div>
               <p className="md:col-span-4 md:col-start-9 text-body" style={muted}>
                 Each one is something you can act on tonight. The full breakdown is there when
@@ -288,7 +269,7 @@ export default function LandingPage() {
             <div className="grid md:grid-cols-12 gap-8 items-end">
               <div className="md:col-span-7">
                 <span className="text-caption" style={muted}>Written for the wedding party</span>
-                <h2 className="text-heading-serif mt-4">
+                <h2 className="text-heading-marketing mt-4">
                   Each role has its own shape, and its own way of{" "}
                   <span className="underline-wavy">going wrong</span>.
                 </h2>
@@ -319,7 +300,7 @@ export default function LandingPage() {
             <div className="grid md:grid-cols-12 gap-8 items-end">
               <div className="md:col-span-7">
                 <span className="text-caption" style={muted}>Pricing</span>
-                <h2 className="text-heading-serif mt-4">One speech, $24, once.</h2>
+                <h2 className="text-heading-marketing mt-4">One speech, $24, once.</h2>
               </div>
               <p className="md:col-span-4 md:col-start-9 text-body" style={muted}>
                 A human coach runs about $50 for half an hour. Your first full rehearsal is free,
@@ -366,7 +347,7 @@ export default function LandingPage() {
             <div className="grid md:grid-cols-12 gap-8">
               <div className="md:col-span-4">
                 <span className="text-caption" style={muted}>Questions</span>
-                <h2 className="text-heading-serif mt-4">Things people ask.</h2>
+                <h2 className="text-heading-marketing mt-4">Things people ask.</h2>
               </div>
               <div className="md:col-span-7 md:col-start-6">
                 {FAQS.map((f) => (

@@ -305,16 +305,16 @@ textarea.input { font-family: var(--font-script); line-height: 1.6; resize: vert
    Reverse-engineered from a reference template and re-expressed in house
    tokens. See .arty-ui/reviews/2026-09-16-landing-v2/plan.md. */
 
-/* Serif display for marketing headlines only. The guideline's one-word rule
-   holds inside the app; on the marketing surface the display face carries
-   the headline (decision logged in brands/speechprep.md). */
-.text-display-serif {
-  font-family: var(--font-serif); font-style: italic; font-weight: 400;
-  font-size: clamp(44px, 6vw, 76px); line-height: 1.0; letter-spacing: -0.02em;
+/* Marketing display type: heavy General Sans. Gracie rejected the serif
+   headline on 2026-09-16 ("thick sans, not Sentient"); the one-Sentient-word
+   rule stays for in-app headlines. */
+.text-display-marketing {
+  font-family: var(--font-sans); font-weight: 700;
+  font-size: clamp(44px, 6vw, 76px); line-height: 1.0; letter-spacing: -0.035em;
 }
-.text-heading-serif {
-  font-family: var(--font-serif); font-style: italic; font-weight: 400;
-  font-size: clamp(34px, 3.6vw, 48px); line-height: 1.06; letter-spacing: -0.015em;
+.text-heading-marketing {
+  font-family: var(--font-sans); font-weight: 700;
+  font-size: clamp(32px, 3.4vw, 44px); line-height: 1.06; letter-spacing: -0.025em;
 }
 
 /* Dashed side rails: the page's grid personality. Full height, hairline. */
@@ -332,11 +332,20 @@ textarea.input { font-family: var(--font-script); line-height: 1.6; resize: vert
   position: sticky; top: 12px; z-index: 50;
   margin-inline: auto; max-width: 880px; width: calc(100% - 32px);
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 8px 8px 8px 16px;
+  padding: 6px 6px 6px 18px;
   background: rgba(255,255,255,0.92);
   border: 1px solid rgba(17,17,17,0.08); border-radius: 999px;
   box-shadow: var(--shadow-subtle-3);
 }
+/* The nav's call to action: a pill inside the pill, sized to the nav's inner
+   height so its edge follows the container's curve instead of fighting it. */
+.nav-cta {
+  display: inline-flex; align-items: center; height: 36px; padding: 0 16px;
+  background: var(--color-midnight-ink); color: var(--color-canvas-white);
+  border-radius: 999px; font-size: 14px; font-weight: 500; letter-spacing: -0.005em;
+  transition: opacity 120ms ease;
+}
+.nav-cta:hover { opacity: 0.9; }
 
 /* Product window frame: the hero's second half. */
 .frame {
