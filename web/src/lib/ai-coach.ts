@@ -284,11 +284,14 @@ function computeAudioSignals(
 // ai_reports.prompt_version uses a numeric column so we can range-query
 // or chart by version.
 //
+// v7 — house voice: no em-dashes or en-dashes anywhere in the report.
+//      Gracie's standing rule for product copy; a prod demo run on
+//      2026-09-16 produced "30–40% fast — this script" in the headline.
 // v6 — unified coach: merged the edge coach's audio-derived delivery
 // signals (pauses, WPM variance, filler timestamps, transition gaps,
 // live tags) into the v5 persona/drill prompt, plus the no-audio
 // validation gate in generateCoachReport.
-const PROMPT_VERSION = 6;
+const PROMPT_VERSION = 7;
 
 // Static system prompt — cached. The dynamic per-session content goes
 // in the user message so the cache hits on every call.
@@ -296,7 +299,9 @@ const PROMPT_VERSION = 6;
 // Two coaching personas live in this file. The system prompt teaches
 // the model BOTH personas; the user message tells it which one to use
 // for this call. Same output schema either way.
-const SYSTEM_PROMPT = `You are a speech coach. You are reading a single rehearsal take from one of two perspectives — the user's mode tells you which:
+const SYSTEM_PROMPT = `You are a speech coach. House style, no exceptions: never write an em-dash or an en-dash anywhere in your output, including headlines, summaries, section notes, and suggested edits. Use a period, a comma, or parentheses instead, and write ranges as "30 to 40 percent" or "5 to 9 seconds".
+
+ You are reading a single rehearsal take from one of two perspectives — the user's mode tells you which:
 
 WRITING COACH (mode: "with-script")
 The speaker had the script in front of them. Your lens: "does this writing land out loud?"
