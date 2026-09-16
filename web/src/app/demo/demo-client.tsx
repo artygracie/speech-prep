@@ -7,6 +7,12 @@
 // The point is the part nothing else does: you read it, and something tells
 // you the truth about how it went.
 //
+// Two variants:
+//   "page"  — the /demo route. Stacked, its own h1.
+//   "frame" — the landing page hero. A product window: script on the left,
+//             a right-hand pane that is the live transcript while you read
+//             and the report when you stop. The host owns the h1.
+//
 // Nothing here touches Supabase. The recording is held in memory, POSTed
 // once to /api/demo/report, and dropped.
 
@@ -76,7 +82,12 @@ function fmt(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export function DemoClient() {
+const muted = { color: "var(--color-muted-ash)" } as const;
+
+export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } = {}) {
+  const framed = variant === "frame";
+  const Heading = framed ? "h2" : "h1";
+
   const [phase, setPhase] = useState<Phase>("read");
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -197,11 +208,51 @@ export function DemoClient() {
     }
   }
 
-  // ── Report ────────────────────────────────────────────────────────────
-  // One headline, one timing line, one thing to fix, one button. The full
-  // per-section breakdown and transcript sit behind a single disclosure.
-  // A first report that arrives as a wall of cards reads as homework.
-  if (phase === "report" && result) {
+  function reset() {
+    setResult(null);
+    setError(null);
+    setPhase("read");
+  }
+
+  const isRecording = phase === "recording";
+
+  // ── Shared pieces ─────────────────────────────────────────────────────
+
+  const script = (
+    <div style={{ display: "grid", gap: 14 }}>
+      {SAMPLE_SECTIONS.map((s) => (
+        <p key={s.name} className="text-body" style={{ lineHeight: 1.7 }}>
+          {s.body}
+        </p>
+      ))}
+    </div>
+  );
+
+  const recordingClock = (
+    <span
+      className="text-subheading num"
+      aria-live="polite"
+      style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+    >
+      <span
+        aria-hidden="true"
+        style={{ width: 8, height: 8, borderRadius: 999, background: "var(--color-accent)" }}
+      />
+      {fmt(elapsed)}
+    </span>
+  );
+
+  const errorLine = error && (
+    <p className="text-body-sm" style={{ color: "var(--color-leadgen-red)" }}>
+      {error}
+    </p>
+  );
+
+  // The report body. One headline, one timing line, one thing to fix, one
+  // button. The full breakdown and transcript sit behind one disclosure; a
+  // first report that arrives as a wall of cards reads as homework.
+  const reportBody = (() => {
+    if (!result) return null;
     const metricById = new Map(result.metrics.map((m) => [m.sectionId, m]));
     const total = result.metrics.reduce((a, m) => a + m.actualSeconds, 0);
     const drift = Math.round(total - SAMPLE_TARGET_SECONDS);
@@ -220,21 +271,23 @@ export function DemoClient() {
           : `${fmt(total)}, about ${-drift} seconds faster than it's written to run.`;
 
     return (
-      <div style={{ display: "grid", gap: 28 }}>
+      <div style={{ display: "grid", gap: 22 }}>
         <div>
-          <h1 className="text-heading-lg">{result.report.headline}</h1>
-          <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
+          <Heading className={framed ? "text-heading" : "text-heading-lg"}>
+            {result.report.headline}
+          </Heading>
+          <p className="text-body mt-3" style={muted}>
             {timingLine}
           </p>
         </div>
 
         {oneThing && (
-          <div className="card-bordered" style={{ padding: 22 }}>
-            <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+          <div className="card-bordered" style={{ padding: 20 }}>
+            <span className="text-caption" style={muted}>
               The one thing to fix{oneThingSection ? ` · ${oneThingSection.name}` : ""}
             </span>
             <p className="text-subheading mt-2">{oneThing.headline}</p>
-            <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
+            <p className="text-body-sm mt-2" style={muted}>
               {oneThing.what_to_work_on}
             </p>
           </div>
@@ -244,24 +297,13 @@ export function DemoClient() {
           <Link href="/login" className="btn-primary" onClick={() => beacon("demo_signup")}>
             Do this with my speech →
           </Link>
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => {
-              setResult(null);
-              setError(null);
-              setPhase("read");
-            }}
-          >
+          <button type="button" className="btn-ghost" onClick={reset}>
             Read it again
           </button>
         </div>
 
         <details>
-          <summary
-            className="text-caption"
-            style={{ color: "var(--color-muted-ash)", cursor: "pointer" }}
-          >
+          <summary className="text-caption" style={{ ...muted, cursor: "pointer" }}>
             Full breakdown
           </summary>
           <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
@@ -273,50 +315,141 @@ export function DemoClient() {
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                     <strong className="text-body">{section?.name ?? "Section"}</strong>
                     {m && (
-                      <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+                      <span className="text-caption" style={muted}>
                         {fmt(m.actualSeconds)}
                         {m.wpm ? ` · ${Math.round(m.wpm)} wpm` : ""}
                       </span>
                     )}
                   </div>
-                  <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
+                  <p className="text-body-sm mt-2" style={muted}>
                     {p.what_to_work_on}
                   </p>
                 </div>
               );
             })}
-            <p className="text-caption mt-2" style={{ color: "var(--color-muted-ash)" }}>
+            <p className="text-caption mt-2" style={muted}>
               What we heard
             </p>
-            <p className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
+            <p className="text-body-sm" style={muted}>
               {result.transcriptText}
             </p>
           </div>
         </details>
       </div>
     );
+  })();
+
+  // ── Frame variant: a product window ───────────────────────────────────
+  if (framed) {
+    const status =
+      phase === "recording"
+        ? recordingClock
+        : phase === "working"
+          ? "Listening back…"
+          : phase === "report"
+            ? "Report"
+            : "Ready";
+
+    const pane =
+      phase === "report" && reportBody ? (
+        reportBody
+      ) : phase === "working" ? (
+        <div style={{ display: "grid", gap: 10, alignContent: "center", minHeight: 320 }}>
+          <p className="text-subheading">Listening back…</p>
+          <p className="text-body-sm" style={muted}>
+            Timing what you said against the script. About twenty seconds.
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 20, alignContent: "start", height: "100%" }}>
+          <span className="text-caption" style={muted}>
+            What we&rsquo;re hearing
+          </span>
+          <div
+            aria-live="polite"
+            style={{ minHeight: 180, maxHeight: 320, overflowY: "auto", lineHeight: 1.7 }}
+            className="text-body"
+          >
+            {isRecording ? (
+              liveWords.length === 0 ? (
+                <span style={muted}>{streaming.status === "live" ? "Go ahead." : "Listening…"}</span>
+              ) : (
+                liveWords.join(" ")
+              )
+            ) : (
+              <span style={muted}>
+                Press start and read the script out loud. Your words land here as you say
+                them, and the report replaces this pane when you stop.
+              </span>
+            )}
+            <div ref={liveEndRef} />
+          </div>
+          {errorLine}
+          <div>
+            {isRecording ? (
+              <button type="button" className="btn-primary" onClick={stopRecording}>
+                Stop and hear how it went
+              </button>
+            ) : (
+              <button type="button" className="btn-primary" onClick={startRecording}>
+                Start reading
+              </button>
+            )}
+          </div>
+        </div>
+      );
+
+    return (
+      <div className="frame">
+        <div className="frame-bar">
+          <span className="frame-dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="text-body-sm" style={{ fontWeight: 500 }}>
+            {SAMPLE_TITLE}
+          </span>
+          <span className="text-caption" style={{ ...muted, marginLeft: "auto" }}>
+            {status}
+          </span>
+        </div>
+        <div className="frame-body">
+          <div className="frame-pane">
+            <span className="text-caption" style={{ ...muted, display: "block", marginBottom: 16 }}>
+              Script · about {fmt(SAMPLE_TARGET_SECONDS)}
+            </span>
+            {script}
+          </div>
+          <div className="frame-pane">{pane}</div>
+        </div>
+      </div>
+    );
   }
 
-  // ── Working ───────────────────────────────────────────────────────────
+  // ── Page variant ──────────────────────────────────────────────────────
+
+  if (phase === "report" && reportBody) {
+    return reportBody;
+  }
+
   if (phase === "working") {
     return (
       <div style={{ display: "grid", gap: 12, justifyItems: "center", padding: "96px 0" }}>
         <p className="text-subheading">Listening back…</p>
-        <p className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
+        <p className="text-body-sm" style={muted}>
           Timing what you said against the script. About twenty seconds.
         </p>
       </div>
     );
   }
 
-  // ── Read / recording ──────────────────────────────────────────────────
-  const isRecording = phase === "recording";
   return (
     <div style={{ display: "grid", gap: 24 }}>
       <div>
         <h1 className="text-heading-lg">Read this out loud.</h1>
-        <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-          {`A best man speech, about ${fmt(SAMPLE_TARGET_SECONDS)} if you don\u2019t rush.`}{" "}
+        <p className="text-body mt-3" style={muted}>
+          {`A best man speech, about ${fmt(SAMPLE_TARGET_SECONDS)} if you don’t rush.`}{" "}
           Read it the way you&rsquo;d actually say it and we&rsquo;ll tell you what it was really
           like. No account, and the recording isn&rsquo;t saved.
         </p>
@@ -331,37 +464,24 @@ export function DemoClient() {
         }}
       >
         <div className="card-bordered" style={{ padding: 24, display: "grid", gap: 16 }}>
-          <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+          <span className="text-caption" style={muted}>
             {SAMPLE_TITLE}
           </span>
-          {SAMPLE_SECTIONS.map((s) => (
-            <p key={s.name} className="text-body" style={{ lineHeight: 1.7 }}>
-              {s.body}
-            </p>
-          ))}
+          {script}
         </div>
 
         {isRecording && (
           <div
             className="card-bordered"
             aria-live="polite"
-            style={{
-              padding: 24,
-              minHeight: 200,
-              maxHeight: 420,
-              overflowY: "auto",
-              position: "sticky",
-              top: 24,
-            }}
+            style={{ padding: 24, minHeight: 200, maxHeight: 420, overflowY: "auto", position: "sticky", top: 24 }}
           >
-            <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+            <span className="text-caption" style={muted}>
               What we&rsquo;re hearing
             </span>
             <p className="text-body mt-3" style={{ lineHeight: 1.7 }}>
               {liveWords.length === 0 ? (
-                <span style={{ color: "var(--color-muted-ash)" }}>
-                  {streaming.status === "live" ? "Go ahead." : "Listening…"}
-                </span>
+                <span style={muted}>{streaming.status === "live" ? "Go ahead." : "Listening…"}</span>
               ) : (
                 liveWords.join(" ")
               )}
@@ -371,11 +491,7 @@ export function DemoClient() {
         )}
       </div>
 
-      {error && (
-        <p className="text-body-sm" style={{ color: "var(--color-leadgen-red)" }}>
-          {error}
-        </p>
-      )}
+      {errorLine}
 
       <div
         style={{
@@ -392,22 +508,7 @@ export function DemoClient() {
             <button type="button" className="btn-primary" onClick={stopRecording}>
               Stop and hear how it went
             </button>
-            <span
-              className="text-subheading"
-              aria-live="polite"
-              style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 999,
-                  background: "var(--color-leadgen-red)",
-                }}
-              />
-              {fmt(elapsed)}
-            </span>
+            {recordingClock}
           </>
         ) : (
           <button type="button" className="btn-primary" onClick={startRecording}>

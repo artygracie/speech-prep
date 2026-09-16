@@ -24,11 +24,11 @@ const sentient = localFont({
   display: "swap",
 });
 
-const TITLE = "SpeechPrep — Practice your speech before you give it.";
+const TITLE = "SpeechPrep | Practice your speech before you give it";
 const DESCRIPTION =
-  "Practice your speech with AI feedback. Upload the script, record yourself, and see — to the second — which sections ran long, which lines you skipped, and which off-script moments landed better than what you wrote.";
+  "Read your speech out loud once and see the timing, the lines you skipped, and one thing to fix. Built for best man, maid of honor, and parent speeches. Try it on a sample, no account needed.";
 const OG_DESCRIPTION =
-  "AI rehearsal for prepared speech. Upload the script, record yourself, and see — to the second — what landed and what didn't.";
+  "Read your wedding speech out loud once and find out what it actually sounds like. Timing, skipped lines, one thing to fix.";
 
 export const metadata: Metadata = {
   title: TITLE,
