@@ -547,15 +547,20 @@ export function nextNudge(
 // Pulls the rows the engine needs in one place so page handlers stay
 // thin. Lives here so the engine + its data shape evolve together.
 
-import type { createClient as createServerClient } from "./supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database.types";
 import { resolveMode } from "./modes";
 import { buildDiff, coalesceDiff, computeMemoryCheck } from "./alignment";
 import type { TranscriptWord, ScriptSection } from "./alignment";
 
-type ServerClient = Awaited<ReturnType<typeof createServerClient>>;
+// Either Supabase client works: the cookie-bound server client (RLS
+// enforced, used by pages) or the service-role admin client (used by the
+// lifecycle cron, which has no user session). The queries below are
+// identical either way, so the gatherer is shared rather than duplicated.
+type AnySupabase = SupabaseClient<Database>;
 
 export async function gatherSpeechSignals(
-  supabase: ServerClient,
+  supabase: AnySupabase,
   speechId: string,
 ): Promise<RecommendationInput> {
   // Speech: current_version drives the session filter; event_date

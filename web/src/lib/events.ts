@@ -18,6 +18,11 @@ export const EVENT_NAMES = [
   "checkout_opened", // Stripe checkout session created (WS-B via trackCheckoutOpened)
   "purchase_completed", // billing success page, verified against Stripe
 
+  // Lifecycle email (ART-809). Written server-side by the cron sweep and
+  // the unsubscribe route; never beaconed from the client.
+  "email_sent", // props: { subject_key, phase, speech_id }
+  "email_unsubscribed",
+
   // Reserved for Wave 2 (public demo + OAuth) — listed now so the allowlist
   // never needs a deploy to start accepting them.
   "demo_started",
