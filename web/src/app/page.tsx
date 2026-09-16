@@ -168,6 +168,7 @@ export default function LandingPage() {
       />
 
       <div className="rail">
+        <div className="hero-bg" aria-hidden="true" />
         {/* Floating pill nav */}
         <header className="nav-pill">
           <Link href="/" aria-label="SpeechPrep home" className="flex items-center">
@@ -196,8 +197,7 @@ export default function LandingPage() {
         <main>
           {/* Hero: headline, one line of copy, then the product in a window.
               The ambient gradient runs from the very top of the page. */}
-          <section className="relative" style={{ overflow: "hidden" }}>
-            <div className="hero-bg" aria-hidden="true" />
+          <section className="relative">
             <div className="rail-x hero-top relative" style={{ textAlign: "center" }}>
               <h1 className="text-display-marketing reveal reveal-1" style={{ maxWidth: "12ch", marginInline: "auto" }}>
                 Give your best speech.
