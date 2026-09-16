@@ -45,6 +45,11 @@ type Hook = {
 
 type Opts = {
   onWord: (w: StreamingWord) => void;
+  // Where to get the short-lived Deepgram token. Defaults to the authed
+  // edge function, which needs a Supabase session. The anonymous demo
+  // passes its own rate-limited endpoint instead — this is the only auth
+  // coupling in the hook, so it is the only thing the demo overrides.
+  getToken?: () => Promise<{ token: string; expiresIn?: number }>;
   // Called when the connection drops mid-recording. The recorder
   // should keep capturing locally — we still upload the full audio
   // blob on stop, and the post-recording transcribe job will produce
@@ -88,6 +93,12 @@ export function useStreamingTranscription(opts: Opts): Hook {
 
   // ----- Token fetch -----
   const fetchToken = useCallback(async (): Promise<string> => {
+    const custom = optsRef.current.getToken;
+    if (custom) {
+      const { token, expiresIn } = await custom();
+      tokenExpiresAtRef.current = Date.now() + (expiresIn ?? 60) * 1000;
+      return token;
+    }
     const supabase = createClient();
     const {
       data: { session },

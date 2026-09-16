@@ -13,6 +13,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_AUDIO_SECONDS } from "@/lib/demo-config";
+import { useStreamingTranscription } from "@/lib/use-streaming-transcription";
 import {
   SAMPLE_SECTIONS,
   SAMPLE_TARGET_SECONDS,
@@ -80,6 +81,11 @@ export function DemoClient() {
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DemoResult | null>(null);
+  // Live transcript: final words only, as they arrive. Interim results
+  // flicker and get rewritten, which reads as the tool being unsure of
+  // itself. Final words land once and stay.
+  const [liveWords, setLiveWords] = useState<string[]>([]);
+  const liveEndRef = useRef<HTMLDivElement | null>(null);
 
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -96,9 +102,26 @@ export function DemoClient() {
 
   useEffect(() => cleanup, [cleanup]);
 
+  const streaming = useStreamingTranscription({
+    onWord: (w) => {
+      if (w.isFinal) setLiveWords((prev) => [...prev, w.word]);
+    },
+    getToken: async () => {
+      const res = await fetch("/api/demo/stream-token", { method: "POST" });
+      if (!res.ok) throw new Error(`stream token ${res.status}`);
+      return (await res.json()) as { token: string; expiresIn?: number };
+    },
+  });
+
+  // Keep the newest words in view as they arrive.
+  useEffect(() => {
+    liveEndRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [liveWords.length]);
+
   const stopRecording = useCallback(() => {
     if (tickRef.current) clearInterval(tickRef.current);
     tickRef.current = null;
+    streaming.stop();
     try {
       recRef.current?.stop();
     } catch {
@@ -106,6 +129,7 @@ export function DemoClient() {
       setError("Recording stopped unexpectedly. Try again.");
       setPhase("read");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `streaming` is a stable hook object
   }, [cleanup]);
 
   async function submit(audio: Blob) {
@@ -153,8 +177,12 @@ export function DemoClient() {
       recRef.current = rec;
       rec.start(1000);
       setElapsed(0);
+      setLiveWords([]);
       setPhase("recording");
       beacon("demo_started");
+      // Live words are a nice-to-have. If the socket fails the recording
+      // continues and the report still comes from the full audio.
+      void streaming.start(stream).catch(() => {});
 
       const startedAt = Date.now();
       tickRef.current = setInterval(() => {
@@ -170,92 +198,63 @@ export function DemoClient() {
   }
 
   // ── Report ────────────────────────────────────────────────────────────
+  // One headline, one timing line, one thing to fix, one button. The full
+  // per-section breakdown and transcript sit behind a single disclosure.
+  // A first report that arrives as a wall of cards reads as homework.
   if (phase === "report" && result) {
     const metricById = new Map(result.metrics.map((m) => [m.sectionId, m]));
     const total = result.metrics.reduce((a, m) => a + m.actualSeconds, 0);
-    const drift = total - SAMPLE_TARGET_SECONDS;
+    const drift = Math.round(total - SAMPLE_TARGET_SECONDS);
+    const rank = { high: 0, med: 1, low: 2 } as const;
+    const oneThing = [...result.report.per_section].sort(
+      (a, b) => rank[a.severity] - rank[b.severity],
+    )[0];
+    const oneThingSection = oneThing
+      ? SAMPLE_SECTIONS[Number(oneThing.section_id.replace("demo-", ""))]
+      : undefined;
+    const timingLine =
+      Math.abs(drift) < 5
+        ? `${fmt(total)}, right on pace.`
+        : drift > 0
+          ? `${fmt(total)}, about ${drift} seconds slower than it's written to run.`
+          : `${fmt(total)}, about ${-drift} seconds faster than it's written to run.`;
 
     return (
       <div style={{ display: "grid", gap: 28 }}>
         <div>
-          <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-            How that went
-          </span>
-          <h1 className="text-heading-lg mt-2">{result.report.headline}</h1>
+          <h1 className="text-heading-lg">{result.report.headline}</h1>
           <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
-            {result.report.summary}
+            {timingLine}
           </p>
         </div>
 
-        <div className="card-bordered" style={{ padding: 18 }}>
-          <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
-            <Stat label="You took" value={fmt(total)} />
-            <Stat label="Written to run" value={fmt(SAMPLE_TARGET_SECONDS)} />
-            <Stat
-              label={drift >= 0 ? "Slower by" : "Faster by"}
-              value={fmt(Math.abs(drift))}
-            />
+        {oneThing && (
+          <div className="card-bordered" style={{ padding: 22 }}>
+            <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+              The one thing to fix{oneThingSection ? ` · ${oneThingSection.name}` : ""}
+            </span>
+            <p className="text-subheading mt-2">{oneThing.headline}</p>
+            <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
+              {oneThing.what_to_work_on}
+            </p>
           </div>
-        </div>
+        )}
 
-        <div style={{ display: "grid", gap: 12 }}>
-          {result.report.per_section.map((p) => {
-            const idx = Number(p.section_id.replace("demo-", ""));
-            const section = SAMPLE_SECTIONS[idx];
-            const m = metricById.get(p.section_id);
-            return (
-              <div key={p.section_id} className="card-bordered" style={{ padding: 18 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                    gap: 12,
-                  }}
-                >
-                  <strong className="text-subheading">{section?.name ?? "Section"}</strong>
-                  {m && (
-                    <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-                      {fmt(m.actualSeconds)}
-                      {m.wpm ? ` · ${Math.round(m.wpm)} wpm` : ""}
-                      {m.fillerCount ? ` · ${m.fillerCount} filler` : ""}
-                    </span>
-                  )}
-                </div>
-                <p className="text-body-sm mt-2">{p.headline}</p>
-                <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
-                  {p.what_to_work_on}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-
-        <div
-          className="card-bordered"
-          style={{ padding: 22, borderColor: "rgba(71,208,150,0.4)" }}
-        >
-          <p className="text-subheading">Now do that with the speech you have to give.</p>
-          <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
-            Bring your own script and rehearse it as many times as you like. Speeches settle on
-            the fourth or fifth run, not the first.
-          </p>
-          <div className="mt-4" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <Link href="/login" className="btn-primary" onClick={() => beacon("demo_signup")}>
-              Start with my speech →
-            </Link>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => {
-                setResult(null);
-                setError(null);
-                setPhase("read");
-              }}
-            >
-              Read it again
-            </button>
-          </div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <Link href="/login" className="btn-primary" onClick={() => beacon("demo_signup")}>
+            Do this with my speech →
+          </Link>
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => {
+              setResult(null);
+              setError(null);
+              setPhase("read");
+            }}
+          >
+            Read it again
+          </button>
         </div>
 
         <details>
@@ -263,11 +262,36 @@ export function DemoClient() {
             className="text-caption"
             style={{ color: "var(--color-muted-ash)", cursor: "pointer" }}
           >
-            What we heard
+            Full breakdown
           </summary>
-          <p className="text-body-sm mt-3" style={{ color: "var(--color-muted-ash)" }}>
-            {result.transcriptText}
-          </p>
+          <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+            {result.report.per_section.map((p) => {
+              const section = SAMPLE_SECTIONS[Number(p.section_id.replace("demo-", ""))];
+              const m = metricById.get(p.section_id);
+              return (
+                <div key={p.section_id} className="card-bordered" style={{ padding: 16 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <strong className="text-body">{section?.name ?? "Section"}</strong>
+                    {m && (
+                      <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+                        {fmt(m.actualSeconds)}
+                        {m.wpm ? ` · ${Math.round(m.wpm)} wpm` : ""}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
+                    {p.what_to_work_on}
+                  </p>
+                </div>
+              );
+            })}
+            <p className="text-caption mt-2" style={{ color: "var(--color-muted-ash)" }}>
+              What we heard
+            </p>
+            <p className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
+              {result.transcriptText}
+            </p>
+          </div>
         </details>
       </div>
     );
@@ -298,15 +322,53 @@ export function DemoClient() {
         </p>
       </div>
 
-      <div className="card-bordered" style={{ padding: 24, display: "grid", gap: 16 }}>
-        <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-          {SAMPLE_TITLE}
-        </span>
-        {SAMPLE_SECTIONS.map((s) => (
-          <p key={s.name} className="text-body" style={{ lineHeight: 1.7 }}>
-            {s.body}
-          </p>
-        ))}
+      <div
+        style={{
+          display: "grid",
+          gap: 16,
+          gridTemplateColumns: isRecording ? "repeat(auto-fit, minmax(280px, 1fr))" : "1fr",
+          alignItems: "start",
+        }}
+      >
+        <div className="card-bordered" style={{ padding: 24, display: "grid", gap: 16 }}>
+          <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+            {SAMPLE_TITLE}
+          </span>
+          {SAMPLE_SECTIONS.map((s) => (
+            <p key={s.name} className="text-body" style={{ lineHeight: 1.7 }}>
+              {s.body}
+            </p>
+          ))}
+        </div>
+
+        {isRecording && (
+          <div
+            className="card-bordered"
+            aria-live="polite"
+            style={{
+              padding: 24,
+              minHeight: 200,
+              maxHeight: 420,
+              overflowY: "auto",
+              position: "sticky",
+              top: 24,
+            }}
+          >
+            <span className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
+              What we&rsquo;re hearing
+            </span>
+            <p className="text-body mt-3" style={{ lineHeight: 1.7 }}>
+              {liveWords.length === 0 ? (
+                <span style={{ color: "var(--color-muted-ash)" }}>
+                  {streaming.status === "live" ? "Go ahead." : "Listening…"}
+                </span>
+              ) : (
+                liveWords.join(" ")
+              )}
+            </p>
+            <div ref={liveEndRef} />
+          </div>
+        )}
       </div>
 
       {error && (
@@ -353,17 +415,6 @@ export function DemoClient() {
           </button>
         )}
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-caption" style={{ color: "var(--color-muted-ash)" }}>
-        {label}
-      </div>
-      <div className="text-subheading mt-1">{value}</div>
     </div>
   );
 }
