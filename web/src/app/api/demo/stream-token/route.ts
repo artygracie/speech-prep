@@ -39,8 +39,12 @@ export async function POST(req: Request): Promise<Response> {
       signal: AbortSignal.timeout(10_000),
     });
     if (!grant.ok) {
-      console.error("[demo/stream-token] grant failed:", grant.status);
-      return Response.json({ error: "grant_failed" }, { status: 502 });
+      // Deepgram's error body names the reason (a 403 here means the key can
+      // transcribe but lacks the scope to mint grants). It never echoes the
+      // key, so logging it is safe and saves a round of guessing.
+      const detail = await grant.text().catch(() => "");
+      console.error(`[demo/stream-token] grant failed: ${grant.status} ${detail.slice(0, 200)}`);
+      return Response.json({ error: "grant_failed", status: grant.status }, { status: 502 });
     }
     const { access_token, expires_in } = (await grant.json()) as {
       access_token?: string;
