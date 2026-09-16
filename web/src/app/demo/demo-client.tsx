@@ -175,18 +175,39 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
       rec.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
+      const startedAtMs = Date.now();
       rec.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: mimeType || "audio/webm" });
+        const tookMs = Date.now() - startedAtMs;
         cleanup();
+        // Diagnostics for the empty-recording report from production on
+        // 2026-09-16. Cheap, and the only way to tell a sub-second tap from a
+        // browser that produced no data.
+        console.info("[demo] recording stopped", {
+          bytes: blob.size,
+          chunks: chunksRef.current.length,
+          mimeType: mimeType || "(default)",
+          tookMs,
+        });
+        if (tookMs < 1500) {
+          setError("That was under two seconds. Read at least the first line, then stop.");
+          setPhase("read");
+          return;
+        }
         if (blob.size === 0) {
-          setError("That recording came back empty. Try again.");
+          setError(
+            "Your browser didn't hand us any audio. Check the mic is allowed for this site, or try Chrome.",
+          );
           setPhase("read");
           return;
         }
         void submit(blob);
       };
       recRef.current = rec;
-      rec.start(1000);
+      // No timeslice. With one, Safari can deliver empty chunks and only the
+      // final one carries data; without one, a single dataavailable fires on
+      // stop with the whole recording. Nothing here needs progressive chunks.
+      rec.start();
       setElapsed(0);
       setLiveWords([]);
       setPhase("recording");

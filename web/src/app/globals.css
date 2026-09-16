@@ -308,9 +308,11 @@ textarea.input { font-family: var(--font-script); line-height: 1.6; resize: vert
 /* Marketing display type: heavy General Sans. Gracie rejected the serif
    headline on 2026-09-16 ("thick sans, not Sentient"); the one-Sentient-word
    rule stays for in-app headlines. */
+/* Larger and lighter than 700/-0.035em, which read dense on production:
+   600 with easier tracking lets the letterforms breathe at 90px. */
 .text-display-marketing {
-  font-family: var(--font-sans); font-weight: 700;
-  font-size: clamp(44px, 6vw, 76px); line-height: 1.0; letter-spacing: -0.035em;
+  font-family: var(--font-sans); font-weight: 600;
+  font-size: clamp(48px, 6.6vw, 90px); line-height: 0.98; letter-spacing: -0.022em;
 }
 .text-heading-marketing {
   font-family: var(--font-sans); font-weight: 700;
@@ -318,7 +320,11 @@ textarea.input { font-family: var(--font-script); line-height: 1.6; resize: vert
 }
 
 /* Dashed side rails: the page's grid personality. Full height, hairline. */
-.rail { max-width: 1280px; margin-inline: auto; }
+.rail { max-width: 1280px; margin-inline: auto; position: relative; }
+/* The ambient gradient belongs to the page top, behind the nav, not to
+   the hero section that starts under it. Capped to the first screen so it
+   doesn't wash the whole page. */
+.rail > .hero-bg { height: 100vh; }
 @media (min-width: 768px) {
   .rail { border-inline: 1px dashed rgba(17,17,17,0.14); }
 }
