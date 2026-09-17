@@ -41,7 +41,6 @@ import { isFillerWord, type TranscriptWord } from "./alignment";
 import type { SessionMode } from "./modes";
 
 const MODEL = "claude-sonnet-4-6";
-export const FAST_MODEL = "claude-haiku-4-5-20251001";
 
 let _client: Anthropic | null = null;
 let _missingKeyWarned = false;
@@ -459,10 +458,9 @@ function claimsNoAudio(report: CoachReport): boolean {
 
 export async function generateCoachReport(
   input: CoachInput,
-  // `model` lets a caller trade depth for latency. The anonymous demo uses
-  // the fast tier: a visitor is watching a spinner, and a one-minute sample
-  // doesn't need the full model.
-  { model = MODEL }: { model?: string } = {},
+  // `brief` asks for only the fields a compact surface shows. Output tokens
+  // are the latency, and the demo renders about half of a full report.
+  { brief = false }: { brief?: boolean } = {},
 ): Promise<CoachReport | null> {
   const c = client();
   if (!c) return null;
@@ -478,9 +476,10 @@ export async function generateCoachReport(
   const hasSpeech = transcriptText.trim().length > 0;
   const hardened: CoachInput = { ...input, transcriptText };
 
-  const userMessage = personaPrefix(input.mode) + buildUserMessage(hardened);
+  const userMessage =
+    personaPrefix(input.mode) + buildUserMessage(hardened) + (brief ? BRIEF_SUFFIX : "");
 
-  const first = await callCoachModel(c, userMessage, model);
+  const first = await callCoachModel(c, userMessage);
   if (!first) return null;
   if (!hasSpeech || !claimsNoAudio(first)) return first;
 
@@ -496,7 +495,6 @@ export async function generateCoachReport(
     `${userMessage}
 
 REALITY CHECK: audio WAS recorded and transcribed for this session — the transcript above contains ${input.words.length} timed words. Do NOT claim that no audio was recorded or that the transcript is empty. If the script sections are blank, coach the delivery you can hear in the transcript and suggest the speaker write the script down.`,
-    model,
   );
   if (retry && !claimsNoAudio(retry)) return retry;
 
@@ -507,15 +505,18 @@ REALITY CHECK: audio WAS recorded and transcribed for this session — the trans
   return null;
 }
 
+const BRIEF_SUFFIX = `
+
+BRIEF MODE: this report is shown in a compact view. Keep the same JSON shape, but return "summary" as one short sentence, "what_landed" as "" for every section, and "suggested_edits" as []. Keep each "what_to_work_on" to two sentences. Never use an em-dash or en-dash.`;
+
 // One model round-trip: call, parse, validate shape, clamp headline.
 async function callCoachModel(
   c: Anthropic,
   userMessage: string,
-  model: string,
 ): Promise<CoachReport | null> {
   try {
     const res = await c.messages.create({
-      model,
+      model: MODEL,
       max_tokens: 4096,
       system: [
         {

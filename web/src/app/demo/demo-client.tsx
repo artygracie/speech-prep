@@ -499,7 +499,7 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
         <div style={{ display: "grid", gap: 10, alignContent: "center", minHeight: 320 }}>
           <p className="text-subheading">Listening back…</p>
           <p className="text-body-sm" style={muted}>
-            Timing what you said against the script. About twenty seconds.
+            Timing what you said against the script. About fifteen seconds.
           </p>
         </div>
       ) : (
@@ -607,7 +607,7 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
       <div style={{ display: "grid", gap: 12, justifyItems: "center", padding: "96px 0" }}>
         <p className="text-subheading">Listening back…</p>
         <p className="text-body-sm" style={muted}>
-          Timing what you said against the script. About twenty seconds.
+          Timing what you said against the script. About fifteen seconds.
         </p>
       </div>
     );

@@ -23,7 +23,7 @@ import {
   computeSectionMetrics,
   type ScriptSection,
 } from "@/lib/alignment";
-import { FAST_MODEL, generateCoachReport, type CoachInput } from "@/lib/ai-coach";
+import { generateCoachReport, type CoachInput } from "@/lib/ai-coach";
 import { DeepgramUnavailableError, transcribeBuffer } from "@/lib/deepgram";
 import { MAX_AUDIO_BYTES } from "@/lib/demo-config";
 import { allowIp, clientIp, withinGlobalDailyCap } from "@/lib/demo-limits";
@@ -103,7 +103,9 @@ export async function POST(req: Request): Promise<Response> {
 
   try {
     const buf = await audio.arrayBuffer();
+    const t0 = Date.now();
     const { text, words } = await transcribeBuffer(buf, contentType);
+    const transcribeMs = Date.now() - t0;
 
     if (words.length === 0) {
       return json(
@@ -157,7 +159,10 @@ export async function POST(req: Request): Promise<Response> {
       diffCounts: { matched, paraphrased, skipped, improvised },
     };
 
-    const report = await generateCoachReport(input, { model: FAST_MODEL });
+    const t1 = Date.now();
+    const report = await generateCoachReport(input, { brief: true });
+    // Where the visitor's wait goes. No content, just durations.
+    console.info("[demo] report timing", { transcribeMs, coachMs: Date.now() - t1 });
     if (!report) {
       console.error("[demo/report] coach returned null", {
         hasApiKey: !!process.env.ANTHROPIC_API_KEY,
