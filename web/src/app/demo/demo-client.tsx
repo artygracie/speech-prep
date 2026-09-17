@@ -17,7 +17,7 @@
 // once to /api/demo/report, and dropped.
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MAX_AUDIO_SECONDS } from "@/lib/demo-config";
 import { useStreamingTranscription } from "@/lib/use-streaming-transcription";
 import {
@@ -84,6 +84,98 @@ function fmt(seconds: number): string {
 
 const muted = { color: "var(--color-muted-ash)" } as const;
 
+// ── Script follow-along ─────────────────────────────────────────────────
+// The script is tokenised once so each word has a global index. While the
+// live transcript is running, words up to the reader's position stay ink and
+// the rest fall back to muted, so the two panes read as one instrument.
+
+const norm = (w: string) => w.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const SCRIPT_TOKENS = (() => {
+  let index = 0;
+  return SAMPLE_SECTIONS.map((section) =>
+    section.body.split(/(\s+)/).map((text) => {
+      const key = norm(text);
+      return key ? { text, key, index: index++ } : { text, key, index: -1 };
+    }),
+  );
+})();
+const SCRIPT_KEYS = SCRIPT_TOKENS.flat()
+  .filter((t) => t.index >= 0)
+  .map((t) => t.key);
+
+// How far ahead a heard word may match. Wide enough to survive a skipped
+// phrase, narrow enough that a common word ("the") can't jump a paragraph.
+const LOOKAHEAD = 8;
+
+function readerPosition(heard: string[]): number {
+  let pos = 0;
+  for (const word of heard) {
+    const key = norm(word);
+    if (!key) continue;
+    const limit = Math.min(SCRIPT_KEYS.length, pos + LOOKAHEAD);
+    for (let j = pos; j < limit; j++) {
+      if (SCRIPT_KEYS[j] === key) {
+        pos = j + 1;
+        break;
+      }
+    }
+  }
+  return pos;
+}
+
+const METER_BARS = 16;
+
+// Mic level meter. Bars are driven straight from an AnalyserNode through
+// refs, so a 60fps meter costs no React renders. It only moves while the
+// reader is making sound, which keeps it inside the brand's motion rule.
+function LevelMeter({ stream }: { stream: MediaStream | null }) {
+  const barsRef = useRef<(HTMLElement | null)[]>([]);
+
+  useEffect(() => {
+    if (!stream) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const bars = barsRef.current;
+    const ctx = new AudioContext();
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 64;
+    analyser.smoothingTimeConstant = 0.75;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    let raf = 0;
+    const draw = () => {
+      analyser.getByteFrequencyData(data);
+      bars.forEach((bar, i) => {
+        if (bar) bar.style.transform = `scaleY(${Math.max(0.1, data[i + 1] / 255)})`;
+      });
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => {
+      cancelAnimationFrame(raf);
+      source.disconnect();
+      void ctx.close();
+      bars.forEach((bar) => {
+        if (bar) bar.style.transform = "";
+      });
+    };
+  }, [stream]);
+
+  return (
+    <span className="rec-meter" data-live={stream ? "" : undefined} aria-hidden="true">
+      {Array.from({ length: METER_BARS }, (_, i) => (
+        <i
+          key={i}
+          ref={(el) => {
+            barsRef.current[i] = el;
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } = {}) {
   const framed = variant === "frame";
   const Heading = framed ? "h2" : "h1";
@@ -101,6 +193,8 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  // The same stream, as state, so the level meter can subscribe to it.
+  const [micStream, setMicStream] = useState<MediaStream | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const cleanup = useCallback(() => {
@@ -108,6 +202,7 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
     tickRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    setMicStream(null);
     recRef.current = null;
   }, []);
 
@@ -169,6 +264,7 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
+      setMicStream(stream);
       const mimeType = pickMimeType();
       const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       chunksRef.current = [];
@@ -239,11 +335,24 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
 
   // ── Shared pieces ─────────────────────────────────────────────────────
 
+  // Follow along only when live words are actually arriving. If the socket
+  // failed, the script stays fully ink rather than sitting dimmed forever.
+  const following = isRecording && streaming.status === "live";
+  const position = useMemo(() => readerPosition(liveWords), [liveWords]);
+
   const script = (
     <div style={{ display: "grid", gap: 14 }}>
-      {SAMPLE_SECTIONS.map((s) => (
-        <p key={s.name} className="text-body" style={{ lineHeight: 1.7 }}>
-          {s.body}
+      {SAMPLE_SECTIONS.map((s, i) => (
+        <p key={s.name} className="text-body script-line" style={{ lineHeight: 1.7 }}>
+          {SCRIPT_TOKENS[i].map((t, j) =>
+            t.index < 0 ? (
+              t.text
+            ) : (
+              <span key={j} data-ahead={following && t.index >= position ? "" : undefined}>
+                {t.text}
+              </span>
+            ),
+          )}
         </p>
       ))}
     </div>
@@ -382,40 +491,65 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
           </p>
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 20, alignContent: "start", height: "100%" }}>
-          <span className="text-caption" style={muted}>
-            What we&rsquo;re hearing
-          </span>
-          <div
-            aria-live="polite"
-            style={{ minHeight: 180, maxHeight: 320, overflowY: "auto", lineHeight: 1.7 }}
-            className="text-body"
-          >
-            {isRecording ? (
-              liveWords.length === 0 ? (
-                <span style={muted}>{streaming.status === "live" ? "Go ahead." : "Listening…"}</span>
+        <div style={{ display: "grid", gap: 24, alignContent: "start" }}>
+          <div className="rec-console" data-recording={isRecording ? "" : undefined}>
+            <button
+              type="button"
+              className="rec-btn"
+              onClick={isRecording ? stopRecording : startRecording}
+              aria-label={isRecording ? "Stop and hear how it went" : "Start reading"}
+            >
+              {isRecording ? (
+                <span className="rec-stop" aria-hidden="true" />
               ) : (
-                liveWords.join(" ")
-              )
-            ) : (
-              <span style={muted}>
-                Press start and read the script out loud. Your words land here as you say
-                them, and the report replaces this pane when you stop.
-              </span>
-            )}
-            <div ref={liveEndRef} />
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+                  <path
+                    d="M6 11a6 6 0 0 0 12 0M12 17v4"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              )}
+            </button>
+            <div style={{ minWidth: 0 }}>
+              <p className="text-subheading">
+                {isRecording ? "Stop and hear how it went" : "Start reading"}
+              </p>
+              <p className="text-body-sm" style={muted}>
+                {isRecording ? "Keep going. Stop whenever you like." : "Uses your mic. Nothing is saved."}
+              </p>
+            </div>
+            <LevelMeter stream={micStream} />
+            <span className="text-body-sm num" style={isRecording ? undefined : muted}>
+              {fmt(elapsed)} / {fmt(SAMPLE_TARGET_SECONDS)}
+            </span>
           </div>
           {errorLine}
-          <div>
-            {isRecording ? (
-              <button type="button" className="btn-primary" onClick={stopRecording}>
-                Stop and hear how it went
-              </button>
-            ) : (
-              <button type="button" className="btn-primary" onClick={startRecording}>
-                Start reading
-              </button>
-            )}
+          <div style={{ display: "grid", gap: 12 }}>
+            <span className="text-caption" style={muted}>
+              What we&rsquo;re hearing
+            </span>
+            <div
+              aria-live="polite"
+              style={{ minHeight: 160, maxHeight: 320, overflowY: "auto", lineHeight: 1.7 }}
+              className="text-body"
+            >
+              {isRecording ? (
+                liveWords.length === 0 ? (
+                  <span style={muted}>{streaming.status === "live" ? "Go ahead." : "Listening…"}</span>
+                ) : (
+                  liveWords.join(" ")
+                )
+              ) : (
+                <span style={muted}>
+                  Your words land here as you say them. When you stop, the report takes over
+                  this pane.
+                </span>
+              )}
+              <div ref={liveEndRef} />
+            </div>
           </div>
         </div>
       );

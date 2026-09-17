@@ -188,9 +188,9 @@ export default function LandingPage() {
           </nav>
           <div className="flex items-center gap-1">
             <Link href="/login" className="nav-link">Sign in</Link>
-            <a href="#try" className="nav-cta">
+            <Link href="/login" className="nav-cta">
               Try it
-            </a>
+            </Link>
           </div>
         </header>
 

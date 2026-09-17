@@ -384,6 +384,43 @@ textarea.input { font-family: var(--font-script); line-height: 1.6; resize: vert
 .frame-pane { padding: 24px; min-height: 320px; }
 @media (min-width: 768px) { .frame-pane { padding: 28px 32px; min-height: 420px; } }
 
+/* Recorder console: the demo's one control. A round ink key, its label, a
+   live mic meter and the clock, in a single raised bar. */
+.rec-console {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center;
+  column-gap: 16px; row-gap: 12px;
+  padding: 14px 18px 14px 14px;
+  border: 1px solid rgba(17,17,17,0.1); border-radius: 16px;
+  background: var(--color-canvas-white);
+  box-shadow: var(--shadow-subtle-3), 0 12px 28px -18px rgba(17,17,17,0.22);
+}
+.rec-console > .rec-meter { display: none; }
+@media (min-width: 1024px) {
+  .rec-console { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  .rec-console > .rec-meter { display: inline-flex; }
+}
+.rec-btn {
+  width: 56px; height: 56px; border-radius: 999px;
+  display: grid; place-items: center;
+  background: var(--color-midnight-ink); color: var(--color-canvas-white);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 16%, transparent);
+  transition: transform 120ms ease, box-shadow 160ms ease;
+}
+.rec-btn:hover { transform: scale(1.04); box-shadow: 0 0 0 7px color-mix(in srgb, var(--color-accent) 22%, transparent); }
+.rec-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 6px; }
+.rec-console[data-recording] .rec-btn { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 38%, transparent); }
+.rec-stop { width: 16px; height: 16px; border-radius: 3px; background: var(--color-accent); display: block; }
+.rec-meter { align-items: center; gap: 3px; height: 32px; }
+.rec-meter i {
+  display: block; width: 3px; height: 100%; border-radius: 999px;
+  background: rgba(17,17,17,0.14); transform: scaleY(0.1); transform-origin: center;
+}
+.rec-meter[data-live] i { background: var(--color-midnight-ink); }
+
+/* Script follow-along: words the reader hasn't reached yet sit back. */
+.script-line span { transition: color 200ms ease; }
+.script-line span[data-ahead] { color: color-mix(in srgb, var(--color-muted-ash) 55%, transparent); }
+
 /* Hairline cell grid: feature cells without card shadows. */
 .cells {
   display: grid; gap: 1px;
