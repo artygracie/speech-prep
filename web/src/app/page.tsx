@@ -167,8 +167,8 @@ export default function LandingPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
       />
 
+      <div className="hero-bg hero-bg-page" aria-hidden="true" />
       <div className="rail">
-        <div className="hero-bg" aria-hidden="true" />
         {/* Floating pill nav */}
         <header className="nav-pill">
           <Link href="/" aria-label="SpeechPrep home" className="flex items-center">

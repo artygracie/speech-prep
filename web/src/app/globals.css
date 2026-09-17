@@ -324,7 +324,9 @@ textarea.input { font-family: var(--font-script); line-height: 1.6; resize: vert
 /* The ambient gradient belongs to the page top, behind the nav, not to
    the hero section that starts under it. Capped to the first screen so it
    doesn't wash the whole page. */
-.rail > .hero-bg { height: 100vh; }
+/* Full-bleed ambient gradient: spans the viewport, not the rail. */
+.hero-bg-page { inset: 0 0 auto 0; height: 100vh; }
+.hero-bg-page + .rail { z-index: 1; }
 @media (min-width: 768px) {
   .rail { border-inline: 1px dashed rgba(17,17,17,0.14); }
 }
