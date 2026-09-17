@@ -41,6 +41,7 @@ import { isFillerWord, type TranscriptWord } from "./alignment";
 import type { SessionMode } from "./modes";
 
 const MODEL = "claude-sonnet-4-6";
+export const FAST_MODEL = "claude-haiku-4-5-20251001";
 
 let _client: Anthropic | null = null;
 let _missingKeyWarned = false;
@@ -458,6 +459,10 @@ function claimsNoAudio(report: CoachReport): boolean {
 
 export async function generateCoachReport(
   input: CoachInput,
+  // `model` lets a caller trade depth for latency. The anonymous demo uses
+  // the fast tier: a visitor is watching a spinner, and a one-minute sample
+  // doesn't need the full model.
+  { model = MODEL }: { model?: string } = {},
 ): Promise<CoachReport | null> {
   const c = client();
   if (!c) return null;
@@ -475,7 +480,7 @@ export async function generateCoachReport(
 
   const userMessage = personaPrefix(input.mode) + buildUserMessage(hardened);
 
-  const first = await callCoachModel(c, userMessage);
+  const first = await callCoachModel(c, userMessage, model);
   if (!first) return null;
   if (!hasSpeech || !claimsNoAudio(first)) return first;
 
@@ -491,6 +496,7 @@ export async function generateCoachReport(
     `${userMessage}
 
 REALITY CHECK: audio WAS recorded and transcribed for this session — the transcript above contains ${input.words.length} timed words. Do NOT claim that no audio was recorded or that the transcript is empty. If the script sections are blank, coach the delivery you can hear in the transcript and suggest the speaker write the script down.`,
+    model,
   );
   if (retry && !claimsNoAudio(retry)) return retry;
 
@@ -505,10 +511,11 @@ REALITY CHECK: audio WAS recorded and transcribed for this session — the trans
 async function callCoachModel(
   c: Anthropic,
   userMessage: string,
+  model: string,
 ): Promise<CoachReport | null> {
   try {
     const res = await c.messages.create({
-      model: MODEL,
+      model,
       max_tokens: 4096,
       system: [
         {

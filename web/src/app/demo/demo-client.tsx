@@ -188,6 +188,9 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
   // flicker and get rewritten, which reads as the tool being unsure of
   // itself. Final words land once and stay.
   const [liveWords, setLiveWords] = useState<string[]>([]);
+  // The utterance still in flight. Shown muted after the settled words so
+  // the pane keeps pace with the reader instead of landing a phrase late.
+  const [interimWords, setInterimWords] = useState<string[]>([]);
   const liveEndRef = useRef<HTMLDivElement | null>(null);
 
   const recRef = useRef<MediaRecorder | null>(null);
@@ -212,6 +215,7 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
     onWord: (w) => {
       if (w.isFinal) setLiveWords((prev) => [...prev, w.word]);
     },
+    onInterim: setInterimWords,
     getToken: async () => {
       const res = await fetch("/api/demo/stream-token", { method: "POST" });
       if (!res.ok) throw new Error(`stream token ${res.status}`);
@@ -222,7 +226,7 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
   // Keep the newest words in view as they arrive.
   useEffect(() => {
     liveEndRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [liveWords.length]);
+  }, [liveWords.length, interimWords.length]);
 
   const stopRecording = useCallback(() => {
     if (tickRef.current) clearInterval(tickRef.current);
@@ -306,6 +310,7 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
       rec.start();
       setElapsed(0);
       setLiveWords([]);
+      setInterimWords([]);
       setPhase("recording");
       beacon("demo_started");
       // Live words are a nice-to-have. If the socket fails the recording
@@ -338,7 +343,10 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
   // Follow along only when live words are actually arriving. If the socket
   // failed, the script stays fully ink rather than sitting dimmed forever.
   const following = isRecording && streaming.status === "live";
-  const position = useMemo(() => readerPosition(liveWords), [liveWords]);
+  const position = useMemo(
+    () => readerPosition([...liveWords, ...interimWords]),
+    [liveWords, interimWords],
+  );
 
   const script = (
     <div style={{ display: "grid", gap: 14 }}>
@@ -348,7 +356,11 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
             t.index < 0 ? (
               t.text
             ) : (
-              <span key={j} data-ahead={following && t.index >= position ? "" : undefined}>
+              <span
+                key={j}
+                data-ahead={following && t.index >= position ? "" : undefined}
+                data-now={following && t.index === position - 1 ? "" : undefined}
+              >
                 {t.text}
               </span>
             ),
@@ -537,10 +549,12 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
               className="text-body"
             >
               {isRecording ? (
-                liveWords.length === 0 ? (
+                liveWords.length + interimWords.length === 0 ? (
                   <span style={muted}>{streaming.status === "live" ? "Go ahead." : "Listening…"}</span>
                 ) : (
-                  liveWords.join(" ")
+                  <>
+                    {liveWords.join(" ")} <span style={muted}>{interimWords.join(" ")}</span>
+                  </>
                 )
               ) : (
                 <span style={muted}>

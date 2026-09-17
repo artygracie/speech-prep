@@ -384,6 +384,15 @@ textarea.input { font-family: var(--font-script); line-height: 1.6; resize: vert
 .frame-pane { padding: 24px; min-height: 320px; }
 @media (min-width: 768px) { .frame-pane { padding: 28px 32px; min-height: 420px; } }
 
+/* Hero cue: points the eye from the copy down into the product window. */
+.demo-cue {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-weight: 500; font-size: 15px; letter-spacing: -0.005em;
+  color: var(--color-midnight-ink);
+}
+.demo-cue svg { color: var(--color-accent); transition: transform 160ms ease; }
+.demo-cue:hover svg { transform: translateY(3px); }
+
 /* Recorder console: the demo's one control. A round ink key, its label, a
    live mic meter and the clock, in a single raised bar. */
 .rec-console {
@@ -396,7 +405,7 @@ textarea.input { font-family: var(--font-script); line-height: 1.6; resize: vert
 }
 .rec-console > .rec-meter { display: none; }
 @media (min-width: 1024px) {
-  .rec-console { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+  .rec-console { grid-template-columns: auto auto minmax(0, 1fr) auto; }
   .rec-console > .rec-meter { display: inline-flex; }
 }
 .rec-btn {
@@ -410,7 +419,7 @@ textarea.input { font-family: var(--font-script); line-height: 1.6; resize: vert
 .rec-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 6px; }
 .rec-console[data-recording] .rec-btn { box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 38%, transparent); }
 .rec-stop { width: 16px; height: 16px; border-radius: 3px; background: var(--color-accent); display: block; }
-.rec-meter { align-items: center; gap: 3px; height: 32px; }
+.rec-meter { align-items: center; justify-content: flex-end; gap: 3px; height: 32px; overflow: hidden; }
 .rec-meter i {
   display: block; width: 3px; height: 100%; border-radius: 999px;
   background: rgba(17,17,17,0.14); transform: scaleY(0.1); transform-origin: center;
@@ -418,7 +427,8 @@ textarea.input { font-family: var(--font-script); line-height: 1.6; resize: vert
 .rec-meter[data-live] i { background: var(--color-midnight-ink); }
 
 /* Script follow-along: words the reader hasn't reached yet sit back. */
-.script-line span { transition: color 200ms ease; }
+.script-line span { transition: color 120ms ease; border-radius: 4px; }
+.script-line span[data-now] { background: color-mix(in srgb, var(--color-accent) 14%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 14%, transparent); }
 .script-line span[data-ahead] { color: color-mix(in srgb, var(--color-muted-ash) 55%, transparent); }
 
 /* Hairline cell grid: feature cells without card shadows. */

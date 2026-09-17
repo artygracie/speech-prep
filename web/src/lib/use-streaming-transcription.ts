@@ -45,6 +45,10 @@ type Hook = {
 
 type Opts = {
   onWord: (w: StreamingWord) => void;
+  // The words of the utterance still in flight, replaced on every interim
+  // result and emptied when it finalises. For live caption views only:
+  // interim words get rewritten, so nothing should align against them.
+  onInterim?: (words: string[]) => void;
   // Where to get the short-lived Deepgram token. Defaults to the authed
   // edge function, which needs a Supabase session. The anonymous demo
   // passes its own rate-limited endpoint instead — this is the only auth
@@ -256,7 +260,11 @@ export function useStreamingTranscription(opts: Opts): Hook {
           const isFinal = !!msg.is_final;
           // Only emit final word events. Interim results are useful for
           // a live caption view but they create alignment churn.
-          if (!isFinal) return;
+          if (!isFinal) {
+            optsRef.current.onInterim?.((alt.words ?? []).map((w) => w.punctuated_word ?? w.word));
+            return;
+          }
+          optsRef.current.onInterim?.([]);
           for (const w of alt.words ?? []) {
             optsRef.current.onWord({
               word: w.punctuated_word ?? w.word,

@@ -23,7 +23,7 @@ import {
   computeSectionMetrics,
   type ScriptSection,
 } from "@/lib/alignment";
-import { generateCoachReport, type CoachInput } from "@/lib/ai-coach";
+import { FAST_MODEL, generateCoachReport, type CoachInput } from "@/lib/ai-coach";
 import { DeepgramUnavailableError, transcribeBuffer } from "@/lib/deepgram";
 import { MAX_AUDIO_BYTES } from "@/lib/demo-config";
 import { allowIp, clientIp, withinGlobalDailyCap } from "@/lib/demo-limits";
@@ -157,7 +157,7 @@ export async function POST(req: Request): Promise<Response> {
       diffCounts: { matched, paraphrased, skipped, improvised },
     };
 
-    const report = await generateCoachReport(input);
+    const report = await generateCoachReport(input, { model: FAST_MODEL });
     if (!report) {
       console.error("[demo/report] coach returned null", {
         hasApiKey: !!process.env.ANTHROPIC_API_KEY,

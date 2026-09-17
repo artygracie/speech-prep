@@ -209,9 +209,18 @@ export default function LandingPage() {
                 Practice makes perfect. Write and practice your speech out loud with our live
                 coach to memorize your lines and time those laughs.
               </p>
-              <p className="mt-5 text-body-sm reveal reveal-3" style={muted}>
-                About a minute. No account, nothing saved.
-              </p>
+              <a href="#try" className="demo-cue mt-6 reveal reveal-3">
+                Try a quick demo
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path
+                    d="M8 2.5v11m0 0L3.5 9M8 13.5 12.5 9"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </a>
             </div>
 
             <div id="try" className="rail-x relative reveal reveal-4" style={{ scrollMarginTop: 88, marginTop: 48, paddingBottom: 72 }}>
