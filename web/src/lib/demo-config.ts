@@ -6,6 +6,11 @@
 
 /** Hard ceiling on the uploaded recording. ~60s of Opus is well under 1 MB. */
 export const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
+
+/** Below this a recording is container header and no encoded audio. A real
+ *  second of Opus is several KB; 110 bytes is what a starved MediaRecorder
+ *  hands back. Caught in the browser so we never spend a Deepgram call on it. */
+export const MIN_AUDIO_BYTES = 2 * 1024;
 /** Deepgram is billed per minute of audio; the demo is a single take. The
  *  sample runs ~70s at an unhurried pace, so this leaves real headroom for
  *  someone reading slowly or restarting a sentence. */

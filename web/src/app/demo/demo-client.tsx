@@ -18,7 +18,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MAX_AUDIO_SECONDS } from "@/lib/demo-config";
+import { MAX_AUDIO_SECONDS, MIN_AUDIO_BYTES } from "@/lib/demo-config";
 import { useStreamingTranscription } from "@/lib/use-streaming-transcription";
 import {
   SAMPLE_SECTIONS,
@@ -294,9 +294,9 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
           setPhase("read");
           return;
         }
-        if (blob.size === 0) {
+        if (blob.size < MIN_AUDIO_BYTES) {
           setError(
-            "Your browser didn't hand us any audio. Check the mic is allowed for this site, or try Chrome.",
+            "That recording came back empty. Check the mic is allowed for this site, close other tabs using it, then try again.",
           );
           setPhase("read");
           return;
@@ -348,7 +348,8 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
     [liveWords, interimWords],
   );
 
-  const script = (
+  const script = useMemo(
+    () => (
     <div style={{ display: "grid", gap: 14 }}>
       {SAMPLE_SECTIONS.map((s, i) => (
         <p key={s.name} className="text-body script-line" style={{ lineHeight: 1.7 }}>
@@ -368,6 +369,8 @@ export function DemoClient({ variant = "page" }: { variant?: "page" | "frame" } 
         </p>
       ))}
     </div>
+    ),
+    [following, position],
   );
 
   const recordingClock = (
