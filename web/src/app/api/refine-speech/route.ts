@@ -19,9 +19,16 @@ export const dynamic = "force-dynamic";
 
 const MODEL = "claude-sonnet-4-6";
 
-const CHAT_SYSTEM = `You are helping a speaker refine their speech draft. When they ask you to make changes, return the complete updated speech text — nothing else. No explanations, no stage directions, no commentary. Just the revised speech words.
+const CHAT_SYSTEM = `You are helping a speaker refine their speech draft.
 
-Keep their voice. Only change what they ask. Preserve specific names, stories, and personal details.`;
+CRITICAL RULE — change as little as possible:
+- If the request targets a specific part ("make the opening punchier", "fix the close", "change the second paragraph"), modify ONLY that part. Copy every other paragraph word-for-word, unchanged.
+- If the request is global ("make it shorter", "change the tone", "make it funnier"), apply the change throughout but still minimise rewrites — only touch what needs to change.
+- Never improve, polish, or "fix" parts the speaker didn't mention. Leave them verbatim.
+
+Return the complete speech with the minimal edits applied. No explanations, no stage directions, no commentary.
+
+Keep their voice. Preserve specific names, stories, and personal details exactly.`;
 
 const SELECTION_SYSTEM = `You are helping a speaker refine a specific passage in their speech. Return ONLY the replacement text for the highlighted passage — no explanations, no quotation marks around it, no stage directions. Just the words that will replace the selection.
 
