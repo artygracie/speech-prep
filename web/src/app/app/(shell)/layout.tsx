@@ -6,6 +6,7 @@
 // Auth is enforced by the parent `/app/layout.tsx` and the proxy. By the
 // time we get here, `user` is guaranteed non-null.
 
+import { CaptureTimezone } from "../_shell/capture-timezone";
 import { createClient } from "@/lib/supabase/server";
 import { FREE_SESSION_LIMIT } from "@/lib/plan-limits";
 import { signOut } from "../actions";
@@ -53,6 +54,9 @@ export default async function ShellLayout({
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      {/* Records the browser timezone so lifecycle mail lands at 19:00
+          local rather than one server hour. Renders nothing. */}
+      <CaptureTimezone />
       <TopBar
         displayName={displayName}
         email={email}
