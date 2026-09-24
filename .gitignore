@@ -30,4 +30,10 @@ pnpm-debug.log*
 pnpm-lock.yaml.bak
 
 # Local Claude Code state
-.claude/
+# .claude's CONTENTS are ignored, not the directory itself: git cannot re-include
+# a file whose parent directory is excluded, and the agent config below has to be
+# committed because a cloud session only ever sees committed files.
+.claude/*
+!.claude/settings.json
+!.claude/cloud-setup.sh
+!.claude/session-start.sh
