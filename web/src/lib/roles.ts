@@ -39,7 +39,7 @@ export const ROLES: Role[] = [
     h1: "The best man speech",
     title: "Best Man Speech: How to Write One and Actually Deliver It",
     metaDescription:
-      "How long a best man speech should be, the shape that works, and the part nobody practises: saying it out loud. Read one aloud free, no account needed.",
+      "How long a best man speech should be, the shape that works, and the part nobody practices: saying it out loud. Read one aloud free, no account needed.",
     eyebrow: "For the best man",
     intro:
       "You have known him for years and you have about four minutes to prove it. The writing is the part everyone worries about. The delivery is the part that actually goes wrong.",
@@ -78,7 +78,7 @@ export const ROLES: Role[] = [
         a: "Three to five minutes. Read yours out loud and time it before you decide it is short enough. Almost everyone reads faster in their head than they speak at a microphone, and nerves make it slower still.",
       },
       {
-        q: "Should I memorise it or read from cards?",
+        q: "Should I memorize it or read from cards?",
         a: "Cards are completely fine and nobody will judge you for them. What people notice is whether you look up. Knowing it well enough to glance down rather than read down is the goal, not word-perfect recall.",
       },
       {
@@ -255,7 +255,7 @@ export const ROLES: Role[] = [
       },
       {
         q: "Should I speak with my husband or partner?",
-        a: "You can, and it works well if you genuinely rehearse the handovers. Two people who have not practised passing the microphone is the most common way a joint speech loses the room.",
+        a: "You can, and it works well if you genuinely rehearse the handovers. Two people who have not practiced passing the microphone is the most common way a joint speech loses the room.",
       },
     ],
   },

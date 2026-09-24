@@ -250,16 +250,19 @@ Promote up after 2 consecutive sessions ≥80% at current level. Demote one leve
 
 ## Sources
 
+> Checked 2026-09-15 against Crossref and NCBI. Three labels were wrong and have been corrected below. Verify a citation before reusing it in public copy.
+
 - [Gestalt / whole vs. part](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2023.1261220/full)
 - [European Journal: Learning vs. memorizing text](https://link.springer.com/article/10.1007/BF03172653)
-- [Cepeda et al. 2008 — Temporal ridgeline](https://laplab.ucsd.edu/articles/Cepeda%20et%20al%202008_psychsci.pdf)
-- [Roediger & Karpicke 2006](https://pubmed.ncbi.nlm.nih.gov/16507066/)
+- [Cepeda, Vul, Rohrer, Wixted & Pashler 2008, Spacing effects in learning](https://doi.org/10.1111/j.1467-9280.2008.02209.x)
+- [Roediger & Karpicke 2006, Test-enhanced learning (Psychological Science)](https://doi.org/10.1111/j.1467-9280.2006.01693.x)
 - [Bjork & Bjork 2011 — Desirable difficulties](https://bjorklab.psych.ucla.edu/wp-content/uploads/sites/13/2016/04/EBjork_RBjork_2011.pdf)
 - [Production effect](https://pubmed.ncbi.nlm.nih.gov/20438265/)
-- [Noice & Noice — Active experiencing](https://www.frontiersin.org/journals/aging-neuroscience/articles/10.3389/fnagi.2017.00133/full)
+- [Noice & Noice 2006, What studies of actors and acting can tell us about memory](https://doi.org/10.1111/j.0963-7214.2006.00398.x)
+- [Banducci et al. 2017, Active experiencing training improves episodic memory recall in older adults](https://www.frontiersin.org/journals/aging-neuroscience/articles/10.3389/fnagi.2017.00133/full) (previously mislabeled here as Noice & Noice)
 - [How Actors Remember Their Lines](https://thereader.mitpress.mit.edu/how-actors-remember-their-lines/)
 - [Sleep consolidation timing](https://pmc.ncbi.nlm.nih.gov/articles/PMC3395672/)
-- [Rohrer & Pashler — overlearning](https://onlinelibrary.wiley.com/doi/10.1002/acp.1266)
+- [Rohrer & Taylor 2006, The effects of overlearning and distributed practice (Applied Cognitive Psychology)](https://doi.org/10.1002/acp.1266) (previously mislabeled here as Rohrer & Pashler)
 - [Tip-of-the-tongue (Schwartz & Metcalfe)](https://www.columbia.edu/cu/psychology/metcalfe/PDFs/Schwartz_Metcalfe_inPress.pdf)
 - [Cumulative rehearsal in serial recall](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2015.00308/full)
 - [Serial position effect](https://en.wikipedia.org/wiki/Serial-position_effect)
