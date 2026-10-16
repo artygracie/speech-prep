@@ -14,6 +14,12 @@
 // While the transcript and coach are still landing, an inline
 // AutoRefresh component re-fetches the page every 3s and (if the
 // session looks stuck) fires a wake-up to retry transcription.
+//
+// The wait always ends. A failed transcription shows a failed state,
+// and a coach that has not answered COACH_PATIENCE_MS after the
+// transcript landed shows the pacing and diff without coach notes,
+// with a retry. Pacing and the diff render as soon as the transcript
+// exists; coach edits join them when the report lands.
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -23,6 +29,7 @@ import { buildDiff, coalesceDiff, computeMemoryCheck } from "@/lib/alignment";
 import type { TranscriptWord, ScriptSection, MemoryBand } from "@/lib/alignment";
 import { mergeSuggestedEdits } from "@/lib/paraphrase-suggestions";
 import { AutoRefresh } from "./auto-refresh";
+import { RetryCoachButton } from "./retry-coach-button";
 import { PlaybackDock } from "./playback-dock";
 import { ReportConversion } from "./report-conversion";
 import { ManuscriptScript, type SuggestedEdit } from "./manuscript-script";
@@ -32,6 +39,22 @@ import { NextStepCard } from "@/components/next-step-card";
 import { gatherSpeechSignals, recommendNext } from "@/lib/lifecycle";
 import { resolveMode, MODE_LABEL } from "@/lib/modes";
 import { FREE_SESSION_LIMIT } from "@/lib/plan-limits";
+
+// How long a take may sit uploaded with no transcript before the page
+// asks the pipeline to re-run it. Measured from the upload (updated_at),
+// not from when recording started, so a long take is not re-transcribed
+// while its first run is still going.
+const TRANSCRIBE_PATIENCE_MS = 90_000;
+// How long after the transcript lands we keep waiting for coach notes
+// before showing the report without them. Coach calls run 15-30s, and
+// the route allows 60s.
+const COACH_PATIENCE_MS = 120_000;
+
+// Request-time age of a timestamp. The page is rendered per request on
+// the server, so reading the clock here is the point, not a purity bug.
+function msSince(iso: string): number {
+  return Date.now() - new Date(iso).getTime();
+}
 
 function fmtTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -67,7 +90,7 @@ export default async function SessionReportPage({
   // Session + parent speech.
   const { data: session } = await supabase
     .from("sessions")
-    .select("id, speech_id, mode, status, duration_ms, audio_path, audio_mime, tags, created_at, script_version_id")
+    .select("id, speech_id, mode, status, duration_ms, audio_path, audio_mime, tags, created_at, updated_at, script_version_id")
     .eq("id", sessionId)
     .single();
   if (!session || session.speech_id !== speechId) notFound();
@@ -122,7 +145,7 @@ export default async function SessionReportPage({
   // Transcript (if it exists).
   const { data: transcript } = await supabase
     .from("transcripts")
-    .select("text, words")
+    .select("text, words, created_at")
     .eq("session_id", sessionId)
     .maybeSingle();
 
@@ -239,10 +262,19 @@ export default async function SessionReportPage({
   ) as SuggestedEdit[];
 
   const pipelineDone = hasTranscript && hasCoach;
-  const ageMs = Date.now() - new Date(session.created_at).getTime();
+  // A transcript wins over a "failed" status: a duplicate pipeline run
+  // can mark a session failed after the first run already succeeded.
+  const transcriptionFailed = !hasTranscript && session.status === "failed";
+  const sinceUploadMs = msSince(session.updated_at);
   const suspectedStuck =
-    !hasTranscript && session.status !== "transcribed" && ageMs > 60_000;
+    !hasTranscript && session.status === "uploaded" && sinceUploadMs > TRANSCRIBE_PATIENCE_MS;
   const needsCoach = hasTranscript && !hasCoach;
+  const coachGaveUp =
+    needsCoach &&
+    !!transcript?.created_at &&
+    msSince(transcript.created_at) > COACH_PATIENCE_MS;
+  // Nothing more will land on its own: stop polling.
+  const settled = pipelineDone || transcriptionFailed || coachGaveUp;
 
   // Sections shaped for the manuscript renderer — id, name, body,
   // optional pacing + memory band + per-section recall signals.
@@ -311,7 +343,7 @@ export default async function SessionReportPage({
       {/* Polls the page until everything's landed. Renders nothing. */}
       <AutoRefresh
         sessionId={sessionId}
-        done={pipelineDone}
+        done={settled}
         suspectedStuck={suspectedStuck}
         needsCoach={needsCoach}
       />
@@ -343,7 +375,7 @@ export default async function SessionReportPage({
             <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
               {sessionDate.toLocaleString()} · {MODE_LABEL[currentMode]}
             </span>
-            {pipelineDone ? (
+            {hasTranscript && metrics.length > 0 ? (
               <>
                 <span className="badge pill-soft num">
                   <span className="dot" />
@@ -358,14 +390,17 @@ export default async function SessionReportPage({
                   {signTime(totalDelta)} vs. target
                 </span>
               </>
-            ) : (
+            ) : transcriptionFailed ? (
+              <span className="badge pill-red">
+                <span className="dot" />
+                We couldn&rsquo;t process this take
+              </span>
+            ) : !hasTranscript ? (
               <span className="badge pill-blue">
                 <span className="dot pulse" />
-                {hasTranscript
-                  ? "Coach is writing your feedback…"
-                  : "Transcribing your recording…"}
+                Transcribing your recording…
               </span>
-            )}
+            ) : null}
           </div>
         </div>
         <div className="flex gap-2 items-center">
@@ -469,13 +504,46 @@ export default async function SessionReportPage({
         </section>
       )}
 
+      {/* ===== Transcription failed: a terminal state, never a spinner ===== */}
+      {transcriptionFailed && (
+        <div className="mt-10 card-bordered" style={{ maxWidth: 720, padding: 32 }}>
+          <p className="text-subheading">We couldn&rsquo;t turn this take into a report.</p>
+          <p className="text-body mt-3" style={{ color: "var(--color-muted-ash)" }}>
+            Something went wrong on our side while transcribing it. This take
+            hasn&rsquo;t used up a rehearsal, so record it again and you&rsquo;ll
+            get your full report.
+          </p>
+          <div className="mt-6">
+            <Link href={`/app/speeches/${speechId}/record`} className="btn-primary">
+              Record again
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Coach notes didn't arrive: show what we have, offer a retry ===== */}
+      {coachGaveUp && (
+        <div className="mt-10 card-bordered" style={{ maxWidth: 720, padding: 24 }}>
+          <p className="text-body" style={{ fontWeight: 600 }}>
+            Your coach notes are taking longer than they should.
+          </p>
+          <p className="text-body-sm mt-2" style={{ color: "var(--color-muted-ash)" }}>
+            Your timing and what you said are below. Try the notes again, or
+            come back to this page later.
+          </p>
+          <div className="mt-4">
+            <RetryCoachButton sessionId={sessionId} />
+          </div>
+        </div>
+      )}
+
       {/* ===== Pipeline still working ===== */}
-      {!pipelineDone && (
+      {!settled && (
         <div className="mt-10">
           <div className="loading-panel" style={{ maxWidth: 720 }}>
             <p className="text-subheading">
               {hasTranscript
-                ? "Reading the transcript and writing your notes…"
+                ? "Your timing is in. Writing your coach notes…"
                 : "Transcribing your recording — this usually takes about a minute."}
             </p>
             <p
@@ -494,11 +562,14 @@ export default async function SessionReportPage({
           what the user said. Lives under its own h2 so the page reads
           as two clear sections: Coach feedback (prose) → Your script
           (the document with annotations). */}
-      {pipelineDone && manuscriptSections.length > 0 && (
+      {hasTranscript && manuscriptSections.length > 0 && (
         <section className="mt-12">
           <h2 className="text-heading">Your script</h2>
           <div className="mt-4">
+            {/* Keyed on hasCoach so the edit rail initialises again when
+                the coach's edits arrive after the transcript. */}
             <ManuscriptScript
+              key={hasCoach ? "with-coach" : "transcript-only"}
               speechId={speechId}
               sessionId={sessionId}
               mode={currentMode}

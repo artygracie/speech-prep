@@ -31,6 +31,21 @@ import { maxDurationMs } from "@/lib/plan-limits";
 
 type Section = { id: string; position: number; name: string; targetSec: number; body: string };
 type Tag = { kind: "landed" | "flat" | "lost" | "callback"; atMs: number; label: string };
+type PendingUpload = {
+  sessionId: string;
+  ext: string;
+  file: File;
+  durationMs: number;
+  tags: Tag[];
+};
+
+// Storage answers a re-upload of an existing object with a 409 /
+// "already exists" error rather than success.
+function isAlreadyUploaded(err: unknown): boolean {
+  const e = err as { statusCode?: string | number; message?: string };
+  return String(e?.statusCode) === "409" || /already exists/i.test(e?.message ?? "");
+}
+
 // "silent" — the take ended with no detectable voice; nothing was
 // uploaded and the session was marked failed (no credit spent).
 type State = "idle" | "starting" | "recording" | "paused" | "stopping" | "uploading" | "error" | "silent";
@@ -126,6 +141,10 @@ export function Recorder({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
+  // A recorded take that has not reached storage yet. Held until the
+  // upload and finalize both succeed, so "Retry upload" never loses it.
+  const pendingUploadRef = useRef<PendingUpload | null>(null);
+  const [hasUnsentTake, setHasUnsentTake] = useState(false);
   const startedAtRef = useRef<number>(0);
   const tickHandleRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mimeRef = useRef<{ mime: string; ext: string }>({ mime: "audio/webm", ext: "webm" });
@@ -462,12 +481,26 @@ export function Recorder({
       return;
     }
 
-    setState("uploading");
     const ext = mimeRef.current.ext || "webm";
-    const file = new File([blob], `${sessionId}.${ext}`, {
-      type: blob.type || "audio/webm",
-    });
+    pendingUploadRef.current = {
+      sessionId,
+      ext,
+      file: new File([blob], `${sessionId}.${ext}`, { type: blob.type || "audio/webm" }),
+      durationMs: captured,
+      tags,
+    };
+    setHasUnsentTake(true);
+    await uploadPendingTake();
+  }
 
+  // Uploads the take held in pendingUploadRef and finalizes the session.
+  // The take stays in memory until this succeeds, so a failed upload can
+  // be retried without asking the user to give the whole speech again.
+  async function uploadPendingTake() {
+    const pending = pendingUploadRef.current;
+    if (!pending) return;
+    setState("uploading");
+    setErrorMsg(null);
     try {
       const supabase = createBrowserClient();
       const {
@@ -475,31 +508,51 @@ export function Recorder({
       } = await supabase.auth.getUser();
       if (!user) throw new Error("Not signed in");
 
-      const path = `${user.id}/${sessionId}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("recordings").upload(path, file, {
+      const path = `${user.id}/${pending.sessionId}.${pending.ext}`;
+      const { error: upErr } = await supabase.storage.from("recordings").upload(path, pending.file, {
         cacheControl: "3600",
         upsert: false,
-        contentType: file.type,
+        contentType: pending.file.type,
       });
-      if (upErr) throw upErr;
+      // A retry after the upload landed but finalizing failed finds the
+      // object already there. That is the state we want, so carry on.
+      if (upErr && !isAlreadyUploaded(upErr)) throw upErr;
 
       await finalizeSession({
-        sessionId,
+        sessionId: pending.sessionId,
         audioPath: path,
-        audioMime: file.type,
-        audioBytes: file.size,
-        durationMs: captured,
-        tags,
+        audioMime: pending.file.type,
+        audioBytes: pending.file.size,
+        durationMs: pending.durationMs,
+        tags: pending.tags,
       });
 
+      pendingUploadRef.current = null;
+      setHasUnsentTake(false);
       startTransition(() => {
-        router.push(`/app/speeches/${speechId}/sessions/${sessionId}`);
+        router.push(`/app/speeches/${speechId}/sessions/${pending.sessionId}`);
       });
     } catch (err) {
       console.error(err);
-      setErrorMsg(err instanceof Error ? err.message : "Upload failed.");
+      setErrorMsg(
+        `${err instanceof Error ? err.message : "Upload failed."} Your take is saved on this page, so you can retry.`,
+      );
       setState("error");
     }
+  }
+
+  function discardPendingTake() {
+    const pending = pendingUploadRef.current;
+    if (pending) {
+      // The session never left 'recording'; close it out like a silent take.
+      void abandonSession(pending.sessionId).catch(() => {
+        // Best-effort — the reaper cleans up stragglers.
+      });
+    }
+    pendingUploadRef.current = null;
+    setHasUnsentTake(false);
+    setState("idle");
+    setErrorMsg(null);
   }
 
   // ---------- Derived values ----------
@@ -1368,10 +1421,16 @@ export function Recorder({
         onPause={pause}
         onResume={resume}
         onStop={stop}
+        hasUnsentTake={hasUnsentTake}
         onRetry={() => {
-          setState("idle");
-          setErrorMsg(null);
+          if (hasUnsentTake) {
+            void uploadPendingTake();
+          } else {
+            setState("idle");
+            setErrorMsg(null);
+          }
         }}
+        onDiscard={discardPendingTake}
       />
     </>
   );
