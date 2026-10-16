@@ -1,6 +1,7 @@
 // Session report — the manuscript view.
 //
-// One mental object: the user's speech, rendered as a manuscript with
+// The answer first: an "Am I ready?" verdict (length, pace, accuracy,
+// and the next step). Then one mental object: the user's speech, rendered as a manuscript with
 // coach edits and speaker deviations as inline track-changes. The
 // coach's headline sits above the manuscript as a margin note. A
 // sticky footer carries the convergence CTA (Apply & record) and an
@@ -30,12 +31,13 @@ import type { TranscriptWord, ScriptSection, MemoryBand } from "@/lib/alignment"
 import { mergeSuggestedEdits } from "@/lib/paraphrase-suggestions";
 import { AutoRefresh } from "./auto-refresh";
 import { RetryCoachButton } from "./retry-coach-button";
+import { VerdictCard } from "./verdict-card";
+import { assessReadiness } from "@/lib/readiness";
 import { PlaybackDock } from "./playback-dock";
 import { ReportConversion } from "./report-conversion";
 import { ManuscriptScript, type SuggestedEdit } from "./manuscript-script";
 import { track } from "@/lib/track";
 import { UpgradeCard } from "@/components/upgrade-card";
-import { NextStepCard } from "@/components/next-step-card";
 import { gatherSpeechSignals, recommendNext } from "@/lib/lifecycle";
 import { resolveMode, MODE_LABEL } from "@/lib/modes";
 import { FREE_SESSION_LIMIT } from "@/lib/plan-limits";
@@ -56,14 +58,6 @@ function msSince(iso: string): number {
   return Date.now() - new Date(iso).getTime();
 }
 
-function fmtTime(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-function signTime(s: number) {
-  return (s >= 0 ? "+" : "−") + fmtTime(Math.abs(s));
-}
 
 // Headline fallback when ai_reports.headline is null (legacy reports
 // generated before prompt v2). We slice the first sentence and trim
@@ -97,7 +91,7 @@ export default async function SessionReportPage({
 
   const { data: speech } = await supabase
     .from("speeches")
-    .select("title")
+    .select("title, occasion")
     .eq("id", speechId)
     .single();
 
@@ -157,8 +151,6 @@ export default async function SessionReportPage({
     .maybeSingle();
 
   const targetTotal = sections.reduce((a, s) => a + s.targetSeconds, 0);
-  const actualTotal = metrics.reduce((a, m) => a + (m.actual_seconds ?? 0), 0);
-  const totalDelta = actualTotal - targetTotal;
   const currentMode = resolveMode(session.mode);
   const isFreestyle = currentMode === "freestyle";
 
@@ -214,6 +206,34 @@ export default async function SessionReportPage({
       if (firstSpoken) {
         spokenSnippetById.set(row.sectionId, firstSpoken);
       }
+    }
+  }
+
+  // "Am I ready?" verdict. Run time is the whole take as recorded, not
+  // the sum of section spans, which leaves out the pauses between them.
+  // Accuracy is the share of scripted words said as written, the same
+  // measure the from-memory recall map uses.
+  let readiness: ReturnType<typeof assessReadiness> | null = null;
+  if (transcript?.words && Array.isArray(transcript.words) && diff.length > 0) {
+    const memory = computeMemoryCheck(sections, diff);
+    const said = memory.reduce((a, r) => a + r.matchedWords, 0);
+    const scripted = memory.reduce(
+      (a, r) => a + r.matchedWords + r.approximateWords + r.skippedWords,
+      0,
+    );
+    const runSeconds =
+      session.duration_ms != null
+        ? session.duration_ms / 1000
+        : metrics.reduce((a, m) => a + (m.actual_seconds ?? 0), 0);
+    if (scripted > 0 && runSeconds > 0) {
+      readiness = assessReadiness({
+        occasion: speech?.occasion ?? null,
+        mode: currentMode,
+        runSeconds,
+        targetSeconds: targetTotal,
+        spokenWords: transcript.words.length,
+        accuracy: said / scripted,
+      });
     }
   }
 
@@ -375,22 +395,7 @@ export default async function SessionReportPage({
             <span className="text-body-sm" style={{ color: "var(--color-muted-ash)" }}>
               {sessionDate.toLocaleString()} · {MODE_LABEL[currentMode]}
             </span>
-            {hasTranscript && metrics.length > 0 ? (
-              <>
-                <span className="badge pill-soft num">
-                  <span className="dot" />
-                  {fmtTime(actualTotal)} total
-                </span>
-                <span
-                  className={`badge ${
-                    totalDelta > 0 ? "pill-red" : totalDelta < -5 ? "pill-gold" : "pill-mint"
-                  } num`}
-                >
-                  <span className="dot" />
-                  {signTime(totalDelta)} vs. target
-                </span>
-              </>
-            ) : transcriptionFailed ? (
+            {transcriptionFailed ? (
               <span className="badge pill-red">
                 <span className="dot" />
                 We couldn&rsquo;t process this take
@@ -457,6 +462,13 @@ export default async function SessionReportPage({
           .loading-panel { animation: none; }
         }
       `}</style>
+
+      {/* ===== Am I ready? ===== The answer first; the detail below. */}
+      {readiness && (
+        <div className="mt-10">
+          <VerdictCard readiness={readiness} recommendation={recommendation} />
+        </div>
+      )}
 
       {/* ===== Coach feedback section =====
           Real h2, prose underneath. The headline is a serif pull-quote
@@ -579,22 +591,6 @@ export default async function SessionReportPage({
             />
           </div>
         </section>
-      )}
-
-      {/* Lifecycle "what's next" card. Renders below the manuscript so
-          the user finishes reading the report and lands on a single
-          contextual recommendation. The Apply-edits buttons in the
-          manuscript footer are still the right call when the user
-          wants to commit edits; the NextStepCard answers "where do I
-          go after this?" */}
-      {recommendation && (
-        <div className="mt-12" style={{ maxWidth: 760 }}>
-          <NextStepCard
-            recommendation={recommendation}
-            speechId={speechId}
-            variant="compact"
-          />
-        </div>
       )}
 
       {/* ===== Upgrade nudge — bottom of page, after value ===== */}
