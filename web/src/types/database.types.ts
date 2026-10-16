@@ -2,9 +2,10 @@
 // `generate_typescript_types` tool. To regenerate after a migration: call
 // the MCP tool again and replace this file's body. Do not edit by hand.
 //
-// PENDING REGEN (2026-07-14): three hand-additions ahead of the
+// PENDING REGEN (2026-07-14, 2026-10-16): four hand-additions ahead of the
 // not-yet-applied migrations — `events` table + `profiles.attribution`
-// (20260714000100), `sessions.debited_at` (20260714100000), and
+// (20260714000100), `sessions.debited_at` (20260714100000), `sessions.coach_claimed_at`
+// (20261016000000), and
 // `speeches.event_date` (20260714120000). Regenerate this file once the
 // migrations are applied at integration and this note disappears.
 
@@ -265,6 +266,7 @@ export type Database = {
           audio_mime: string | null
           audio_path: string | null
           created_at: string
+          coach_claimed_at: string | null
           debited_at: string | null
           duration_ms: number | null
           id: string
@@ -281,6 +283,7 @@ export type Database = {
           audio_mime?: string | null
           audio_path?: string | null
           created_at?: string
+          coach_claimed_at?: string | null
           debited_at?: string | null
           duration_ms?: number | null
           id?: string
@@ -297,6 +300,7 @@ export type Database = {
           audio_mime?: string | null
           audio_path?: string | null
           created_at?: string
+          coach_claimed_at?: string | null
           debited_at?: string | null
           duration_ms?: number | null
           id?: string

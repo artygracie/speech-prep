@@ -1,7 +1,7 @@
 // Upload-first intake — the "Already written?" door from the fork
 // (/app/speeches/start). Expects a document; pasting is the fallback.
 // Submission is a server action that creates the speech + v1 + sections,
-// then redirects into the editor.
+// then redirects to the recorder (or the editor, for an empty script).
 
 import Link from "next/link";
 import { createSpeech } from "../../../actions";

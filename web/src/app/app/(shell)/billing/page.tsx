@@ -2,6 +2,7 @@
 // or buy a one-shot pass, and links to the Stripe customer portal for
 // subscription management.
 
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -161,7 +162,11 @@ export default async function BillingPage({
                 </div>
                 <p className="text-body-sm mt-2" style={{ opacity: 0.7 }}>
                   One speech. Unlimited rehearsals and coaching for 30 days. No
-                  subscription — and we delete the recordings after, if you want.
+                  subscription, and{" "}
+                  <Link href="/privacy" style={{ textDecoration: "underline" }}>
+                    recordings are deleted after your event
+                  </Link>
+                  .
                 </p>
               </div>
               <form action={startOneShotCheckout} style={{ marginTop: "auto" }}>

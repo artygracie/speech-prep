@@ -1,7 +1,8 @@
 // POST /api/coach/run
 //
 // Generates an ai_reports row for a session. Idempotent — if a report
-// already exists, this is a no-op and returns 200.
+// already exists, this is a no-op and returns 200. If another call is
+// already running the coach for this session, it returns 202.
 //
 // Triggered by (a) the transcribe edge function once the transcript +
 // section metrics have landed, and (b) the AutoRefresh / wake-handler
@@ -46,6 +47,10 @@ export const dynamic = "force-dynamic";
 // is enough headroom for slow takes without holding the function open
 // when something's truly stuck.
 export const maxDuration = 60;
+
+// A claim older than this is a run that died without clearing it.
+// Longer than maxDuration, so a live run is never stolen.
+const CLAIM_STALE_MS = 90_000;
 
 export async function POST(req: Request): Promise<Response> {
   let sessionId: string | null = null;
@@ -119,6 +124,31 @@ export async function POST(req: Request): Promise<Response> {
     return new Response("transcript not ready", { status: 409 });
   }
 
+  // Claim the run so the edge function and the report page, which both
+  // call this route, never pay for two model calls on one session.
+  const staleBefore = new Date(Date.now() - CLAIM_STALE_MS).toISOString();
+  const { data: claim, error: claimRunErr } = await admin
+    .from("sessions")
+    .update({ coach_claimed_at: new Date().toISOString() })
+    .eq("id", sessionId)
+    .or(`coach_claimed_at.is.null,coach_claimed_at.lt.${staleBefore}`)
+    .select("id")
+    .maybeSingle();
+  if (claimRunErr) {
+    console.error("[coach/run] claim failed", { sessionId, error: claimRunErr.message });
+    return new Response("claim failed", { status: 500 });
+  }
+  if (!claim) return new Response("in progress", { status: 202 });
+  const releaseClaim = async () => {
+    const { error } = await admin
+      .from("sessions")
+      .update({ coach_claimed_at: null })
+      .eq("id", sessionId);
+    if (error) {
+      console.error("[coach/run] claim release failed", { sessionId, error: error.message });
+    }
+  };
+
   const { data: secRows } = await admin
     .from("sections")
     .select("id, position, name, target_seconds, body")
@@ -129,6 +159,7 @@ export async function POST(req: Request): Promise<Response> {
       sessionId,
       scriptVersionId: session.script_version_id,
     });
+    await releaseClaim();
     return new Response("script has no sections", { status: 409 });
   }
 
@@ -200,6 +231,7 @@ export async function POST(req: Request): Promise<Response> {
       sectionCount: secRows.length,
       transcriptWords: (transcript.words as unknown[]).length,
     });
+    await releaseClaim();
     return new Response("coach unavailable", { status: 503 });
   }
 
@@ -239,6 +271,7 @@ export async function POST(req: Request): Promise<Response> {
       details: insErr.details,
       hint: insErr.hint,
     });
+    await releaseClaim();
     return new Response(`insert failed: ${insErr.message}`, { status: 500 });
   }
 

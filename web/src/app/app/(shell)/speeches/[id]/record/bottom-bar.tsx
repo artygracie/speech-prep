@@ -62,7 +62,11 @@ type Props = {
   onPause: () => void;
   onResume: () => void;
   onStop: () => void;
+  // True when a recorded take failed to upload and is still held in
+  // memory: the error state then offers "Retry upload" and "Discard".
+  hasUnsentTake: boolean;
   onRetry: () => void;
+  onDiscard: () => void;
 };
 
 function fmt(ms: number) {
@@ -86,7 +90,9 @@ export function BottomBar({
   onPause,
   onResume,
   onStop,
+  hasUnsentTake,
   onRetry,
+  onDiscard,
 }: Props) {
   const [tagFlash, setTagFlash] = useState<Tag | null>(null);
   const lastTagSeenRef = useRef<number>(0);
@@ -449,7 +455,17 @@ export function BottomBar({
                   Uploading…
                 </button>
               )}
-              {(state === "error" || state === "silent") && (
+              {state === "error" && hasUnsentTake && (
+                <>
+                  <button onClick={onDiscard} className="bb-btn bb-btn-ghost">
+                    Discard take
+                  </button>
+                  <button onClick={onRetry} className="bb-btn bb-btn-primary">
+                    Retry upload
+                  </button>
+                </>
+              )}
+              {((state === "error" && !hasUnsentTake) || state === "silent") && (
                 <button onClick={onRetry} className="bb-btn bb-btn-primary">
                   Try again
                 </button>
