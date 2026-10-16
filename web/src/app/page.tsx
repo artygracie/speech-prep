@@ -371,7 +371,7 @@ export default function LandingPage() {
             </div>
             <FooterColumn heading="Product" links={[{ href: "#try", label: "Try it" }, { href: "#pricing", label: "Pricing" }, { href: "/how-to-memorize-a-speech", label: "How to memorize a speech" }]} />
             <FooterColumn heading="Speeches" links={ROLES.map((r) => ({ href: `/${r.slug}`, label: r.h1 }))} />
-            <FooterColumn heading="Company" links={[{ href: "mailto:hello@speechprep.ai", label: "hello@speechprep.ai" }, { href: "https://artygroup.com", label: "An Artygroup product", external: true }]} />
+            <FooterColumn heading="Company" links={[{ href: "mailto:hello@speechprep.ai", label: "hello@speechprep.ai" }, { href: "/privacy", label: "Privacy" }, { href: "https://artygroup.com", label: "An Artygroup product", external: true }]} />
           </div>
           <div className="mt-10 text-caption" style={muted}>&copy; 2026 SpeechPrep</div>
         </footer>
