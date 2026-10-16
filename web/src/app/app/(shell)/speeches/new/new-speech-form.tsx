@@ -3,7 +3,8 @@
 // New-speech intake. One input surface (ScriptIntake): paste into it,
 // drop a file on it, or browse — an uploaded document becomes a document
 // card with a suggested title, not a text dump. Cleanup belongs to the
-// editor; this screen only confirms we read the file right.
+// editor; this screen only confirms we read the file right, then hands
+// off to the recorder.
 
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
@@ -99,7 +100,7 @@ export function NewSpeechForm({
           className="btn-primary"
           disabled={pending || !title.trim() || !occasion}
         >
-          {pending ? "Opening editor…" : "Open editor"}
+          {pending ? "Setting up…" : "I'm ready →"}
         </button>
         <Link href="/app" className="btn-ghost">
           Cancel

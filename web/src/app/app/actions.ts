@@ -126,8 +126,12 @@ export async function createSpeech(formData: FormData) {
     { userId: user.id },
   );
 
+  // A pasted or uploaded speech goes straight to the recorder: people
+  // came to rehearse, and the auto-sections are good enough to record
+  // against. An empty script has nothing to read yet, so it opens the
+  // editor instead.
   revalidatePath("/app");
-  redirect(`/app/speeches/${speech.id}/edit`);
+  redirect(body ? `/app/speeches/${speech.id}/record` : `/app/speeches/${speech.id}/edit`);
 }
 
 // First-run onboarding submission. Same logic as createSpeech, but

@@ -43,12 +43,14 @@ export default function OnboardingPage() {
             priority
           />
         </Link>
+        {/* /app sends anyone with no speeches back here, so a "skip"
+            link would loop. The sample speech is the useful exit. */}
         <Link
-          href="/app"
+          href="/demo"
           className="text-body-sm"
           style={{ color: "var(--color-muted-ash)" }}
         >
-          Skip for now
+          Try a sample speech first
         </Link>
       </header>
 
